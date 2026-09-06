@@ -6501,12 +6501,9 @@ ps5_draw_vbo_locked(struct pipe_context *base,
           provoking_vtx_last,
           sample_count > 1 && context->rasterizer &&
              context->rasterizer->multisample && graphics.alpha_to_one,
-          poly_line_smooth, false,
-          !context->gs &&
-             !(context->vs->nir->info.outputs_written & VARYING_BIT_PRIMITIVE_ID) &&
-             ((context->fs->nir->info.inputs_read & VARYING_BIT_PRIMITIVE_ID) ||
-              BITSET_TEST(context->fs->nir->info.system_values_read,
-                          SYSTEM_VALUE_PRIMITIVE_ID)),
+          /* Both explicit GS IDs and the compiler's implicit VS IDs use
+           * per-vertex transport on PS5. */
+          poly_line_smooth, false, false,
           &fragment_exports)) {
       context->last_draw_status = -14;
       return;

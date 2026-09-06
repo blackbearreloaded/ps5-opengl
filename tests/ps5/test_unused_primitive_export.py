@@ -28,7 +28,7 @@ static void package(const PsbcShaderOutput *out) {
     assert(ps5_agc_package_build(out, 4, &data, &size) == 0 && size);
     free(data);
 }
-static void check(unsigned varyings, bool explicit_id) {
+static void check(unsigned varyings, bool explicit_id, bool last) {
     nir_builder b = nir_builder_init_simple_shader(
         MESA_SHADER_VERTEX, psbc_get_nir_options(PSBC_STAGE_VERTEX), "primitive-export");
     nir_variable *input = nir_variable_create(b.shader, nir_var_shader_in,
@@ -49,6 +49,7 @@ static void check(unsigned varyings, bool explicit_id) {
     }
     PsbcCompileOptions options = {.target=PSBC_TARGET_PS5, .stage=PSBC_STAGE_VERTEX,
         .optimise=true, .ngg=true, .primitive_type=4, .address32_hi=2,
+        .provoking_vtx_last=last,
         .vertex_attribute_count=1,
         .vertex_attributes={{.location=0, .binding=0,
             .format=PSBC_VERTEX_FORMAT_R32G32B32A32_FLOAT, .stride=16, .alignment=16}}};
@@ -59,10 +60,13 @@ static void check(unsigned varyings, bool explicit_id) {
         assert(psbc_compile_nir(b.shader, &options, &out) == PSBC_RESULT_OK);
         assert(out.machine_code_size && out.metadata.hardware_stage == PSBC_HW_STAGE_NGG);
         unsigned state = config(&out, 0x1b1);
-        unsigned params = varyings + explicit_id;
+        bool implicit_id = !explicit_id && i != 1;
+        unsigned params = varyings + explicit_id + implicit_id;
         assert(G_0286C4_VS_EXPORT_COUNT(state) == (params ? params - 1 : 0));
-        assert(G_0286C4_PRIM_EXPORT_COUNT(state) == (!explicit_id && i != 1));
+        assert(G_0286C4_PRIM_EXPORT_COUNT(state) == 0);
         assert(G_0286C4_NO_PC_EXPORT(state) == (!params && i == 1));
+        assert(G_028A84_NGG_DISABLE_PROVOK_REUSE(config(&out, 0x2a1)) == implicit_id);
+        assert(G_028B54_PRIMGEN_PASSTHRU_EN(out.metadata.linkage_stages_en.value) == !implicit_id);
         if (!i) baseline_size = out.machine_code_size;
         if (explicit_id || i == 2) assert(out.machine_code_size == baseline_size);
         if (!explicit_id && i == 1) assert(out.machine_code_size < baseline_size);
@@ -72,12 +76,12 @@ static void check(unsigned varyings, bool explicit_id) {
             unsigned semantic = out.metadata.output_semantics[varyings];
             assert((semantic & 255) == PSBC_SEMANTIC_PRIMITIVE_ID);
             /* Explicit per-vertex ID is assigned before generic outputs;
-             * implicit per-primitive ID follows them. */
+             * implicit per-vertex ID retains the final export slot. */
             assert(((semantic >> 8) & 31) == (explicit_id ? 0 : varyings));
         }
         package(&out);
-        printf("primitive-export varyings=%u explicit=%u omit=%u config=%x bytes=%zu\n",
-               varyings, explicit_id, options.omit_implicit_primitive_id, state, out.machine_code_size);
+        printf("primitive-export varyings=%u explicit=%u omit=%u last=%u config=%x bytes=%zu\n",
+               varyings, explicit_id, options.omit_implicit_primitive_id, last, state, out.machine_code_size);
         psbc_free_output(&out);
     }
     ralloc_free(b.shader);
@@ -163,7 +167,8 @@ static void consumer(unsigned varyings, bool mixed) {
 }
 int main(void) {
     psbc_init();
-    for (unsigned i = 0; i <= 2; ++i) { check(i, false); check(i, true); }
+    for (unsigned i = 0; i <= 2; ++i)
+        for (unsigned last = 0; last < 2; ++last) { check(i, false, last); check(i, true, last); }
     for (unsigned i = 0; i <= 2; ++i) {
         consumer(i, false);
         if (i) consumer(i, true);

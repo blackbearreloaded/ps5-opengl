@@ -47,6 +47,14 @@ Host tests cover 18 producer and 20 consumer compilations, including mixed
 interpolation and first/last provoking vertices. Native acceptance is pending.
 
 - 2026-09-06 | G5 | 33b7f86 | failed: math/texture pass, first ID case 1,920/4,096 pixels; clean teardown/health/unlock | results/glsl-primitive-id-linkage-recovery/170047 | channel/linkage trace
+- 2026-09-06 | G5 | 107dc9b | failed: only ID corrupt; UV/tag/alpha pass, clean teardown/health/unlock | results/glsl-primitive-id-linkage-trace-recovery/171457 | per-vertex transport
+
+The diagnostic records the intended parameter counts and offsets, but ID values
+still vary within one primitive. The next candidate uses Mesa's existing NGG
+per-vertex LDS transport, including its barrier and provoking-vertex reuse rule;
+fragment linkage follows that producer. This is a compatibility candidate, not
+proof that the hardware cannot support per-primitive attributes. Native acceptance
+is pending; the submission path and GLSL oracle remain unchanged.
 
 ## G1: Measure the existing frame path
 

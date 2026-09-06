@@ -1,5 +1,5 @@
 diff --git a/.gitignore b/.gitignore
-index c244fc5..154fd02 100644
+index c244fc58e588d9f165159fbba3ae91d96b76a895..154fd027dddedb3369797b3ee04fb7eb6f28a215 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -57,6 +57,7 @@ config.mak
@@ -11,7 +11,7 @@ index c244fc5..154fd02 100644
  # Editor / OS
  .DS_Store
 diff --git a/Makefile b/Makefile
-index 21c97d3..5596cb2 100644
+index 21c97d352fd7ef52c04cf590138205328266d8c4..5596cb2e6bf098b0f1509ab07c09fa2c2eac9bad 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -225,12 +225,11 @@ UTIL_SRCS = $(filter-out \
@@ -41,7 +41,7 @@ index 21c97d3..5596cb2 100644
  # === Static library (libpsbc.a) ===
  # Contains all Mesa objects + psbc compilation logic. Can be linked
 diff --git a/cmd/psbc/main.c b/cmd/psbc/main.c
-index 945737d..e6a06ae 100644
+index 945737db85a6e86c1e06b09b32af1d3b1de12485..e6a06ae8648241f443e83f6b528b52b73f607851 100644
 --- a/cmd/psbc/main.c
 +++ b/cmd/psbc/main.c
 @@ -18,15 +18,78 @@ static const char* VERSION_STR = "0.1.0";
@@ -497,7 +497,7 @@ index 945737d..e6a06ae 100644
  
  	psbc_free_output(&output);
 diff --git a/libpsbc/psbc_compile.c b/libpsbc/psbc_compile.c
-index bacbc6a..f597ba0 100644
+index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f2583853f9415a1 100644
 --- a/libpsbc/psbc_compile.c
 +++ b/libpsbc/psbc_compile.c
 @@ -12,6 +12,7 @@
@@ -627,7 +627,7 @@ index bacbc6a..f597ba0 100644
  typedef struct {
      const struct nir_shader* nir;
      const struct radv_shader_info* rinfo;
-@@ -216,9 +312,626 @@ typedef struct {
+@@ -216,9 +312,630 @@ typedef struct {
      PsbcStage psbc_stage;
      const uint32_t* spirv_data;
      size_t spirv_size;
@@ -1122,6 +1122,10 @@ index bacbc6a..f597ba0 100644
 +            S_0286C4_PRIM_EXPORT_COUNT(num_prim_params) |
 +            S_0286C4_NO_PC_EXPORT(no_pc_export));
 +        metadata_add_register(cx, cx_count, PSBC_MAX_CONTEXT_REGISTERS,
++            PSBC_CX_OFFSET(R_028A84_VGT_PRIMITIVEID_EN),
++            S_028A84_NGG_DISABLE_PROVOK_REUSE(
++                ctx->stage == MESA_SHADER_VERTEX && ctx->rinfo->outinfo.export_prim_id));
++        metadata_add_register(cx, cx_count, PSBC_MAX_CONTEXT_REGISTERS,
 +            PSBC_CX_OFFSET(R_02870C_SPI_SHADER_POS_FORMAT),
 +            build_spi_shader_pos_format(num_pos_exports));
 +        metadata_add_register(cx, cx_count, PSBC_MAX_CONTEXT_REGISTERS,
@@ -1254,7 +1258,7 @@ index bacbc6a..f597ba0 100644
  /* Build the shader binary into a memory buffer instead of a file. */
  static PsbcResult buildshaderbinary(
      const BuildContext* ctx,
-@@ -287,7 +1000,7 @@ static PsbcResult buildshaderbinary(
+@@ -287,7 +1004,7 @@ static PsbcResult buildshaderbinary(
              outputswritten * sizeof(GnmVertexExportSemantic);
          break;
      case MESA_SHADER_FRAGMENT:
@@ -1263,7 +1267,7 @@ index bacbc6a..f597ba0 100644
                            sizeof(GnmPixelInputSemantic);
          break;
      case MESA_SHADER_GEOMETRY:
-@@ -433,7 +1146,7 @@ static PsbcResult buildshaderbinary(
+@@ -433,7 +1150,7 @@ static PsbcResult buildshaderbinary(
                          clip_dist_mask,
                  },
              .numinputsemantics =
@@ -1272,7 +1276,7 @@ index bacbc6a..f597ba0 100644
              .numexportsemantics = outputswritten,
          };
          memcpy(buf + offset, &vsh, sizeof(vsh));
-@@ -465,18 +1178,16 @@ static PsbcResult buildshaderbinary(
+@@ -465,18 +1182,16 @@ static PsbcResult buildshaderbinary(
                          ctx->rinfo->ps.writes_mrt0_alpha
                      ),
                      .spishadercolformat =
@@ -1294,7 +1298,7 @@ index bacbc6a..f597ba0 100644
                      .dbshadercontrol = compute_db_shader_control(ctx->rinfo),
                      .cbshadermask = ac_get_cb_shader_mask(
                          ctx->rinfo->ps.spi_shader_col_format
-@@ -524,8 +1235,8 @@ static PsbcResult buildshaderbinary(
+@@ -524,8 +1239,8 @@ static PsbcResult buildshaderbinary(
          uint32_t gs_out_prim;
          switch (ctx->nir->info.gs.output_primitive) {
          case MESA_PRIM_POINTS:       gs_out_prim = V_028A6C_POINTLIST; break;
@@ -1305,7 +1309,7 @@ index bacbc6a..f597ba0 100644
          default:                     gs_out_prim = V_028A6C_TRISTRIP;  break;
          }
  
-@@ -736,10 +1447,11 @@ static PsbcResult buildshaderbinary(
+@@ -736,10 +1451,11 @@ static PsbcResult buildshaderbinary(
          }
          break;
      case MESA_SHADER_FRAGMENT:
@@ -1320,7 +1324,7 @@ index bacbc6a..f597ba0 100644
              };
              memcpy(buf + offset, &input, sizeof(input));
              offset += sizeof(input);
-@@ -852,19 +1564,21 @@ static PsbcResult buildshaderbinary(
+@@ -852,19 +1568,21 @@ static PsbcResult buildshaderbinary(
  
  static void setup_ac_info(struct ac_compiler_info* ac_info, enum amd_gfx_level gfxlevel) {
      ac_info->gfx_level = gfxlevel;
@@ -1349,7 +1353,7 @@ index bacbc6a..f597ba0 100644
          ac_info->has_fma_mix = true;
      } else if (gfxlevel == GFX10) {
          ac_info->max_waves_per_simd = 20;
-@@ -928,26 +1642,173 @@ static void setup_target(PsbcTarget target,
+@@ -928,26 +1646,173 @@ static void setup_target(PsbcTarget target,
      }
  }
  
@@ -1527,7 +1531,7 @@ index bacbc6a..f597ba0 100644
  
      /* Ensure library is initialized */
      psbc_init();
-@@ -961,17 +1822,39 @@ PsbcResult psbc_compile_shader(
+@@ -961,17 +1826,39 @@ PsbcResult psbc_compile_shader(
      /* Construct ac_compiler_info for the target GPU */
      struct ac_compiler_info ac_info = {0};
      setup_ac_info(&ac_info, gfxlevel);
@@ -1568,7 +1572,7 @@ index bacbc6a..f597ba0 100644
      /* ACO uses debug.family for disassembly and init_program assertion */
      compiler_info.debug.family = chipfamily;
  
-@@ -981,6 +1864,7 @@ PsbcResult psbc_compile_shader(
+@@ -981,6 +1868,7 @@ PsbcResult psbc_compile_shader(
      /* Construct radv_shader_stage */
      struct radv_shader_stage stage = {0};
      stage.stage = mesa_stage;
@@ -1576,7 +1580,7 @@ index bacbc6a..f597ba0 100644
      /* Set next_stage based on the pipeline graph.
       * For standalone compilation we assume the simplest pipeline:
       *   VS → FS, VS → HS → DS → FS, VS → GS → FS
-@@ -992,46 +1876,349 @@ PsbcResult psbc_compile_shader(
+@@ -992,46 +1880,360 @@ PsbcResult psbc_compile_shader(
      case MESA_SHADER_GEOMETRY:  stage.next_stage = MESA_SHADER_FRAGMENT;     break;
      default:                    stage.next_stage = MESA_SHADER_NONE;         break;
      }
@@ -1922,17 +1926,28 @@ index bacbc6a..f597ba0 100644
 +         * Drop only the implicit, final per-primitive parameter when the
 +         * caller has proved it dead. Keep explicit outputs and unknown
 +         * consumers unchanged, and update both code lowering and metadata. */
-+        if (opts->omit_implicit_primitive_id &&
-+            mesa_stage == MESA_SHADER_VERTEX &&
++        if (mesa_stage == MESA_SHADER_VERTEX &&
 +            !(nir->info.outputs_written & VARYING_BIT_PRIMITIVE_ID) &&
 +            stage.info.outinfo.export_prim_id_per_primitive &&
 +            stage.info.outinfo.prim_param_exports == 1 &&
 +            stage.info.outinfo.vs_output_param_offset[VARYING_SLOT_PRIMITIVE_ID] ==
 +                stage.info.outinfo.param_exports) {
-+            stage.info.outinfo.export_prim_id_per_primitive = false;
-+            stage.info.outinfo.prim_param_exports = 0;
-+            stage.info.outinfo.vs_output_param_offset[VARYING_SLOT_PRIMITIVE_ID] =
-+                AC_EXP_PARAM_UNDEFINED;
++            if (opts->omit_implicit_primitive_id) {
++                stage.info.outinfo.export_prim_id_per_primitive = false;
++                stage.info.outinfo.prim_param_exports = 0;
++                stage.info.outinfo.vs_output_param_offset[VARYING_SLOT_PRIMITIVE_ID] =
++                    AC_EXP_PARAM_UNDEFINED;
++            } else if (opts->target == PSBC_TARGET_PS5) {
++                /* Native traces have correct counts/offsets but undefined
++                 * per-primitive ID values. Use Mesa's per-vertex LDS route:
++                 * retain the export slot, disable passthrough, and let the
++                 * existing NGG pass size LDS and insert its barrier. */
++                stage.info.outinfo.export_prim_id_per_primitive = false;
++                stage.info.outinfo.prim_param_exports = 0;
++                stage.info.outinfo.export_prim_id = true;
++                ++stage.info.outinfo.param_exports;
++                stage.info.is_ngg_passthrough = false;
++            }
 +        }
 +        debug_shader_io("linked", nir, &stage.info);
 +    }
@@ -1949,7 +1964,7 @@ index bacbc6a..f597ba0 100644
  
      /* Determine previous stage for shader args declaration.
       * HS/GS need previous_stage=VERTEX so that the merged-pipeline args
-@@ -1049,10 +2236,16 @@ PsbcResult psbc_compile_shader(
+@@ -1049,10 +2251,16 @@ PsbcResult psbc_compile_shader(
      radv_declare_shader_args(
          &compiler_info, &gfx_state, &stage, previous_stage, NULL
      );
@@ -1967,7 +1982,7 @@ index bacbc6a..f597ba0 100644
  
      /* For geometry shaders, run the legacy GS lowering pass.
       * On GFX10.3 (PS5), NGG GS requires merging with the previous stage,
-@@ -1080,16 +2273,72 @@ PsbcResult psbc_compile_shader(
+@@ -1080,16 +2288,72 @@ PsbcResult psbc_compile_shader(
              ralloc_free(gs_copy);
      }
  
@@ -2044,7 +2059,7 @@ index bacbc6a..f597ba0 100644
          psbc_shutdown();
          return PSBC_RESULT_COMPILE_ACO;
      }
-@@ -1098,6 +2347,22 @@ PsbcResult psbc_compile_shader(
+@@ -1098,6 +2362,22 @@ PsbcResult psbc_compile_shader(
      struct radv_shader_binary_legacy* legacy =
          (struct radv_shader_binary_legacy*)binary;
  
@@ -2067,7 +2082,7 @@ index bacbc6a..f597ba0 100644
      /* The data layout in radv_shader_binary_legacy is:
       * [stats | code | ir | disasm | debug_info]
       * Code starts at offset stats_size. */
-@@ -1116,28 +2381,103 @@ PsbcResult psbc_compile_shader(
+@@ -1116,28 +2396,103 @@ PsbcResult psbc_compile_shader(
          .psbc_stage = opts->stage,
          .spirv_data = spirv,
          .spirv_size = spirv_size,
@@ -2176,7 +2191,7 @@ index bacbc6a..f597ba0 100644
  
  const char* psbc_result_string(PsbcResult result) {
 diff --git a/libpsbc/psbc_compile.h b/libpsbc/psbc_compile.h
-index 000e7e1..e27bdde 100644
+index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..e27bddec0a4f80a6945fc3235c4513cb0978c78d 100644
 --- a/libpsbc/psbc_compile.h
 +++ b/libpsbc/psbc_compile.h
 @@ -20,6 +20,11 @@
@@ -2425,7 +2440,7 @@ index 000e7e1..e27bdde 100644
   * Free a PsbcShaderOutput previously filled by psbc_compile_shader().
   */
 diff --git a/src/amd/common/nir/ac_nir.h b/src/amd/common/nir/ac_nir.h
-index 657de11..2abeac2 100644
+index 657de1165a8e397fc93c7e121e8dbcd26a59bc65..2abeac2b72b752ec07e96ec64ce48022fc3ec8a1 100644
 --- a/src/amd/common/nir/ac_nir.h
 +++ b/src/amd/common/nir/ac_nir.h
 @@ -216,8 +216,10 @@ typedef struct {
@@ -2456,7 +2471,7 @@ index 657de11..2abeac2 100644
     unsigned color_is_int8;
     unsigned color_is_int10;
 diff --git a/src/amd/common/nir/ac_nir_helpers.h b/src/amd/common/nir/ac_nir_helpers.h
-index 916da8c..c7a1b8e 100644
+index 916da8c0c1a863db26d11f571ef9e6a71ae056be..c7a1b8ee1d0f8fe5fe5a9c51f3d857cc31aa9fbf 100644
 --- a/src/amd/common/nir/ac_nir_helpers.h
 +++ b/src/amd/common/nir/ac_nir_helpers.h
 @@ -220,6 +220,7 @@ ac_nir_ngg_build_streamout_buffer_info(nir_builder *b,
@@ -2468,7 +2483,7 @@ index 916da8c..c7a1b8e 100644
                                         nir_def *tid_in_tg,
                                         nir_def *gen_prim[4],
 diff --git a/src/amd/common/nir/ac_nir_lower_ngg.c b/src/amd/common/nir/ac_nir_lower_ngg.c
-index f40b379..462a71c 100644
+index f40b379fdefb33ebb7366b2d03218c07c339d6db..462a71cf7b1c4efc2e971fcd3179680bbd66c0c0 100644
 --- a/src/amd/common/nir/ac_nir_lower_ngg.c
 +++ b/src/amd/common/nir/ac_nir_lower_ngg.c
 @@ -1354,6 +1354,64 @@ ngg_nogs_build_streamout(nir_builder *b, lower_ngg_nogs_state *s)
@@ -2547,7 +2562,7 @@ index f40b379..462a71c 100644
                                            emit_prim_per_stream);
  
 diff --git a/src/amd/common/nir/ac_nir_lower_ngg_gs.c b/src/amd/common/nir/ac_nir_lower_ngg_gs.c
-index 4f61d50..13ee7fd 100644
+index 4f61d5010bb808fd01055ab3ef49ac87cc1f7458..13ee7fd16be8d1d6dc369a41fd252999e1d4a6ca 100644
 --- a/src/amd/common/nir/ac_nir_lower_ngg_gs.c
 +++ b/src/amd/common/nir/ac_nir_lower_ngg_gs.c
 @@ -704,6 +704,7 @@ ngg_gs_build_streamout(nir_builder *b, lower_ngg_gs_state *s)
@@ -2559,7 +2574,7 @@ index 4f61d50..13ee7fd 100644
                                            buffer_offsets, emit_prim);
  
 diff --git a/src/amd/common/nir/ac_nir_lower_ps_late.c b/src/amd/common/nir/ac_nir_lower_ps_late.c
-index 1ee62dd..b7ebda5 100644
+index 1ee62dd8508982f258e8488193cd3fa4e8d814ea..b7ebda53a0744ec7f291326b3c53505dcef980b1 100644
 --- a/src/amd/common/nir/ac_nir_lower_ps_late.c
 +++ b/src/amd/common/nir/ac_nir_lower_ps_late.c
 @@ -741,7 +741,9 @@ ac_nir_lower_ps_late(nir_shader *nir, const ac_nir_lower_ps_late_options *option
@@ -2574,7 +2589,7 @@ index 1ee62dd..b7ebda5 100644
     };
  
 diff --git a/src/amd/common/nir/ac_nir_lower_resinfo.c b/src/amd/common/nir/ac_nir_lower_resinfo.c
-index d091584..d5d229b 100644
+index d0915843d7844edc8c34d94e5a4171418774c3b0..d5d229b80744d265bba1b46f23945399fc8c8eeb 100644
 --- a/src/amd/common/nir/ac_nir_lower_resinfo.c
 +++ b/src/amd/common/nir/ac_nir_lower_resinfo.c
 @@ -362,6 +362,24 @@ static bool lower_resinfo(nir_builder *b, nir_instr *instr, void *data)
@@ -2603,7 +2618,7 @@ index d091584..d5d229b 100644
           case nir_texop_txs:
              result = lower_query_size(b, desc, lod, tex->sampler_dim, tex->is_array,
 diff --git a/src/amd/common/nir/ac_nir_prerast_utils.c b/src/amd/common/nir/ac_nir_prerast_utils.c
-index b20016b..799002a 100644
+index b20016b602c3698f29d033013cf6c4227f931b6f..799002a7f7caa5913178563e14dd87739124c8cc 100644
 --- a/src/amd/common/nir/ac_nir_prerast_utils.c
 +++ b/src/amd/common/nir/ac_nir_prerast_utils.c
 @@ -924,6 +924,7 @@ ac_nir_ngg_build_streamout_buffer_info(nir_builder *b,
@@ -2704,7 +2719,7 @@ index b20016b..799002a 100644
     nir_pop_if(b, if_invocation_0);
  
 diff --git a/src/amd/compiler/aco_interface.cpp b/src/amd/compiler/aco_interface.cpp
-index 84a56ca..1feb501 100644
+index 84a56cad109cf54cbf6bd91d37f43616c8cf60fe..1feb501246d267265f997af13a0b3b206200b400 100644
 --- a/src/amd/compiler/aco_interface.cpp
 +++ b/src/amd/compiler/aco_interface.cpp
 @@ -171,6 +171,11 @@ aco_postprocess_shader(const struct aco_compiler_options* options,
@@ -2720,7 +2735,7 @@ index 84a56ca..1feb501 100644
        combine_delay_alu(program.get());
  
 diff --git a/src/amd/compiler/aco_lower_to_hw_instr.cpp b/src/amd/compiler/aco_lower_to_hw_instr.cpp
-index 337e296..3a6346c 100644
+index 337e296ad310279b6aa8e8d96e355d9e049a2acd..3a6346cba427c411ae4cd839989a0b885770de06 100644
 --- a/src/amd/compiler/aco_lower_to_hw_instr.cpp
 +++ b/src/amd/compiler/aco_lower_to_hw_instr.cpp
 @@ -2870,8 +2870,18 @@ lower_to_hw_instr(Program* program)
@@ -2766,7 +2781,7 @@ index 337e296..3a6346c 100644
                 if (disable_wqm) {
                    for (unsigned i = 0; i < 2; i++) {
 diff --git a/src/amd/compiler/instruction_selection/aco_isel_helpers.cpp b/src/amd/compiler/instruction_selection/aco_isel_helpers.cpp
-index b5adcb0..2da2f1f 100644
+index b5adcb0447efcc8d2fff3068eb4f6b189fedc800..2da2f1f3dd4bf84e3500ad9b0a859efc44448dc5 100644
 --- a/src/amd/compiler/instruction_selection/aco_isel_helpers.cpp
 +++ b/src/amd/compiler/instruction_selection/aco_isel_helpers.cpp
 @@ -20,6 +20,16 @@ void
@@ -2795,7 +2810,7 @@ index b5adcb0..2da2f1f 100644
  
  void
 diff --git a/src/amd/compiler/instruction_selection/aco_select_nir_intrinsics.cpp b/src/amd/compiler/instruction_selection/aco_select_nir_intrinsics.cpp
-index 9479ba5..0114690 100644
+index 9479ba5f980f1e254801afd6a068282b7b571df8..0114690cbcb3402ccb996df9d30ad9905fcae7da 100644
 --- a/src/amd/compiler/instruction_selection/aco_select_nir_intrinsics.cpp
 +++ b/src/amd/compiler/instruction_selection/aco_select_nir_intrinsics.cpp
 @@ -4844,8 +4844,18 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
@@ -2839,7 +2854,7 @@ index 9479ba5..0114690 100644
        }
        break;
 diff --git a/src/amd/vulkan/nir/radv_nir_lower_descriptors.c b/src/amd/vulkan/nir/radv_nir_lower_descriptors.c
-index 2412880..71ac6f6 100644
+index 241288084c342b659be03e187de13fb0f3d29b0f..71ac6f6f01fc5e14102487812fb714e0abb93f99 100644
 --- a/src/amd/vulkan/nir/radv_nir_lower_descriptors.c
 +++ b/src/amd/vulkan/nir/radv_nir_lower_descriptors.c
 @@ -312,6 +312,27 @@ get_sampler_desc(nir_builder *b, lower_descriptors_state *state, nir_deref_instr
@@ -2915,7 +2930,7 @@ index 2412880..71ac6f6 100644
     return true;
  }
 diff --git a/src/amd/vulkan/radv_pipeline.c b/src/amd/vulkan/radv_pipeline.c
-index 820ebf0..c7f366b 100644
+index 820ebf0bd67c348d1148d004b4858a2372299130..c7f366bfeb61fabaf613aaef17ba2c530f46c1bc 100644
 --- a/src/amd/vulkan/radv_pipeline.c
 +++ b/src/amd/vulkan/radv_pipeline.c
 @@ -456,6 +456,7 @@ radv_postprocess_nir(const struct radv_compiler_info *compiler_info, const struc
@@ -2927,7 +2942,7 @@ index 820ebf0..c7f366b 100644
           late_options.color_is_int10 = gfx_state->ps.epilog.color_is_int10;
           late_options.enable_mrt_output_nan_fixup =
 diff --git a/src/amd/vulkan/radv_postprocess_nir_standalone.c b/src/amd/vulkan/radv_postprocess_nir_standalone.c
-index 55c3ea0..41eea8c 100644
+index 55c3ea0458aa9cd3e757757c1dbe5756736f6b4c..41eea8c46729ccf237e76bb97be08c075deee321 100644
 --- a/src/amd/vulkan/radv_postprocess_nir_standalone.c
 +++ b/src/amd/vulkan/radv_postprocess_nir_standalone.c
 @@ -40,6 +40,10 @@ radv_postprocess_nir(const struct radv_compiler_info *compiler_info, const struc
@@ -2950,7 +2965,7 @@ index 55c3ea0..41eea8c 100644
           late_options.color_is_int10 = gfx_state->ps.epilog.color_is_int10;
           late_options.enable_mrt_output_nan_fixup =
 diff --git a/src/amd/vulkan/radv_shader.c b/src/amd/vulkan/radv_shader.c
-index 61fe2b4..6977d4a 100644
+index 61fe2b4d6722181b479803b15283d5a864f81a2d..6977d4aaf2f3a710827dd7c2387dd83d575d59fd 100644
 --- a/src/amd/vulkan/radv_shader.c
 +++ b/src/amd/vulkan/radv_shader.c
 @@ -954,6 +954,21 @@ void
@@ -3103,7 +3118,7 @@ index 61fe2b4..6977d4a 100644
     const struct radv_instance *instance = radv_physical_device_instance(pdev);
     bool dump_shader = instance->debug_flags & RADV_DEBUG_DUMP_EPILOGS;
 diff --git a/src/amd/vulkan/radv_shader.h b/src/amd/vulkan/radv_shader.h
-index ad3182a..b61cd47 100644
+index ad3182add80cdb93805dae39b9f0684d5e83534a..b61cd479cd01eb5874987d0a64cf9a8d7e31f5bf 100644
 --- a/src/amd/vulkan/radv_shader.h
 +++ b/src/amd/vulkan/radv_shader.h
 @@ -186,6 +186,7 @@ struct radv_graphics_state_key {
@@ -3125,7 +3140,7 @@ index ad3182a..b61cd47 100644
        int32_t force_aniso;
  
 diff --git a/src/compiler/glsl_types.c b/src/compiler/glsl_types.c
-index d1cbac2..92f89f3 100644
+index d1cbac28c05adcb9a961edcd5ce43d2e2798fbc6..92f89f3e9af710449f81a21c16cd66b1342f1864 100644
 --- a/src/compiler/glsl_types.c
 +++ b/src/compiler/glsl_types.c
 @@ -507,6 +507,29 @@ glsl_type_singleton_decref()
@@ -3159,7 +3174,7 @@ index d1cbac2..92f89f3 100644
  make_array_type(linear_ctx *lin_ctx, const glsl_type *element_type, unsigned length,
                  unsigned explicit_stride)
 diff --git a/src/compiler/nir/nir_intrinsics.py b/src/compiler/nir/nir_intrinsics.py
-index 116764e..b68cbdd 100644
+index 116764ee30de828a265052b9c986c3b85b7db684..b68cbdd5a21897890b62c8be3942e6668a98c638 100644
 --- a/src/compiler/nir/nir_intrinsics.py
 +++ b/src/compiler/nir/nir_intrinsics.py
 @@ -283,6 +283,9 @@ index("bool", "st64")
@@ -3309,7 +3324,7 @@ index 116764e..b68cbdd 100644
  # alphatst_pco(data, comparator, comparison op)
  # Performs an alpha test on the given parameters, returning float 0/1 depending on the comparison result.
 diff --git a/src/compiler/nir/nir_intrinsics_c.py b/src/compiler/nir/nir_intrinsics_c.py
-index 34d49ae..ba0c735 100644
+index 34d49aec55ac628e77e8754fa3411704f26c8684..ba0c73562fd68690dc420a5d419c717782edfe9a 100644
 --- a/src/compiler/nir/nir_intrinsics_c.py
 +++ b/src/compiler/nir/nir_intrinsics_c.py
 @@ -85,4 +85,3 @@ def main():
@@ -3318,7 +3333,7 @@ index 34d49ae..ba0c735 100644
      main()
 -
 diff --git a/src/compiler/nir/nir_intrinsics_h.py b/src/compiler/nir/nir_intrinsics_h.py
-index a7beb84..9de7e06 100644
+index a7beb84a8d5b680083bc8710b3c9556c261e7ca9..9de7e066541d6e9a5f048b92a5e57d5e0fce755f 100644
 --- a/src/compiler/nir/nir_intrinsics_h.py
 +++ b/src/compiler/nir/nir_intrinsics_h.py
 @@ -66,4 +66,3 @@ def main():
@@ -3327,7 +3342,7 @@ index a7beb84..9de7e06 100644
      main()
 -
 diff --git a/src/compiler/nir/nir_opcodes.py b/src/compiler/nir/nir_opcodes.py
-index a3d7296..5541d5f 100644
+index a3d7296cceee22c5b03bdd7159d075d061911035..5541d5fb184debb3b795750d6acd368ec304c496 100644
 --- a/src/compiler/nir/nir_opcodes.py
 +++ b/src/compiler/nir/nir_opcodes.py
 @@ -362,14 +362,20 @@ for src_t in [tint, tuint, tfloat, tbool]:
@@ -3414,7 +3429,7 @@ index a3d7296..5541d5f 100644
  # and face index
  # The actual texture coordinates are evaluated from this according to
 diff --git a/src/compiler/nir/nir_shader_compiler_options.h b/src/compiler/nir/nir_shader_compiler_options.h
-index 02f6416..6c0bd87 100644
+index 02f6416aab7613e7073228b031f01f5fc07019b5..6c0bd879325369cd773a1849efb73f8578073160 100644
 --- a/src/compiler/nir/nir_shader_compiler_options.h
 +++ b/src/compiler/nir/nir_shader_compiler_options.h
 @@ -97,6 +97,9 @@ typedef enum {
@@ -3438,7 +3453,7 @@ index 02f6416..6c0bd87 100644
     bool has_f2i32_rtne;
  
 diff --git a/src/compiler/shader_info.h b/src/compiler/shader_info.h
-index ef63f4e..bdb7fbd 100644
+index ef63f4e8dab16b9f2540e2a0ceb3a725d41555a6..bdb7fbd3d6ce2bb6edcd299eb38329c4de34603d 100644
 --- a/src/compiler/shader_info.h
 +++ b/src/compiler/shader_info.h
 @@ -55,6 +55,9 @@ typedef struct shader_info {
@@ -3463,7 +3478,7 @@ index ef63f4e..bdb7fbd 100644
            */
 diff --git a/tests/dual-source.frag b/tests/dual-source.frag
 new file mode 100644
-index 0000000..9864c60
+index 0000000000000000000000000000000000000000..9864c6072ed0133f2bb065762a8b91a2349c6048
 --- /dev/null
 +++ b/tests/dual-source.frag
 @@ -0,0 +1,10 @@
@@ -3479,7 +3494,7 @@ index 0000000..9864c60
 +}
 diff --git a/tests/front-facing.frag b/tests/front-facing.frag
 new file mode 100644
-index 0000000..268ed79
+index 0000000000000000000000000000000000000000..268ed79377351a6c25959c256167347ed5e086e9
 --- /dev/null
 +++ b/tests/front-facing.frag
 @@ -0,0 +1,9 @@
@@ -3494,7 +3509,7 @@ index 0000000..268ed79
 +}
 diff --git a/tests/indirect-array.frag b/tests/indirect-array.frag
 new file mode 100644
-index 0000000..49bbaaf
+index 0000000000000000000000000000000000000000..49bbaaf9b670c270b6bd45ed9395d7d4366f183a
 --- /dev/null
 +++ b/tests/indirect-array.frag
 @@ -0,0 +1,11 @@
@@ -3511,7 +3526,7 @@ index 0000000..49bbaaf
 +}
 diff --git a/tests/instance.vert b/tests/instance.vert
 new file mode 100644
-index 0000000..0142536
+index 0000000000000000000000000000000000000000..01425369089fd1953dde1eff09809036c247da2b
 --- /dev/null
 +++ b/tests/instance.vert
 @@ -0,0 +1,9 @@
@@ -3526,7 +3541,7 @@ index 0000000..0142536
 +}
 diff --git a/tests/integer-vertex.vert b/tests/integer-vertex.vert
 new file mode 100644
-index 0000000..d78e650
+index 0000000000000000000000000000000000000000..d78e650a9268b938648eb2104ee003330517cabd
 --- /dev/null
 +++ b/tests/integer-vertex.vert
 @@ -0,0 +1,11 @@
@@ -3543,7 +3558,7 @@ index 0000000..d78e650
 +}
 diff --git a/tests/mixed-interpolation.frag b/tests/mixed-interpolation.frag
 new file mode 100644
-index 0000000..4ae2fea
+index 0000000000000000000000000000000000000000..4ae2fea5b21aa07326a7931b7965e43b29895dc1
 --- /dev/null
 +++ b/tests/mixed-interpolation.frag
 @@ -0,0 +1,10 @@
@@ -3559,7 +3574,7 @@ index 0000000..4ae2fea
 +}
 diff --git a/tests/point-coord.frag b/tests/point-coord.frag
 new file mode 100644
-index 0000000..611ad2d
+index 0000000000000000000000000000000000000000..611ad2df629683a99c57e3df95ee2dd39411d354
 --- /dev/null
 +++ b/tests/point-coord.frag
 @@ -0,0 +1,8 @@
@@ -3573,7 +3588,7 @@ index 0000000..611ad2d
 +}
 diff --git a/tests/point-size.vert b/tests/point-size.vert
 new file mode 100644
-index 0000000..2f8e932
+index 0000000000000000000000000000000000000000..2f8e93260e996d1636ff3afa3575be6214d0f7cc
 --- /dev/null
 +++ b/tests/point-size.vert
 @@ -0,0 +1,9 @@
@@ -3588,7 +3603,7 @@ index 0000000..2f8e932
 +}
 diff --git a/tests/test-adjacency.geom b/tests/test-adjacency.geom
 new file mode 100644
-index 0000000..fdd1798
+index 0000000000000000000000000000000000000000..fdd17988bea2475871993464121a03a158dd53d5
 --- /dev/null
 +++ b/tests/test-adjacency.geom
 @@ -0,0 +1,12 @@
@@ -3606,7 +3621,7 @@ index 0000000..fdd1798
 +}
 diff --git a/tests/test-line-adjacency.geom b/tests/test-line-adjacency.geom
 new file mode 100644
-index 0000000..3789801
+index 0000000000000000000000000000000000000000..3789801b6804fe1861b5f0e18424308880c0990d
 --- /dev/null
 +++ b/tests/test-line-adjacency.geom
 @@ -0,0 +1,12 @@
@@ -3623,7 +3638,7 @@ index 0000000..3789801
 +    EndPrimitive();
 +}
 diff --git a/tests/test.geom b/tests/test.geom
-index 43d55e4..a5d8dc6 100644
+index 43d55e4c0500a1bb47454504f1a4f9f6bd07b1e5..a5d8dc655008d9eb73b93cbe9a078c202d0ddc8f 100644
 --- a/tests/test.geom
 +++ b/tests/test.geom
 @@ -1,6 +1,6 @@
@@ -3636,7 +3651,7 @@ index 43d55e4..a5d8dc6 100644
  
 diff --git a/tests/varying32.frag b/tests/varying32.frag
 new file mode 100644
-index 0000000..7964c39
+index 0000000000000000000000000000000000000000..7964c3924b60a9f0b6830e0fc8f00ea4e4b378bf
 --- /dev/null
 +++ b/tests/varying32.frag
 @@ -0,0 +1,11 @@
@@ -3653,7 +3668,7 @@ index 0000000..7964c39
 +}
 diff --git a/tests/varying32.geom b/tests/varying32.geom
 new file mode 100644
-index 0000000..b9aa39c
+index 0000000000000000000000000000000000000000..b9aa39cd5f59abd01abce2319fea3f8fd3125a0b
 --- /dev/null
 +++ b/tests/varying32.geom
 @@ -0,0 +1,16 @@
@@ -3674,7 +3689,7 @@ index 0000000..b9aa39c
 +    EndPrimitive();
 +}
 diff --git a/tests/verify_sb.py b/tests/verify_sb.py
-index 0ec0562..c578fba 100644
+index 0ec05623c03e6a3c8a6e4521971588a82ea6489c..c578fbaac7fcc72c2291570b536f70d41ae2c9a3 100644
 --- a/tests/verify_sb.py
 +++ b/tests/verify_sb.py
 @@ -5,6 +5,8 @@ import sys
@@ -4313,7 +4328,7 @@ index 0ec0562..c578fba 100644
          print("\n=== ALL TESTS PASSED ===")
 diff --git a/tests/xfb.geom b/tests/xfb.geom
 new file mode 100644
-index 0000000..d9fc344
+index 0000000000000000000000000000000000000000..d9fc344a6af877d021b390f6360b8afbd1f743d3
 --- /dev/null
 +++ b/tests/xfb.geom
 @@ -0,0 +1,18 @@
@@ -4337,7 +4352,7 @@ index 0000000..d9fc344
 +}
 diff --git a/tests/xfb.geom.spvasm b/tests/xfb.geom.spvasm
 new file mode 100644
-index 0000000..fad1528
+index 0000000000000000000000000000000000000000..fad152800deb03e48661cf748ed871949a17b731
 --- /dev/null
 +++ b/tests/xfb.geom.spvasm
 @@ -0,0 +1,144 @@
@@ -4487,7 +4502,7 @@ index 0000000..fad1528
 +               OpFunctionEnd
 diff --git a/tests/xfb.spvasm b/tests/xfb.spvasm
 new file mode 100644
-index 0000000..8bdd7a7
+index 0000000000000000000000000000000000000000..8bdd7a766af6923ce856fb8c09632893c68ed021
 --- /dev/null
 +++ b/tests/xfb.spvasm
 @@ -0,0 +1,57 @@
@@ -4550,7 +4565,7 @@ index 0000000..8bdd7a7
 +               OpFunctionEnd
 diff --git a/tests/xfb.vert b/tests/xfb.vert
 new file mode 100644
-index 0000000..e6f9a71
+index 0000000000000000000000000000000000000000..e6f9a71b3dc1b652e0d1833b257ff9e6ddd5bded
 --- /dev/null
 +++ b/tests/xfb.vert
 @@ -0,0 +1,10 @@
