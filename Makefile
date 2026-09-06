@@ -31,6 +31,7 @@ sokol:
 	bash tools/build-native-test-app.sh egl_public_core33_sokol
 test:
 	python3 -m unittest discover -s tools -p 'test_*.py'
+	python3 tools/summarize-imgui-profile.py --self-test
 	python3 tools/verify-cts-candidate.py --self-test
 	python3 tools/verify-published-validation.py
 test-imgui:

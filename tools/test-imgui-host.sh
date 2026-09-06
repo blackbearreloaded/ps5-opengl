@@ -10,7 +10,8 @@ demo_flags=()
 case ${1:-} in
     '') ;;
     --tv-demo) demo_flags=(-DPS5_IMGUI_TV_DEMO) ;;
-    *) echo 'usage: test-imgui-host.sh [--tv-demo]' >&2; exit 2 ;;
+    --profile) demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_PROFILE) ;;
+    *) echo 'usage: test-imgui-host.sh [--tv-demo|--profile]' >&2; exit 2 ;;
 esac
 clang++-18 -std=c++11 -O2 -Wall -Wextra -Werror \
     "${demo_flags[@]}" \

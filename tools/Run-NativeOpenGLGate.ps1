@@ -3,6 +3,7 @@
 [CmdletBinding()]
 param(
     [string]$AppDirectory,
+    [string]$BoilerplateDirectory,
     [Parameter(Mandatory)]
     [ValidatePattern('^egl_public_[A-Za-z0-9_]+\.o$')]
     [string]$ExpectedGate,
@@ -28,6 +29,7 @@ param(
     [string]$FtpCredential = 'anonymous:homebrew',
     [switch]$FirstRegistration,
     [switch]$Incremental,
+    [switch]$Headless,
     [string]$LockPath,
     [string]$ResultsDirectory
 )
@@ -46,8 +48,10 @@ $repo = (Resolve-Path -LiteralPath (Join-Path $scriptRoot '..')).Path
 if ([string]::IsNullOrWhiteSpace($LockPath)) {
     $LockPath = Join-Path $repo '..\..\..\lock.txt'
 }
-$boilerplate = (Resolve-Path -LiteralPath (Join-Path $repo `
-    '..\ps5-native-app-boilerplate')).Path
+if ([string]::IsNullOrWhiteSpace($BoilerplateDirectory)) {
+    $BoilerplateDirectory = Join-Path $repo '..\ps5-native-app-boilerplate'
+}
+$boilerplate = (Resolve-Path -LiteralPath $BoilerplateDirectory).Path
 $eboot = Join-Path $app 'eboot.bin'
 $selectedTest = Join-Path (Split-Path (Split-Path $app -Parent) -Parent) `
     'selected-test.txt'
@@ -173,6 +177,7 @@ try {
         FtpCredential = $FtpCredential
         SkipVideoReadiness = $true
         SkipRoutineScreenshots = $true
+        Headless = [bool]$Headless
     }
     if (-not $FirstRegistration) {
         $cycleArguments.UseExistingFolderRegistration = $true

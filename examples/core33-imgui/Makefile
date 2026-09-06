@@ -22,7 +22,7 @@ main.o: main.cpp
 	$(CXX) $(flags) -c -o $@ $<
 
 tv_main.o: main.cpp tv_demo.h
-	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO -c -o $@ $<
+	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO $(if $(filter 1,$(PS5_IMGUI_PROFILE)),-DPS5_IMGUI_PROFILE) -c -o $@ $<
 
 egl_public_core33_imgui_tv.o: tv_main.o $(filter-out main.o,$(objects))
 	ld.lld-18 -r -o $@ $^

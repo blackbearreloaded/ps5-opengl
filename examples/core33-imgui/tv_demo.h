@@ -76,6 +76,18 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     float speed = 1.0f, phase = 0.0f;
     int palette = 0, changes = 0;
     unsigned frame = 0;
+#ifdef PS5_IMGUI_PROFILE
+    const double duration = 30.0;
+    double totals[5] = {};
+    unsigned measured = 0;
+#ifdef PS5_IMGUI_HOST_REFERENCE
+    const unsigned warmup = 2;
+#else
+    const unsigned warmup = 30;
+#endif
+#else
+    const double duration = 300.0;
+#endif
     double start = demo_seconds(), previous = start, next_log = 0;
     ok = check(start >= 0, "monotonic clock");
     // ponytail: five-minute demo, not a permanent shell/input platform backend.
@@ -92,7 +104,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         demo_buttons(frame == 4 || frame == 8 ? 0x4000 : 0);
 #else
         const double elapsed = now - start;
-        if (elapsed >= 300.0) break;
+        if (elapsed >= duration) break;
         io.DeltaTime = static_cast<float>(now - previous);
         if (io.DeltaTime < 0.001f) io.DeltaTime = 0.001f;
         if (io.DeltaTime > 0.1f) io.DeltaTime = 0.1f;
@@ -119,7 +131,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         ImGui::TextUnformatted("D-pad: navigate / adjust     Cross: select     Circle: back");
         ImGui::Text("Controller: %s     Frame: %u     %.1f FPS     %ds left",
                     connected ? "connected" : "not available - animation continues",
-                    frame, io.Framerate, 300 - static_cast<int>(elapsed));
+                    frame, io.Framerate, static_cast<int>(duration - elapsed));
         if (frame == 0) ImGui::SetKeyboardFocusHere();
         if (ImGui::Checkbox("Animate shapes", &animate)) ++changes;
         ImGui::SameLine();
@@ -153,16 +165,25 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         ImGui::Dummy(ImVec2(canvas_width, 430));
         ImGui::TextUnformatted("Live geometry, font textures, alpha blending, and interactive widgets.");
         ImGui::ProgressBar((std::sin(phase) + 1.0f) * 0.5f, ImVec2(-1, 30), "OpenGL + ImGui");
-        ImGui::TextUnformatted("Native app: PPSA99005  |  1920 x 1080  |  bounded 5-minute demo");
+        ImGui::Text("Native app: PPSA99005  |  1920 x 1080  |  bounded %.0f-second run", duration);
         ImGui::End();
         ImGui::Render();
+#ifdef PS5_IMGUI_PROFILE
+        double stages[6] = {now, demo_seconds(), 0, 0, 0, 0};
+#endif
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
         glDisable(GL_SCISSOR_TEST);
         glClearColor(0.035f, 0.047f, 0.09f, 1);
         glClear(GL_COLOR_BUFFER_BIT);
+#ifdef PS5_IMGUI_PROFILE
+        stages[2] = demo_seconds();
+#endif
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+#ifdef PS5_IMGUI_PROFILE
+        stages[3] = demo_seconds();
+#endif
         if (!check(glGetError() == GL_NO_ERROR, "TV draw")) { ok = false; break; }
         if (frame == 0 || frame == 10) {
             unsigned char p[4] = {};
@@ -176,19 +197,40 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
             printf("[ps5-imgui-tv] readback frame=%u rgba=%u,%u,%u,%u %s\n",
                    frame, p[0], p[1], p[2], p[3], ok ? "PASS" : "FAIL");
         }
+#ifdef PS5_IMGUI_PROFILE
+        stages[4] = demo_seconds();
+#endif
         if (!ok || !check(eglSwapBuffers(display, surface), "TV swap")) { ok = false; break; }
+#ifdef PS5_IMGUI_PROFILE
+        stages[5] = demo_seconds();
+        for (unsigned i = 0; i < 5; ++i) {
+            ok = check(stages[i + 1] >= stages[i], "profile monotonic clock") && ok;
+            if (frame >= warmup) totals[i] += stages[i + 1] - stages[i];
+        }
+        if (frame >= warmup) ++measured;
+#endif
         if (elapsed >= next_log) {
             printf("[ps5-imgui-tv] visible frame=%u elapsed=%.1f pad=%d changes=%d vertices=%d\n",
                    frame, elapsed, connected, changes, ImGui::GetDrawData()->TotalVtxCount);
             next_log += 30.0;
         }
         ++frame;
-#ifndef PS5_IMGUI_HOST_REFERENCE
+#if !defined(PS5_IMGUI_HOST_REFERENCE) && !defined(PS5_IMGUI_PROFILE)
         const double spent = demo_seconds() - now;
         if (spent < 0) { ok = false; break; }
         if (spent < 1.0 / 30.0) usleep(static_cast<unsigned>((1.0 / 30.0 - spent) * 1e6));
 #endif
     }
+#ifdef PS5_IMGUI_PROFILE
+    ok = check(measured >= 2 * warmup, "profile post-warm-up frames") && ok;
+    if (measured) {
+        const double scale = 1000.0 / measured;
+        printf("[ps5-imgui-perf] frames=%u warmup=%u ui_ms=%.6f clear_ms=%.6f draw_ms=%.6f readback_ms=%.6f swap_ms=%.6f cpu_wall_ms=%.6f status=%d\n",
+               measured, warmup, totals[0] * scale, totals[1] * scale,
+               totals[2] * scale, totals[3] * scale, totals[4] * scale,
+               (totals[0] + totals[1] + totals[2] + totals[3] + totals[4]) * scale, ok ? 0 : 1);
+    }
+#endif
 #ifdef PS5_IMGUI_HOST_REFERENCE
     ok = check(frame == 12 && changes == 2 && animate, "TV gamepad toggles / bounded loop") && ok;
 #else
