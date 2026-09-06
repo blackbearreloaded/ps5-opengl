@@ -155,6 +155,35 @@ Stop on a rendering/lifecycle/health failure, uncertain foreground, or suspected
 panic. No routine screenshots, settings changes, service changes or raw app ELF
 submission. Release the exact token before offline analysis/building.
 
+### First real multi-draw candidate (opt-in, not promoted)
+
+`PS5_MULTIDRAW_BATCH=1` batches at most eight subdraws within one `glMultiDraw*`
+call and drains every chunk before returning. Each draw owns its native work
+allocation and cloned vertex/constant descriptors (including inline uniform
+bytes). Referenced buffers and targets stay retained until every attempted
+submission's unique marker completes. One shared bounded wait replaces per-draw
+waits; existing command construction, release operations and cache policy stay
+unchanged. This uses multiple existing submissions followed by one suspend,
+which is distinct from the earlier repeated-command-buffer diagnostic.
+
+Initial eligibility is direct triangle draws with native indices or no indices,
+no shader texture use, a single non-staged RGBA8 2D level-zero target, no depth,
+geometry shader, query, conditional rendering or stream output. Other paths
+stay synchronous. Submission/retirement failures poison this process's queue
+and quarantine bounded resources until teardown; no speculative reset or replay.
+The default build and installed SDK remain unchanged. Force-rebuild when
+toggling this flag.
+
+Gate: `egl_public_core33_multidraw_batch`. Compare ordinary draws against four
+multi-draw modes (arrays, u16, u32, base vertex), with reverse vertex ranges,
+a zero-count entry, chunk rollover and a final overlapping quad. Require all
+27,648 exact pixel comparisons, immediate readback, ordinary-draw uniform
+restoration, native batch telemetry, cleanup, title teardown and healthy services.
+Host tests inject allocation/preparation/submit/suspend/retirement failures;
+software Mesa validates the pixel oracle. CPU call timings are preliminary
+single samples, not a benchmark. This does not yet accelerate separate ImGui
+draw calls or transfer the historical CTS results to this candidate.
+
 ## Milestones
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control

@@ -7353,6 +7353,137 @@ ps5_draw_vbo_without_adjacency(
    pipe_resource_release(base, release_buffer);
 }
 
+#ifdef PS5_MULTIDRAW_BATCH
+int ps5_agc_gate2_batch_begin(void) __attribute__((weak));
+int ps5_agc_gate2_batch_end(void) __attribute__((weak));
+
+static bool
+ps5_multidraw_eligible(const struct ps5_context *context,
+                       const struct pipe_draw_info *info,
+                       const struct pipe_draw_indirect_info *indirect,
+                       const struct pipe_draw_start_count_bias *draws,
+                       unsigned num_draws)
+{
+   const struct pipe_surface *surface = &context->framebuffer.cbufs[0];
+   const struct ps5_resource *target = (const struct ps5_resource *)surface->texture;
+
+   if (!info || !draws || num_draws < 2 || indirect ||
+       info->mode != MESA_PRIM_TRIANGLES || !info->instance_count ||
+       info->primitive_restart || info->has_user_indices ||
+       (info->index_size && info->index_size != 2 && info->index_size != 4) ||
+       (info->index_size && !info->index.resource) ||
+       !context->vs || !context->fs || context->gs ||
+       ps5_shader_texture_count(context->vs) || ps5_shader_texture_count(context->fs) ||
+       context->stream_output_target_count || context->render_condition_query ||
+       context->active_occlusion_query || context->active_primitives_generated_query ||
+       context->active_primitives_emitted_query || !context->framebuffer_valid ||
+       context->framebuffer.nr_cbufs != 1 || context->framebuffer.zsbuf.texture ||
+       !target || target->base.target != PIPE_TEXTURE_2D ||
+       target->base.format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+       surface->format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+       target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
+       target->render_staging_size || surface->level ||
+       surface->first_layer || surface->last_layer ||
+       context->vertex_buffer_count > PIPE_MAX_ATTRIBS)
+      return false;
+   for (unsigned i = 0; i < context->vertex_buffer_count; ++i)
+      if (context->vertex_buffers[i].is_user_buffer)
+         return false;
+   return true;
+}
+
+static bool
+ps5_try_multi_draw_batch(struct pipe_context *base,
+                         const struct pipe_draw_info *info, unsigned drawid_offset,
+                         const struct pipe_draw_indirect_info *indirect,
+                         const struct pipe_draw_start_count_bias *draws,
+                         unsigned num_draws)
+{
+   struct ps5_context *context = (struct ps5_context *)base;
+   struct ps5_screen *screen = (struct ps5_screen *)base->screen;
+   struct pipe_resource *saved[3] = {context->vertex_descriptor_table,
+      context->descriptor_storage[0], context->descriptor_storage[1]};
+   struct pipe_resource *storage[PS5_MULTIDRAW_BATCH_CAPACITY][3] = {{0}};
+   struct pipe_resource *retained[PIPE_MAX_ATTRIBS +
+      2 * PS5_MAX_CONSTANT_BUFFERS + 4] = {0};
+   unsigned retained_count = 0;
+   unsigned slots = MIN2(num_draws, PS5_MULTIDRAW_BATCH_CAPACITY);
+   bool handled = false, retired = true;
+
+   if (!ps5_agc_gate2_batch_begin || !ps5_agc_gate2_batch_end ||
+       !ps5_multidraw_eligible(context, info, indirect, draws, num_draws))
+      return false;
+   /* Preserve copied inline uniforms as well as descriptor storage. Each slot
+    * is reused only after the previous chunk has completely retired. */
+   for (unsigned slot = 0; slot < slots; ++slot) {
+      for (unsigned stage = 0; stage < 3; ++stage) {
+         const struct ps5_resource *source = (const struct ps5_resource *)saved[stage];
+         if (!source || !source->data || source->base.target != PIPE_BUFFER)
+            goto release;
+         storage[slot][stage] = base->screen->resource_create(base->screen, &source->base);
+         struct ps5_resource *copy = (struct ps5_resource *)storage[slot][stage];
+         if (!copy || !copy->data || copy->size != source->size)
+            goto release;
+         memcpy(copy->data, source->data, source->size);
+      }
+   }
+   pipe_resource_reference(&retained[retained_count++], context->framebuffer.cbufs[0].texture);
+   pipe_resource_reference(&retained[retained_count++], screen->render_pool);
+   pipe_resource_reference(&retained[retained_count++], context->border_color_storage);
+   if (info->index_size)
+      pipe_resource_reference(&retained[retained_count++], info->index.resource);
+   for (unsigned i = 0; i < context->vertex_buffer_count; ++i)
+      pipe_resource_reference(&retained[retained_count++], context->vertex_buffers[i].buffer.resource);
+   for (unsigned stage = 0; stage < 2; ++stage)
+      for (unsigned i = 0; i < PS5_MAX_CONSTANT_BUFFERS; ++i)
+         pipe_resource_reference(&retained[retained_count++], context->constants[stage][i].buffer);
+
+   ps5_screen_submit_lock(base->screen);
+   handled = true;
+   context->last_draw_status = 0;
+   for (unsigned first = 0; first < num_draws;) {
+      if (ps5_agc_gate2_batch_begin() != 0) {
+         context->last_draw_status = -30;
+         break;
+      }
+      for (unsigned slot = 0; slot < slots && first < num_draws; ++slot, ++first) {
+         context->vertex_descriptor_table = storage[slot][0];
+         context->descriptor_storage[0] = storage[slot][1];
+         context->descriptor_storage[1] = storage[slot][2];
+         if (draws[first].count)
+            ps5_draw_vbo_locked(base, info,
+               drawid_offset + (info->increment_draw_id ? first : 0),
+               NULL, &draws[first], 1);
+         if (context->last_draw_status)
+            break;
+      }
+      context->vertex_descriptor_table = saved[0];
+      context->descriptor_storage[0] = saved[1];
+      context->descriptor_storage[1] = saved[2];
+      if (ps5_agc_gate2_batch_end() != 0) {
+         context->last_draw_status = -30;
+         retired = false;
+      }
+      if (context->last_draw_status)
+         break;
+   }
+   ps5_screen_submit_unlock(base->screen);
+   printf("[ps5-gallium] multi-draw-batched draws=%u result=%d\n",
+          num_draws, context->last_draw_status);
+release:
+   /* ponytail: one failed batch pins its bounded resources until process
+    * teardown; the native queue rejects further submissions after failure. */
+   if (retired) {
+      for (unsigned slot = 0; slot < slots; ++slot)
+         for (unsigned stage = 0; stage < 3; ++stage)
+            pipe_resource_reference(&storage[slot][stage], NULL);
+      for (unsigned i = 0; i < retained_count; ++i)
+         pipe_resource_reference(&retained[i], NULL);
+   }
+   return handled;
+}
+#endif
+
 static void
 ps5_draw_vbo(struct pipe_context *base, const struct pipe_draw_info *info,
              unsigned drawid_offset,
@@ -7367,6 +7498,11 @@ ps5_draw_vbo(struct pipe_context *base, const struct pipe_draw_info *info,
    struct pipe_draw_start_count_bias uploaded_draw;
    unsigned uploaded_offset;
 
+#ifdef PS5_MULTIDRAW_BATCH
+   if (num_draws > 1 && ps5_try_multi_draw_batch(
+          base, info, drawid_offset, indirect, draws, num_draws))
+      return;
+#endif
    if (num_draws > 1) {
       util_draw_multi(base, info, drawid_offset, indirect, draws, num_draws);
       return;

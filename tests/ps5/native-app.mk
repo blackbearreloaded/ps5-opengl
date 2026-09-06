@@ -10,6 +10,9 @@ endif
 ifeq ($(PS5_DRAW_BATCH_PROBE),1)
 PS5_OPENGL_RUNTIME_DEFINES += -DPS5_DRAW_BATCH_PROBE=1
 endif
+ifeq ($(PS5_MULTIDRAW_BATCH),1)
+PS5_OPENGL_RUNTIME_DEFINES += -DPS5_MULTIDRAW_BATCH=1
+endif
 include ../../toolchain/ps5-opengl-core33.mk
 
 .PHONY: all runtime print-static-libs

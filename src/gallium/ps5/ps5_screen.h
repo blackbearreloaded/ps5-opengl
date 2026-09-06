@@ -10,6 +10,7 @@ struct pipe_resource;
 #define PS5_RENDER_WIDTH 1920u
 #define PS5_RENDER_HEIGHT 1080u
 #define PS5_MAX_RENDER_SIZE 8192u
+#define PS5_MULTIDRAW_BATCH_CAPACITY 8u
 
 struct pipe_screen *ps5_screen_create(void);
 void ps5_screen_submit_lock(struct pipe_screen *screen);

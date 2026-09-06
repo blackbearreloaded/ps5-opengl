@@ -20,6 +20,9 @@
 #ifndef PS5_DRAW_PROFILE
 #define PS5_PROFILE_MARK(i) ((void)0)
 #endif
+#if defined(PS5_MULTIDRAW_BATCH) && (!defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT) || defined(PS5_DRAW_BATCH_PROBE))
+#error "Multi-draw batching requires the native runtime without the repeat probe"
+#endif
 #ifdef PS5_DRAW_BATCH_PROBE
 #if !defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT)
 #error "Batch probe requires the native submitting runtime"
@@ -747,6 +750,100 @@ static uint64_t runtime_render_marker = (uint64_t)RENDER_MARKER;
 static unsigned runtime_present_count;
 static int runtime_agc_initialized;
 
+#ifdef PS5_MULTIDRAW_BATCH
+/* A batch is synchronous at the Gallium multi-draw boundary. The caller holds
+ * the queue lock and retains all descriptors and referenced resources. */
+static struct runtime_batch_entry {
+    agc_submit_description_t submit;
+    void *memory;
+    int64_t direct;
+    size_t bytes;
+    volatile uint32_t *marker;
+    uint32_t expected;
+} runtime_batch_entries[PS5_MULTIDRAW_BATCH_CAPACITY];
+static agc_api_t runtime_batch_api;
+static unsigned runtime_batch_count;
+static int runtime_batch_active, runtime_batch_faulted;
+
+int ps5_agc_gate2_batch_begin(void)
+{
+    if (runtime_batch_active || runtime_batch_count || runtime_batch_faulted)
+        return -1;
+    runtime_batch_active = 1;
+    return 0;
+}
+
+static int runtime_batch_queue(const agc_api_t *api,
+                               const agc_submit_description_t *submit,
+                               void *memory, int64_t direct, size_t bytes,
+                               volatile uint32_t *marker, uint32_t expected)
+{
+    if (!runtime_batch_active || runtime_batch_faulted ||
+        runtime_batch_count == PS5_MULTIDRAW_BATCH_CAPACITY ||
+        !memory || direct < 0 || !bytes || !marker || !api || !submit || !api->submit ||
+        !api->suspend_point || !submit->words || !submit->word_count)
+        return -1;
+    if (runtime_batch_count &&
+        (runtime_batch_api.submit != api->submit ||
+         runtime_batch_api.suspend_point != api->suspend_point))
+        return -1;
+    runtime_batch_api = *api;
+    runtime_batch_entries[runtime_batch_count++] = (struct runtime_batch_entry){
+        *submit, memory, direct, bytes, marker, expected
+    };
+    return 0; /* Ownership transfers only on success. No GPU work yet. */
+}
+
+int ps5_agc_gate2_batch_end(void)
+{
+    unsigned attempted = 0, waits = 0;
+    int result = 0;
+    if (!runtime_batch_active || runtime_batch_faulted)
+        return -1;
+    runtime_batch_active = 0;
+    for (unsigned i = 0; i < runtime_batch_count; ++i) {
+        ++attempted; /* A failed submit is conservatively treated as in flight. */
+        if (runtime_batch_api.submit(&runtime_batch_entries[i].submit) != 0) {
+            result = 1;
+            break;
+        }
+    }
+    if (attempted && runtime_batch_api.suspend_point() != 0)
+        result = 1;
+    for (; attempted && waits < 2000; ++waits) {
+        int complete = 1;
+        for (unsigned i = 0; i < attempted; ++i) {
+            struct runtime_batch_entry *entry = &runtime_batch_entries[i];
+            flush_gpu_data((const void *)entry->marker, sizeof(*entry->marker));
+            complete &= *entry->marker == entry->expected;
+        }
+        if (complete)
+            break;
+        sceKernelUsleep(UINT32_C(1000));
+    }
+    result |= waits == 2000;
+    printf("[ps5-multidraw-batch] draws=%u attempted=%u waits=%u result=%d\n",
+           runtime_batch_count, attempted, waits, result);
+    if (result) {
+        /* ponytail: bounded quarantine until process teardown, not guessed
+         * GPU-reset recovery. The caller must also retain its resource refs. */
+        runtime_batch_faulted = 1;
+        return -1;
+    }
+    for (unsigned i = 0; i < runtime_batch_count; ++i) {
+        struct runtime_batch_entry *entry = &runtime_batch_entries[i];
+        if (munmap(entry->memory, entry->bytes) != 0 ||
+            sceKernelReleaseDirectMemory(entry->direct, entry->bytes) != 0) {
+            runtime_batch_faulted = 1;
+            return -1;
+        }
+        memset(entry, 0, sizeof(*entry));
+    }
+    runtime_batch_count = 0;
+    return 0;
+}
+#endif
+
 #ifdef PS5_DRAW_PROFILE
 #include "util/os_time.h"
 static uint64_t runtime_profile_ns[9], runtime_profile_sleeps;
@@ -805,6 +902,10 @@ int ps5_agc_gate2_shutdown_present(void)
 {
     int unregister_rc = 0;
     int close_rc = 0;
+#ifdef PS5_MULTIDRAW_BATCH
+    if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count)
+        return -1;
+#endif
 
 #ifdef PS5_DRAW_PROFILE
     runtime_profile_report();
@@ -847,8 +948,8 @@ static int runtime_video_acquire(const video_api_t *video,
         runtime_video_framebuffer == framebuffer &&
         runtime_video_framebuffer_size == framebuffer_size)
         return 0;
-    if (runtime_video_handle >= 0)
-        ps5_agc_gate2_shutdown_present();
+    if (runtime_video_handle >= 0 && ps5_agc_gate2_shutdown_present() != 0)
+        return -1;
     for (int attempt = 1; attempt <= 3; ++attempt) {
         *attempts = attempt;
         runtime_video_handle = video->open(0xff, 0, 0, NULL);
@@ -902,6 +1003,10 @@ int ps5_agc_gate2_present(unsigned buffer_index)
 {
     int result;
     int64_t marker;
+#ifdef PS5_MULTIDRAW_BATCH
+    if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count)
+        return -1;
+#endif
 
     if (buffer_index > 1 || !runtime_video_registered ||
         runtime_video_handle < 0 ||
@@ -1841,6 +1946,10 @@ static int run_frame_slot_test(const agc_api_t *agc, const video_api_t *video,
 
 int main(void)
 {
+#ifdef PS5_MULTIDRAW_BATCH
+    if (runtime_batch_faulted)
+        return 1;
+#endif
 #ifdef PS5_DRAW_BATCH_PROBE
     const unsigned batch_repeats = runtime_batch_probe_repeats();
     int64_t batch_wait_ns = 0;
@@ -1848,7 +1957,11 @@ int main(void)
 #ifdef PS5_DRAW_PROFILE
     int64_t profile_ticks[10] = {0};
     unsigned profile_sleeps = 0;
-    const int profile_this_draw = runtime_present_count >= 30;
+    const int profile_this_draw = runtime_present_count >= 30
+#ifdef PS5_MULTIDRAW_BATCH
+                                 && !runtime_batch_active
+#endif
+                                 ;
     PS5_PROFILE_MARK(0);
 #endif
     const uint8_t *vs_header, *vs_code, *ps_header, *ps_code;
@@ -2929,6 +3042,17 @@ int main(void)
     PS5_PROFILE_MARK(4);
     flush_gpu_data(memory, work_bytes);
     PS5_PROFILE_MARK(5);
+#ifdef PS5_MULTIDRAW_BATCH
+    if (runtime_batch_active) {
+        if (runtime_batch_queue(&agc, &submit, memory, work_start, work_bytes,
+                                completion_marker, (uint32_t)render_marker) != 0)
+            goto receipt;
+        memory = NULL;
+        work_start = -1;
+        result = 0;
+        goto receipt;
+    }
+#endif
     {
         uint64_t status[16] = {0};
         unsigned waits;
