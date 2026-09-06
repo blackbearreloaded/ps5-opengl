@@ -7,6 +7,9 @@ extern int sceKernelUsleep(uint32_t microseconds);
 
 __attribute__((constructor)) static void pss_opengl_open_log(void) {
   FILE *stream = freopen("/download0/pss-opengl.log", "w", stdout);
+  /* Start a fresh receipt, then make both independent streams append-only. */
+  if (stream != NULL)
+    stream = freopen("/download0/pss-opengl.log", "a", stdout);
   if (stream != NULL)
     setvbuf(stream, NULL, _IONBF, 0);
   stream = freopen("/download0/pss-opengl.log", "a", stderr);

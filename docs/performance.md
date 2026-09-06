@@ -291,6 +291,13 @@ GPU's interpolated coordinates. It preserves normals/lighting and the flat
 material input. Use `summarize-cubes.py --uv`; its receipts are explicitly not
 accepted as texture validation. Host reference must pass before a native case.
 
+- 2026-09-06 | G4 | 249963d | failed: U becomes zero on instances 1/5; V/material intact; ordinary pass, healthy teardown/unlock | results/cubes-uv/134227 | compiler IO/NIR trace
+
+UV output confirms the corruption precedes texture access. The trace successor
+changes diagnostics only, not shaders/rendering. Both native log streams now
+append after initial truncation: stdout previously could overwrite stderr's
+compiler diagnostics. A host test reproduces the old loss and verifies retention.
+
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
 - G2 scope: full single-target RGBA8 GPU clears via Mesa u_blitter; driver synchronization unchanged. Other cases retain CPU fallbacks.
