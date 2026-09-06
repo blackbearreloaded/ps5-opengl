@@ -332,6 +332,14 @@ clear, 14 ms of draw/wait and 16 ms of swap still dominate the instanced frame.
 The previously failing instanced UV/texture scene is fixed; broader regressions,
 long runs, affected CTS and the final release matrix remain before promotion.
 
+- 2026-09-06 | G4 | fe1c604 | failed: indexed instancing passes; disabled/current attribute rejects VS compilation; healthy teardown/unlock | results/draw-matrix-unused-primitive/144258 | zero-stride compiler/descriptor fix
+
+Host reproduction confirms zero-stride rejection with either PrimitiveID option;
+the guard also exists in the original publication source. Mesa represents current
+attributes as zero-stride uploads. The successor permits this PS5 compiler input
+and selects byte-bounded RAW descriptors only for zero stride, preserving CPU
+range checks and the ordinary descriptor path. This remains pending hardware.
+
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
 - G2 scope: full single-target RGBA8 GPU clears via Mesa u_blitter; driver synchronization unchanged. Other cases retain CPU fallbacks.

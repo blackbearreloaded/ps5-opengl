@@ -6227,6 +6227,23 @@ ps5_collect_geometry_streamout(
    return true;
 }
 
+static bool
+ps5_vertex_buffer_descriptor(uintptr_t address, size_t available,
+                             unsigned stride, uint32_t records,
+                             uint32_t descriptor[4])
+{
+   if (!available || (!stride && available > UINT32_MAX))
+      return false;
+   descriptor[0] = (uint32_t)address;
+   descriptor[1] = (uint32_t)(address >> 32) | (stride << 16);
+   /* GFX10 zero-stride inputs use byte bounds, not a one-vertex limit.
+    * CPU per-attribute range checks still precede descriptor construction. */
+   descriptor[2] = stride ? records : (uint32_t)available;
+   descriptor[3] = UINT32_C(0x5204) |
+      (stride ? 0 : S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW));
+   return true;
+}
+
 static void
 ps5_draw_vbo_locked(struct pipe_context *base,
                     const struct pipe_draw_info *info,
@@ -6687,12 +6704,13 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             (struct ps5_resource *)vertex_buffer->buffer.resource;
          vertex_address = (uintptr_t)vertex_resource->data +
                           vertex_buffer->buffer_offset;
-         descriptor[descriptor_index * 4] = (uint32_t)vertex_address;
-         descriptor[descriptor_index * 4 + 1] =
-            (uint32_t)(vertex_address >> 32) |
-            (element->src_stride << 16);
-         descriptor[descriptor_index * 4 + 2] = binding_records[binding];
-         descriptor[descriptor_index * 4 + 3] = UINT32_C(0x5204);
+         if (!ps5_vertex_buffer_descriptor(
+                vertex_address, vertex_resource->size - vertex_buffer->buffer_offset,
+                element->src_stride, binding_records[binding],
+                descriptor + descriptor_index * 4)) {
+            context->last_draw_status = -9;
+            return;
+         }
          ps5_flush_gpu_data(vertex_resource->data, vertex_resource->size);
          descriptor_index++;
       }

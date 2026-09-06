@@ -1073,8 +1073,8 @@ require("-DHAVE_FUNC_ATTRIBUTE_PACKED=1" in PSBC_HOST_CONFIG,
         "host PSBC build lost the shared packed-NIR ABI")
 require('--verify-psbc' in PSBC_PS5_BUILD and
         json.loads((ROOT / 'dependencies.json').read_text())['psbc_patch']['patched_tree'] ==
-        'ddb16abb0cdc423dd4acbc3455948c092c06468b',
-        "PS5 compiler archive is not pinned to the validated source tree")
+        '267ff517bd902e4b35a1b40fd50ee984a118eb55',
+        "PS5 compiler archive is not pinned to the expected source tree")
 require("-DOPENGNM_PSBC_ORBIS=1" in PSBC_PS5_CONFIG and
         "defined(OPENGNM_PSBC_ORBIS)" in ACO_ISEL_HELPERS and
         "nir_print_instr(instr, stderr);" in ACO_ISEL_HELPERS,
@@ -1764,7 +1764,11 @@ require("ps5_agc_gate2_set_color_target_views" in SCREEN and
         "Core whole-layer framebuffer rendering candidate regressed")
 
 require("element->src_stride ? vertex_count : 1u" in SCREEN and
-        "(element->src_stride << 16)" in SCREEN and
+        "ps5_vertex_buffer_descriptor(" in SCREEN and
+        "(stride << 16)" in SCREEN and
+        "stride ? records : (uint32_t)available" in SCREEN and
+        "S_008F0C_OOB_SELECT(V_008F0C_OOB_SELECT_RAW)" in SCREEN and
+        "vertex_resource->size - vertex_buffer->buffer_offset" in SCREEN and
         "egl_public_core33_current_vertex_attrib.o:" in MAKEFILE and
         "glDisableVertexAttribArray" in CURRENT_VERTEX_ATTRIB and
         "glVertexAttrib4f" in CURRENT_VERTEX_ATTRIB and
