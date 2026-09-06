@@ -3,6 +3,7 @@
 [CmdletBinding()]
 param(
     [string]$AppDirectory,
+    [string]$BoilerplateDirectory,
     [Parameter(Mandatory)]
     [ValidatePattern('^[0-9a-fA-F]{64}$')]
     [string]$ExpectedEbootSha256,
@@ -36,6 +37,7 @@ param(
     [string]$FtpCredential = 'anonymous:homebrew',
     [switch]$FirstRegistration,
     [switch]$Incremental,
+    [switch]$Headless,
     [switch]$ReuseInstalledBinaries,
     [string]$LockPath,
     [string]$ResultsDirectory
@@ -56,8 +58,10 @@ $repo = (Resolve-Path -LiteralPath (Join-Path $scriptRoot '..')).Path
 if ([string]::IsNullOrWhiteSpace($LockPath)) {
     $LockPath = Join-Path $repo '..\..\..\lock.txt'
 }
-$boilerplate = (Resolve-Path -LiteralPath (Join-Path $repo `
-    '..\ps5-native-app-boilerplate')).Path
+if ([string]::IsNullOrWhiteSpace($BoilerplateDirectory)) {
+    $BoilerplateDirectory = Join-Path $repo '..\ps5-native-app-boilerplate'
+}
+$boilerplate = (Resolve-Path -LiteralPath $BoilerplateDirectory).Path
 $protocol = (Resolve-Path -LiteralPath (Join-Path $repo `
     '..\..\docs\ps5-homebrew-dev-protocol')).Path
 $cycle = Join-Path $protocol 'scripts\Invoke-Ps5Cycle.ps1'
@@ -234,6 +238,7 @@ try {
         FtpCredential = $FtpCredential
         SkipVideoReadiness = $true
         SkipRoutineScreenshots = $true
+        Headless = [bool]$Headless
     }
     if (-not $FirstRegistration) {
         $cycleArguments.UseExistingFolderRegistration = $true
@@ -270,6 +275,7 @@ try {
     $downloadDataWsl = (wsl.exe wslpath -a -- `
         $downloadData.Replace('\', '/')).Trim()
     & wsl.exe -e curl --fail --silent --show-error --disable-epsv `
+        --connect-timeout 5 --max-time 180 `
         -u $FtpCredential `
         "ftp://${Ps5Host}:2121/user/download/PPSA99005/download0.dat" `
         --output $downloadDataWsl
@@ -406,6 +412,10 @@ try {
         Remove-Item -LiteralPath $downloadData -Force
     }
     if (Test-Path -LiteralPath $extractDirectory) {
+        $resolved = [IO.Path]::GetFullPath($extractDirectory)
+        if (-not $resolved.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath()))) {
+            throw 'Refusing cleanup outside the temporary directory.'
+        }
         Remove-Item -LiteralPath $extractDirectory -Recurse -Force
     }
 }
