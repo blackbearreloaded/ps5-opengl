@@ -53,7 +53,8 @@ compile_shader(GLenum type, const char *source)
 
 static GLuint
 link_program(const char *vertex_source, const char *fragment_source,
-             GLuint *vertex_shader, GLuint *fragment_shader)
+             GLuint *vertex_shader, GLuint *fragment_shader,
+             const char *geometry_source, GLuint *geometry_shader)
 {
    GLuint program;
    GLint linked = GL_FALSE;
@@ -62,11 +63,18 @@ link_program(const char *vertex_source, const char *fragment_source,
    *fragment_shader = compile_shader(GL_FRAGMENT_SHADER, fragment_source);
    if (!*vertex_shader || !*fragment_shader)
       return 0;
+   if (geometry_source) {
+      *geometry_shader = compile_shader(GL_GEOMETRY_SHADER, geometry_source);
+      if (!*geometry_shader)
+         return 0;
+   }
    program = glCreateProgram();
    if (!program)
       return 0;
    glAttachShader(program, *vertex_shader);
    glAttachShader(program, *fragment_shader);
+   if (geometry_source)
+      glAttachShader(program, *geometry_shader);
    glLinkProgram(program);
    glGetProgramiv(program, GL_LINK_STATUS, &linked);
    if (!linked) {
@@ -145,23 +153,41 @@ read_split_oracle(uint32_t *pixels)
 static int
 check_primitive_ids(GLuint vbo, const float *vertices, uint32_t *pixels)
 {
-   /* OpenGL 3.3 core, section 3.9.2: IDs start at zero per draw. Keep user
-    * varyings live beside the built-in, including both smooth and flat inputs. */
+   /* OpenGL 3.3 core, section 3.9.2: IDs start at zero per draw. gl_VertexID
+    * makes the flat output truly per-vertex; a uniform alone can migrate to FS. */
    static const char *vs_source =
       "#version 330 core\n"
       "layout(location=0) in vec2 a_position;\n"
       "uniform int u_tag;\n"
       "out vec2 uv; flat out int tag;\n"
       "void main() { gl_Position=vec4(a_position,0,1);\n"
-      "  uv=a_position; tag=u_tag; }\n";
+      "  uv=a_position; tag=u_tag+gl_VertexID%3; }\n";
+   static const char *gs_vs_source =
+      "#version 330 core\n"
+      "layout(location=0) in vec2 a_position;\n"
+      "uniform int u_tag;\n"
+      "out vec2 gs_uv; flat out int gs_tag;\n"
+      "void main() { gl_Position=vec4(a_position,0,1);\n"
+      "  gs_uv=a_position; gs_tag=u_tag+gl_VertexID%3; }\n";
+   static const char *gs_source =
+      "#version 330 core\n"
+      "layout(triangles) in;\n"
+      "layout(triangle_strip,max_vertices=3) out;\n"
+      "in vec2 gs_uv[]; flat in int gs_tag[];\n"
+      "out vec2 uv; flat out int tag;\n"
+      "void main() { for(int i=0;i<3;++i) {\n"
+      "  gl_Position=gl_in[i].gl_Position; uv=gs_uv[i]; tag=gs_tag[i];\n"
+      "  gl_PrimitiveID=17+3*gl_PrimitiveIDIn+i; EmitVertex();\n"
+      "} EndPrimitive(); }\n";
    static const char *fs_source =
       "#version 330 core\n"
       "in vec2 uv; flat in int tag;\n"
+      "uniform int u_expected_tag;\n"
       "layout(location=0) out vec4 color;\n"
       "void main() {\n"
       "  vec2 expected=gl_FragCoord.xy/vec2(1920,1080)*2.0-1.0;\n"
       "  bool interp=all(lessThan(abs(uv-expected),vec2(0.0001)));\n"
-      "  color=vec4(float(gl_PrimitiveID)/255.0,float(tag==7),float(interp),1);\n"
+      "  color=vec4(float(gl_PrimitiveID)/255.0,float(tag==u_expected_tag),float(interp),1);\n"
       "}\n";
    static const struct {
       const char *name;
@@ -173,49 +199,70 @@ check_primitive_ids(GLuint vbo, const float *vertices, uint32_t *pixels)
       {"primitive-id-reset", 3, 3, 1},
       {"primitive-id-instanced", 0, 6, 2},
    };
-   GLuint vs = 0, fs = 0;
-   GLuint program = link_program(vs_source, fs_source, &vs, &fs);
+   GLuint vs[2] = {0}, fs[2] = {0}, programs[2] = {0}, gs = 0;
    float repeated[12];
    int passed = 0;
-   if (!program)
-      goto cleanup;
-   GLint tag = glGetUniformLocation(program, "u_tag");
-   if (tag < 0)
+   programs[0] = link_program(vs_source, fs_source, &vs[0], &fs[0], NULL, NULL);
+   programs[1] = link_program(gs_vs_source, fs_source, &vs[1], &fs[1], gs_source, &gs);
+   if (!programs[0] || !programs[1])
       goto cleanup;
    memcpy(repeated, vertices, 6 * sizeof(float));
    memcpy(repeated + 6, vertices, 6 * sizeof(float));
    glBindBuffer(GL_ARRAY_BUFFER, vbo);
    glBufferData(GL_ARRAY_BUFFER, sizeof(repeated), repeated, GL_STATIC_DRAW);
-   glUseProgram(program);
-   glUniform1i(tag, 7);
 #ifdef PS5_GLSL_HOST_REFERENCE
    printf("[ps5-egl-core33-glsl-suite] host-renderer=%s version=%s\n",
           glGetString(GL_RENDERER), glGetString(GL_VERSION));
 #endif
-   for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-      /* The second overlapping triangle wins; distinguish IDs 0 and 1 so a
-       * missing/constant-zero built-in cannot pass this oracle. */
-      uint32_t expected = UINT32_C(0xffffff00) | (cases[i].count / 3 - 1);
-      for (unsigned p = 0; p < SIZE * SIZE; ++p)
-         pixels[p] = expected;
-      uint32_t expected_hash = hash32(pixels, SIZE * SIZE * sizeof(*pixels));
-      glClear(GL_COLOR_BUFFER_BIT);
-      if (cases[i].instances == 1)
-         glDrawArrays(GL_TRIANGLES, cases[i].first, cases[i].count);
-      else
-         glDrawArraysInstanced(GL_TRIANGLES, cases[i].first, cases[i].count,
-                              cases[i].instances);
-      if (!read_oracle(expected, expected_hash, pixels, cases[i].name))
+   for (unsigned phase = 0; phase < 3; ++phase) {
+      const unsigned geometry = phase == 1;
+      GLuint program = programs[geometry];
+      GLint tag = glGetUniformLocation(program, "u_tag");
+      GLint expected_tag = glGetUniformLocation(program, "u_expected_tag");
+      if (tag < 0 || expected_tag < 0)
          goto cleanup;
+      glUseProgram(program);
+      glUniform1i(tag, 7);
+      for (unsigned last = 0; last < 2; ++last) {
+         glProvokingVertex(last ? GL_LAST_VERTEX_CONVENTION : GL_FIRST_VERTEX_CONVENTION);
+         glUniform1i(expected_tag, 7 + 2 * last);
+         for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+            /* The second overlapping triangle wins. Distinct GS IDs also
+             * check that the fragment shader selects the provoking vertex. */
+            unsigned id = cases[i].count / 3 - 1;
+            if (geometry)
+               id = 17 + 3 * id + 2 * last;
+            uint32_t expected = UINT32_C(0xffffff00) | id;
+            char name[96];
+            snprintf(name, sizeof(name), "%s-phase%u-gs%u-last%u",
+                     cases[i].name, phase, geometry, last);
+            for (unsigned p = 0; p < SIZE * SIZE; ++p)
+               pixels[p] = expected;
+            uint32_t expected_hash = hash32(pixels, SIZE * SIZE * sizeof(*pixels));
+            glClear(GL_COLOR_BUFFER_BIT);
+            if (cases[i].instances == 1)
+               glDrawArrays(GL_TRIANGLES, cases[i].first, cases[i].count);
+            else
+               glDrawArraysInstanced(GL_TRIANGLES, cases[i].first, cases[i].count,
+                                    cases[i].instances);
+            if (!read_oracle(expected, expected_hash, pixels, name))
+               goto cleanup;
+         }
+      }
    }
    passed = 1;
 cleanup:
-   if (program)
-      glDeleteProgram(program);
-   if (vs)
-      glDeleteShader(vs);
-   if (fs)
-      glDeleteShader(fs);
+   glProvokingVertex(GL_LAST_VERTEX_CONVENTION);
+   for (unsigned i = 0; i < 2; ++i) {
+      if (programs[i])
+         glDeleteProgram(programs[i]);
+      if (vs[i])
+         glDeleteShader(vs[i]);
+      if (fs[i])
+         glDeleteShader(fs[i]);
+   }
+   if (gs)
+      glDeleteShader(gs);
    return passed;
 }
 
@@ -347,10 +394,10 @@ main(void)
    glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profile);
 
    math_program = link_program(math_vertex_source, math_fragment_source,
-                               &math_vs, &math_fs);
+                               &math_vs, &math_fs, NULL, NULL);
    texture_program = link_program(texture_vertex_source,
                                   texture_fragment_source,
-                                  &texture_vs, &texture_fs);
+                                  &texture_vs, &texture_fs, NULL, NULL);
    if (!math_program || !texture_program)
       goto cleanup;
 
