@@ -26,6 +26,27 @@ static void package(const PsbcShaderOutput *out) {
     size_t size = 0;
     assert(!(out->metadata.unresolved_fields & PSBC_UNRESOLVED_AGC_LINKAGE));
     assert(ps5_agc_package_build(out, 4, &data, &size) == 0 && size);
+    if (out->metadata.hardware_stage == PSBC_HW_STAGE_NGG &&
+        out->metadata.source_stage == PSBC_STAGE_VERTEX) {
+        /* Check serialized state, not just compiler metadata: packaging used
+         * to replace this stride with 4 even when NIR consumes vertex indices. */
+        size_t header = (0x100 + out->machine_code_size + 7) & ~(size_t)7;
+        uint64_t relative;
+        assert(header + 96 <= size);
+        memcpy(&relative, data + header + 24, sizeof(relative));
+        size_t context = header + 24 + relative;
+        unsigned count = data[header + 91];
+        assert(context + count * 8 <= size);
+        bool found = false;
+        for (unsigned i = 0; i < count; ++i) {
+            uint16_t offset;
+            uint32_t value;
+            memcpy(&offset, data + context + i * 8, sizeof(offset));
+            memcpy(&value, data + context + i * 8 + 4, sizeof(value));
+            if (offset == 0x2ab) { assert(value == 1); found = true; }
+        }
+        assert(found);
+    }
     free(data);
 }
 static void check(unsigned varyings, bool explicit_id, bool last) {

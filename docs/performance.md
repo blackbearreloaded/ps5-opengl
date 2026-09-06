@@ -66,6 +66,15 @@ and Chiaki's local menu shortcut produced no visible response. Input health is
 inconclusive, not a confirmed soft lock. The owned Chiaki process and exact lock
 were released; establish input health before further tests.
 
+Offline follow-up found the package still overrides NGG vertex-index stride to
+4. Mesa's non-passthrough no-GS lowering consumes unscaled indices for primitive
+exports and LDS; passthrough ignores that register. The package now uses stride
+1 for NGG vertex shaders, leaving geometry packages, shader code and submission
+unchanged. The serialized-package regression fails before this fix and passes
+after it; compiler, host and GLSL checks pass. Hardware acceptance remains pending.
+The owner reports a restart and an idle, ready console; run a frozen known-good
+control before the changed candidate.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

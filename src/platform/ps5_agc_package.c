@@ -201,6 +201,11 @@ ps5_agc_package_build(const PsbcShaderOutput *shader,
       rsrc1 = 0x08a;
       rsrc2 = 0x08b;
       patch_esgs = true;
+      /* NGG without an API GS consumes unscaled vertex indices. Passthrough
+       * ignores this register, but non-passthrough multiplies each index by
+       * it before NIR uses it for primitive exports and LDS addressing. */
+      if (metadata->source_stage == PSBC_STAGE_VERTEX)
+         esgs_ring_itemsize = 1;
       if (metadata->source_stage == PSBC_STAGE_GEOMETRY) {
          linkage_primitive_override = find_register(
             context, metadata->context_register_count, UINT16_C(0x29b));
