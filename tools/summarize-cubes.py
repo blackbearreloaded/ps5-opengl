@@ -7,13 +7,16 @@ import re
 import statistics
 
 
-def summarize(text, host=False):
+def summarize(text, host=False, uv=False):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
 
     lines = [line for line in text.splitlines() if line.startswith("[ps5-cubes]")]
     start = "[ps5-cubes] start width=1920 height=1080 warmup=2 frames=8 triangles_per_object=12"
+    if uv:
+        require(bool(lines) and lines[0] == start + " modes=2 diagnostic=uv", "Wrong UV diagnostic configuration")
+        lines[0] = start + " modes=2"
     require(bool(lines) and lines[0] in (start, start + " modes=2"), "Wrong benchmark configuration")
     modes = 2 if lines.pop(0).endswith(" modes=2") else 1
     require(len(lines) == 30 * modes + 1, "Incomplete or duplicate benchmark records")
@@ -40,6 +43,7 @@ def summarize(text, host=False):
     if not host:
         require(re.findall(r"\[pss-opengl-native\] gate completed status=(\d+)", text) == ["0"], "Native gate incomplete")
     return dict(mode="host-reference" if host else "PS5", width=1920, height=1080,
+                oracle="UV/material coordinates" if uv else "depth/texture pixels",
                 note="Low-poly draw-call benchmark; full-frame CPU wall time with one glFinish and swap per frame. Not a GPU-throughput or full-game benchmark.", workloads=report)
 
 
@@ -68,8 +72,10 @@ def self_test():
                 continue
             raise AssertionError("Invalid benchmark accepted")
         if modes == 2:
+            uv_text = text.replace("modes=2", "modes=2 diagnostic=uv")
+            assert summarize(uv_text, uv=True)["oracle"] == "UV/material coordinates"
             for bad in (text.replace("mode=1 ", "mode=0 ", 1), text.replace("modes=2", "modes=3"),
-                        text.replace("completed=6", "completed=3")):
+                        text.replace("completed=6", "completed=3"), uv_text):
                 try:
                     summarize(bad)
                 except ValueError:
@@ -82,6 +88,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("receipt", nargs="?")
     parser.add_argument("--host", action="store_true")
+    parser.add_argument("--uv", action="store_true", help="Audit UV diagnostic, never count it as texture validation")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -89,4 +96,4 @@ if __name__ == "__main__":
     else:
         if not args.receipt:
             parser.error("receipt is required")
-        print(json.dumps(summarize(Path(args.receipt).read_text(), args.host), indent=2))
+        print(json.dumps(summarize(Path(args.receipt).read_text(), args.host, args.uv), indent=2))

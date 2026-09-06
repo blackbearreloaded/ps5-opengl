@@ -27,3 +27,13 @@ for fault in depth texture instances; do
     grep -F '[ps5-cubes] pixel=' "$out/fault-$fault.log" >/dev/null
 done
 echo 'Cubes host PASS: depth/texture/instance probes and deliberate fault rejection'
+clang-18 "${flags[@]}" "$root/tests/ps5/egl_public_core33_cubes_uv.c" -l:libEGL.so.1 -l:libGL.so.1 -lm -o "$out/check-uv"
+"$out/check-uv" > "$out/uv.log"
+python3 "$root/tools/summarize-cubes.py" --host --uv "$out/uv.log"
+sed 's/texcoord=uv/texcoord=vec2(0)/' "$root/examples/core33-cubes/main.c" |
+    clang-18 "${flags[@]}" -DPS5_CUBES_UV_DIAGNOSTIC -x c - -l:libEGL.so.1 -l:libGL.so.1 -lm -o "$out/fault-uv"
+if "$out/fault-uv" > "$out/fault-uv.log"; then
+    echo 'Oracle missed UV fault' >&2; exit 1
+fi
+grep -F '[ps5-cubes] pixel=' "$out/fault-uv.log" >/dev/null
+echo 'UV diagnostic host PASS: independent coordinate oracle and fault rejection'

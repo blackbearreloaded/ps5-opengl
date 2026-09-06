@@ -279,7 +279,17 @@ separates normalized sampling from UV/geometry while retaining the oracle.
 The next control changes only the provoking-vertex convention to first.
 Material IDs are constant across every triangle, so expected output is unchanged;
 this exercises the alternate flat-input compiler path. It retains direct texel
-fetches to compare against the last frozen control. Native result pending.
+fetches to compare against the last frozen control. It reproduced the same five
+errors. The example is restored to ordinary implicit sampling/default last
+provoking vertex; frozen diagnostic artifacts retain each prior control.
+
+- 2026-09-06 | G4 | 35b0fad | failed: first provoking vertex reproduces five mismatches; healthy teardown/unlock | results/cubes-first/133413 | UV-coordinate diagnostic
+
+`egl_public_core33_cubes_uv` reuses the scene with a UV/material fragment output.
+Its oracle inverts projection at each probed pixel center, independently of the
+GPU's interpolated coordinates. It preserves normals/lighting and the flat
+material input. Use `summarize-cubes.py --uv`; its receipts are explicitly not
+accepted as texture validation. Host reference must pass before a native case.
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline

@@ -130,7 +130,15 @@ static int oracle(unsigned count, unsigned mode)
          const float z = -p[2] - p[3];
          int sx = (int)((1 + x * 1.5f * HEIGHT / WIDTH / z) * WIDTH * .5f);
          int sy = (int)((1 + y * 1.5f / z) * HEIGHT * .5f);
+#ifdef PS5_CUBES_UV_DIAGNOSTIC
+         /* Invert the front face's projection at the actual pixel center. */
+         float cu = (((((sx + .5f) / (WIDTH * .5f)) - 1) * z / .84375f - p[0]) / p[3] + 1) * .5f;
+         float cv = (((((sy + .5f) / (HEIGHT * .5f)) - 1) * z / 1.5f - p[1]) / p[3] + 1) * .5f;
+         uint8_t expected[4] = {(uint8_t)lroundf(cu * 255), (uint8_t)lroundf(cv * 255), (i % 2) * 255, 255};
+         passed &= pixel(sx, sy, expected);
+#else
          passed &= pixel(sx, sy, &texels[i % 2][4 * (v * 2 + u)]);
+#endif
       }
    }
    printf("[ps5-cubes] oracle mode=%u objects=%u probes=%u %s\n", mode, count, 1 + count * 4, passed ? "PASS" : "FAIL");
@@ -182,8 +190,11 @@ int main(void)
       "n=rotate(normal);texcoord=uv;material=(instanced!=0?gl_InstanceID:object_index)%2;}");
    fs = compile(GL_FRAGMENT_SHADER, "#version 330 core\n"
       "in vec2 texcoord; in vec3 n; flat in int material; uniform sampler2D albedo0; uniform sampler2D albedo1; out vec4 color;"
-      "void main(){ivec2 q=ivec2(clamp(texcoord,vec2(0),vec2(0.999))*2.0);"
-      "vec3 c=material==0?texelFetch(albedo0,q,0).rgb:texelFetch(albedo1,q,0).rgb;"
+#ifdef PS5_CUBES_UV_DIAGNOSTIC
+      "void main(){vec3 c=vec3(texcoord,float(material));"
+#else
+      "void main(){vec3 c=material==0?texture(albedo0,texcoord).rgb:texture(albedo1,texcoord).rgb;"
+#endif
       "color=vec4(c*(0.25+0.75*max(normalize(n).z,0.0)),1);}");
    if (!vs || !fs) goto cleanup;
    program = glCreateProgram(); glAttachShader(program,vs); glAttachShader(program,fs); glLinkProgram(program);
@@ -193,8 +204,11 @@ int main(void)
    placement = glGetUniformLocation(program,"placement"); rotation = glGetUniformLocation(program,"rotation");
    instanced = glGetUniformLocation(program,"instanced"); object_index = glGetUniformLocation(program,"object_index");
    GLint albedo0 = glGetUniformLocation(program,"albedo0"), albedo1 = glGetUniformLocation(program,"albedo1");
-   if (!check(placement >= 0 && rotation >= 0 && albedo0 >= 0 && albedo1 >= 0 && instanced >= 0 && object_index >= 0,
+   if (!check(placement >= 0 && rotation >= 0 && instanced >= 0 && object_index >= 0,
        "uniforms")) goto cleanup;
+#ifndef PS5_CUBES_UV_DIAGNOSTIC
+   if (!check(albedo0 >= 0 && albedo1 >= 0, "samplers")) goto cleanup;
+#endif
    glUniform1i(albedo0,0); glUniform1i(albedo1,1);
    glGenTextures(2,textures);
    for (unsigned i = 0; i < 2; ++i) {
@@ -218,8 +232,11 @@ int main(void)
    glEnableVertexAttribArray(3); glVertexAttribDivisor(3,1);
    glViewport(0,0,WIDTH,HEIGHT); glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS); glDepthMask(GL_TRUE);
    glDisable(GL_DITHER); glDisable(GL_CULL_FACE); glDisable(GL_BLEND);
-   glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
-   printf("[ps5-cubes] start width=%u height=%u warmup=%u frames=%u triangles_per_object=12 modes=2\n", WIDTH,HEIGHT,WARMUP,FRAMES);
+   printf("[ps5-cubes] start width=%u height=%u warmup=%u frames=%u triangles_per_object=12 modes=2"
+#ifdef PS5_CUBES_UV_DIAGNOSTIC
+      " diagnostic=uv"
+#endif
+      "\n", WIDTH,HEIGHT,WARMUP,FRAMES);
    for (unsigned mode = 0; mode < 2; ++mode) for (unsigned w = 0; w < sizeof(workloads) / sizeof(workloads[0]); ++w) {
       unsigned objects = workloads[w];
       float positions[32][4];
