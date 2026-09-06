@@ -56,6 +56,14 @@ fragment linkage follows that producer. This is a compatibility candidate, not
 proof that the hardware cannot support per-primitive attributes. Native acceptance
 is pending; the submission path and GLSL oracle remain unchanged.
 
+- 2026-09-06 | G5 | 6df6a4f | failed: first ID draw times out; math/texture pass, title released/services healthy | results/glsl-primitive-id-pervertex/172848 | offline synchronization analysis
+
+The per-vertex candidate is **not accepted**: submission returned success but its
+completion marker was not reached in 2,000 polls. It must not be rerun unchanged
+or promoted. Post-run ports were healthy; UI responsiveness remains unverified
+because action review blocked starting Remote Play. The owned Chiaki process
+and exact UI-check lock were released. Establish UI health before further tests.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
