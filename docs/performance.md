@@ -305,7 +305,13 @@ consumer attached. This scene does not read it. The next candidate omits only
 that implicit export when the bound FS proves it unused, includes that choice
 in the VS cache key, and preserves explicit outputs/unknown consumers. Real
 NIR/ACO host checks precede hardware. This is a hypothesis, not a confirmed fix;
-the instanced benchmark remains a release blocker.
+the original textured benchmark must still pass before accepting instancing.
+
+- 2026-09-06 | G4 | fc143fc | pass: 668 UV probes, six workloads/48 frames; trace confirms unused export removed; healthy teardown/unlock | results/cubes-unused-primitive/142524 | original texture oracle
+
+Removing that export eliminates all observed UV failures, including 32 instances.
+The driver keeps the conservative variant for unknown or PrimitiveID-reading
+fragment consumers. Their per-primitive linkage is not validated by this result.
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
