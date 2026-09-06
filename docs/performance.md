@@ -267,7 +267,13 @@ The next control changes only `texture` to `textureLod(..., 0.0)` in both
 material branches; textures are single-level nearest-filtered 2x2 images.
 This isolates implicit sampling from the existing geometry/instance inputs.
 It does not establish a driver fix or dismiss the original failure as undefined
-behavior. Native validation of this control is pending.
+behavior. The explicit-LOD control reproduced the same five mismatches, with
+clean lifecycle/health/unlock. The next shader-only control uses integer
+`texelFetch` coordinates derived from the same interpolated UVs, equivalent to
+the intended nearest/clamp sampling for these 2x2 calibration textures. This
+separates normalized sampling from UV/geometry while retaining the oracle.
+
+- 2026-09-06 | G4 | 2570886 | failed: explicit LOD reproduces all five mismatches; healthy teardown/unlock | results/cubes-lod0/131824 | direct texel-fetch control
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
