@@ -30,6 +30,7 @@ param(
     [switch]$FirstRegistration,
     [switch]$Incremental,
     [switch]$Headless,
+    [switch]$OwnerConfirmedIdle,
     [string]$LockPath,
     [string]$ResultsDirectory
 )
@@ -161,7 +162,8 @@ try {
     Assert-ServiceHealth 'preflight'
     & (Join-Path $scriptRoot 'Assert-Ps5ForegroundIdle.ps1') `
         -ProtocolDirectory $protocol -Ps5Host $Ps5Host -FtpCredential $FtpCredential `
-        -LockPath $ps5Lock -LockToken $lockToken -ResultsDirectory $ResultsDirectory
+        -LockPath $ps5Lock -LockToken $lockToken -ResultsDirectory $ResultsDirectory `
+        -OwnerConfirmedIdle:$OwnerConfirmedIdle
     New-Item -ItemType Directory -Path $ResultsDirectory -Force | Out-Null
     $cycleArguments = @{
         TitleId = 'PPSA99005'
@@ -293,6 +295,7 @@ try {
     if ($resultFile) {
         @{ checkoutCommit = $actualCommit; protocolCommit = $actualProtocolCommit;
            gate = $ExpectedGate; ps5Host = $Ps5Host;
+           ownerConfirmedIdle = [bool]$OwnerConfirmedIdle;
            postHealthChecked = $postHealthChecked; lockReleased = $lockReleased } |
             ConvertTo-Json | Set-Content -LiteralPath (
                 $resultFile.FullName -replace '-result\.json$', '-runner.json')

@@ -7,6 +7,8 @@ param(
     [string]$LockPath,
     [string]$LockToken,
     [string]$ResultsDirectory,
+    # Explicit owner confirmation for missing lifecycle history after a reboot.
+    [switch]$OwnerConfirmedIdle,
     [switch]$SelfTest
 )
 $ErrorActionPreference = 'Stop'
@@ -15,10 +17,17 @@ if (-not $ProtocolDirectory) {
 }
 . (Join-Path $ProtocolDirectory 'scripts\ShadowMountLifecycle.ps1')
 
-function Assert-IdleTitleLog([string]$Text) {
+function Assert-IdleTitleLog([string]$Text, [switch]$OwnerConfirmedIdle) {
     $titles = @([regex]::Matches($Text, '\[GAME\] started: (\S+) pid=') |
         ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-    if (-not $titles.Count) { throw 'Foreground state unknown: no title lifecycle in log.' }
+    if (-not $titles.Count) {
+        if ($OwnerConfirmedIdle -and
+            $Text -notmatch '\[GAME\] started:|\[MDBG\] (?:crash-candidate:|\S+ crashed )') {
+            Write-Host 'PS5_FOREGROUND_IDLE source=owner-confirmation history=missing'
+            return
+        }
+        throw 'Foreground state unknown: no title lifecycle in log.'
+    }
     foreach ($title in $titles) {
         if ($title -notmatch '^PPSA\d{5}$') { throw "Unknown foreground title: $title" }
         $state = Get-ShadowMountTitleState -Text $Text -TitleId $title
@@ -35,14 +44,20 @@ if ($SelfTest) {
     Assert-IdleTitleLog "$started`n[KSTUFF] game stopped: PPSA99004 pid=1"
     Assert-IdleTitleLog "$started`n$released`n$started`n$released"
     Assert-IdleTitleLog "$started`n$released`n[GAME] started: PPSA99005 pid=2`n[LINK] runtime layers released: PPSA99005"
+    Assert-IdleTitleLog '' -OwnerConfirmedIdle
+    Assert-IdleTitleLog '[WATCHER] started' -OwnerConfirmedIdle
     foreach ($bad in @('', $started, "$released`n$started",
             "$started`n[MDBG] PPSA99004 crashed now",
             "$started`n$released`n$started",
             "$started`n$released`n[GAME] started: PPSA99005 pid=2",
-            '[GAME] started: UNKNOWN pid=1')) {
-        $rejected = $false
-        try { Assert-IdleTitleLog $bad } catch { $rejected = $true }
-        if (-not $rejected) { throw "Unsafe foreground log was accepted: $bad" }
+            '[GAME] started: UNKNOWN pid=1', '[GAME] started: PPSA99004',
+            '[MDBG] PPSA99004 crashed now', '[MDBG] crash-candidate: PPSA99004 pid=1')) {
+        foreach ($confirmed in @($false, $true)) {
+            if ($bad -eq '' -and $confirmed) { continue }
+            $rejected = $false
+            try { Assert-IdleTitleLog $bad -OwnerConfirmedIdle:$confirmed } catch { $rejected = $true }
+            if (-not $rejected) { throw "Unsafe foreground log was accepted: $bad" }
+        }
     }
     Write-Host 'foreground-idle: self-test PASS'
     return
@@ -67,5 +82,5 @@ if ($LASTEXITCODE -ne 0 -or -not $snapshotWsl) { throw 'Could not resolve foregr
     "ftp://${Ps5Host}:2121/data/shadowmount/debug.log" --output $snapshotWsl
 if ($LASTEXITCODE -ne 0) { throw "Could not read foreground state; inspect $snapshot" }
 Assert-OwnedLock
-Assert-IdleTitleLog (Get-Content -LiteralPath $snapshot -Raw)
+Assert-IdleTitleLog (Get-Content -LiteralPath $snapshot -Raw) -OwnerConfirmedIdle:$OwnerConfirmedIdle
 Write-Host "PS5_FOREGROUND_IDLE evidence=$snapshot"
