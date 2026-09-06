@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <EGL/egl.h>
@@ -211,6 +212,10 @@ cleanup:
 int
 main(void)
 {
+#ifdef PS5_GLSL_TRACE
+   if (setenv("PSBC_DEBUG_NIR", "1", 1) || setenv("PSBC_DEBUG_IO", "1", 1))
+      return 1;
+#endif
    static const char *math_vertex_source =
       "#version 330 core\n"
       "layout(location=0) in vec2 a_position;\n"

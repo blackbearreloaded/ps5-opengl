@@ -36,6 +36,8 @@ unchanged GLSL and all four fault checks pass Zink over software Vulkan, which
 `test-glsl` selects by default. This does not count as PS5 evidence. The old
 suite's non-portable EGL profile query was replaced with the standard GL query.
 
+- 2026-09-06 | G5 | f86b1fd | failed: math/texture pass; first PrimitiveID saturates red, user inputs pass; healthy teardown/unlock | results/glsl-primitive-id/155220 | NIR/linkage trace
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

@@ -1548,6 +1548,9 @@ egl_public_core33_glsl330.o: egl_public_triangle.c
 egl_public_core33_glsl_suite.o: egl_public_core33_glsl_suite.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_glsl_trace.o: egl_public_core33_glsl_suite.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_GLSL_TRACE=1 -c -o $@ $<
+
 egl_public_core33_visible_animation.o: egl_public_core33_visible_animation.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
@@ -2115,6 +2118,7 @@ clean:
 		egl_public_core33_depth_clamp.o egl_public_glsl330.elf \
 		egl_public_glsl330.o egl_public_core33_glsl330.o \
 		egl_public_core33_glsl_suite.o \
+		egl_public_core33_glsl_trace.o \
 		egl_public_core33_visible_animation.o \
 		egl_public_packed_vertex.elf \
 		egl_public_packed_vertex.o
