@@ -26,7 +26,7 @@ code = r'''
 #include "psbc_compile.h"
 #define PS5_ENABLE_CORE_RENDER_FORMATS_CANDIDATE 1
 struct ps5_fragment_exports { uint32_t formats, int8_mask, int10_mask, color_mask; };
-''' + "static bool\n" + function("ps5_core_render_target_format") + "\nstatic uint32_t\n" + function("ps5_color_target_info") + "\nstatic struct ps5_fragment_exports\n" + function("ps5_fragment_exports_for_framebuffer") + r'''
+''' + "static bool\n" + function("ps5_core_render_target_format") + "\nstatic uint32_t\n" + function("ps5_color_target_info") + "\nstatic struct ps5_fragment_exports\n" + function("ps5_fragment_exports_for_framebuffer") + "\nstatic bool\n" + function("ps5_lower_fragment_color") + r'''
 static unsigned export_format(const PsbcShaderOutput *out) {
     for (unsigned i = 0; i < out->metadata.context_register_count; ++i)
         if (out->metadata.context_registers[i].offset == 0x1c5)
@@ -68,6 +68,28 @@ static void compile(const struct pipe_framebuffer_state *fb, unsigned expected,
     assert(!out.machine_code);
     ralloc_free(b.shader);
 }
+static void compile_legacy_clear(bool lowered, unsigned mask, unsigned formats, unsigned expected) {
+    nir_builder b = nir_builder_init_simple_shader(
+        MESA_SHADER_FRAGMENT, psbc_get_nir_options(PSBC_STAGE_FRAGMENT), "legacy-clear");
+    nir_variable *color = nir_variable_create(b.shader, nir_var_shader_out, glsl_vec4_type(), "color");
+    color->data.location = FRAG_RESULT_COLOR;
+    nir_store_var(&b, color, nir_imm_vec4(&b, 0.25f, 0.5f, 0.75f, 1.0f), 15);
+    if (lowered) nir_lower_io_passes(b.shader, false);
+    nir_shader_gather_info(b.shader, nir_shader_get_entrypoint(b.shader));
+    nir_shader_instructions_pass(b.shader, ps5_lower_fragment_color, nir_metadata_control_flow, &mask);
+    nir_shader_gather_info(b.shader, nir_shader_get_entrypoint(b.shader));
+    PsbcCompileOptions options = {.target=PSBC_TARGET_PS5, .stage=PSBC_STAGE_FRAGMENT,
+        .optimise=true, .spi_shader_col_format=formats};
+    PsbcShaderOutput out;
+    assert(psbc_compile_nir(b.shader, &options, &out) == PSBC_RESULT_OK);
+    /* Negative control: the unlowered helper has no explicit color export. */
+    assert(export_format(&out) == expected);
+    assert(b.shader->info.outputs_written == (lowered
+        ? (uint64_t)mask << FRAG_RESULT_DATA0 : BITFIELD64_BIT(FRAG_RESULT_COLOR)));
+    printf("legacy-clear normalized=%u mask=%x bytes=%zu\n", lowered, mask, out.machine_code_size);
+    psbc_free_output(&out);
+    ralloc_free(b.shader);
+}
 int main(void) {
     static const struct { enum pipe_format format; unsigned export, int8, int10; } cases[] = {
         {PIPE_FORMAT_R8G8B8A8_UNORM, 4, 0, 0},
@@ -89,6 +111,10 @@ int main(void) {
     struct pipe_framebuffer_state fb = {.nr_cbufs = 1};
     fb.cbufs[0].texture = &target;
     psbc_init();
+    compile_legacy_clear(false, 1, 4, 0);
+    compile_legacy_clear(true, 1, 4, 4);
+    /* PSBC compacts SPI format nibbles, while logical output semantics stay sparse. */
+    compile_legacy_clear(true, 6, 0x440, 0x44);
     for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
         fb.cbufs[0].format = cases[i].format;
         struct ps5_fragment_exports key = ps5_fragment_exports_for_framebuffer(&fb);
@@ -131,4 +157,5 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run([executable], check=True)
 for field in ("formats", "int8_mask", "int10_mask", "color_mask"):
     assert f"variant->exports.{field} == exports->{field}" in source
-print("PASS: 14 target formats, narrow integer masks, mixed MRT, dual-source precision, invalid keys")
+assert "nir_lower_io_passes(converted.ir.nir, false);" in source
+print("PASS: 14 formats, integer/MRT/dual-source exports, invalid keys, lowered legacy helper outputs")

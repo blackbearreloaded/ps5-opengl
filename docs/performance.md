@@ -48,3 +48,4 @@ submission. Release the exact token before offline analysis/building.
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
 - G2 candidate: full single-target RGBA8 GPU clears via Mesa u_blitter; driver synchronization unchanged. Not yet hardware-validated.
 - 2026-09-06 | G2 | d0c55ef | failed before GPU submission: helper TGSI rejected; clean teardown/health | results/gpu-clear | add Mesa TGSI-to-NIR adapter
+- 2026-09-06 | G2 | 791574e | failed pixel check: helper IO lacked explicit color output; healthy teardown | results/gpu-clear-tgsi | normalize helper IO

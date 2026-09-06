@@ -96,10 +96,14 @@ enum { PIPE_SHADER_IR_TGSI, PIPE_SHADER_IR_NIR, PSBC_STAGE_GEOMETRY = 3 };
 struct pipe_shader_state { int type; const void *tokens; struct { void *nir; } ir;
     struct { unsigned num_outputs; } stream_output; };
 static unsigned conversions;
+static unsigned normalizations;
 static int conversion_fails;
 static void *tgsi_to_nir(const void *tokens, void *screen, bool cache) {
     assert(tokens && screen && !cache); ++conversions;
     return conversion_fails ? NULL : screen;
+}
+static void nir_lower_io_passes(void *nir, bool renumber) {
+    assert(nir && !renumber); ++normalizations;
 }
 static bool adapt(const struct pipe_shader_state *templ, int stage) {
     int sentinel;
@@ -124,6 +128,7 @@ static void test_adapter(void) {
     state.tokens = NULL;
     assert(!adapt(&state, 1) && conversions == 3);
     assert(!adapt(NULL, 1));
+    assert(normalizations == 2);
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

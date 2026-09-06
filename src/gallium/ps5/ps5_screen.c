@@ -8913,6 +8913,8 @@ ps5_create_shader_state(struct pipe_screen *screen,
       converted = *templ;
       converted.type = PIPE_SHADER_IR_NIR;
       converted.ir.nir = tgsi_to_nir(templ->tokens, screen, false);
+      if (converted.ir.nir)
+         nir_lower_io_passes(converted.ir.nir, false);
       templ = &converted;
    }
 
