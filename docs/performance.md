@@ -244,6 +244,14 @@ Runtime configuration changes now invalidate local objects automatically,
 including switching experimental flags off; identical settings remain cached.
 This removes the manual force-rebuild requirement described by earlier cases.
 
+G4 baseline (`af98e68`): 334 probes and 24 measured frames passed. At 1080p,
+1/8/32 cubes measured 20.93/6.00/1.76 FPS (47.79/166.65/567.06 ms/frame).
+Clear was 18–20 ms and swap ~16 ms; drawing grew from 13 to 531 ms. Receipt:
+`results/cubes-control/PPSA99005-20260906-124439-opengl.log`; frozen artifact:
+`build/frozen/cubes-control/manifest.md`. Title teardown/health/unlock passed.
+Next compare standard instancing against ordinary calls in the same app;
+the existing driver supports it, with no new runtime behavior required.
+
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
 - G2 scope: full single-target RGBA8 GPU clears via Mesa u_blitter; driver synchronization unchanged. Other cases retain CPU fallbacks.

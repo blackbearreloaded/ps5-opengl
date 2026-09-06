@@ -32,7 +32,7 @@ or a guarantee that every desktop application will run unchanged.
 | [ImGui TV demo](examples/core33-imgui/README.md#g10-visible-tv-demo) | Readable 1080p UI, animated shapes, gamepad navigation | TV-confirmed; 2,851 frames over five minutes |
 | [NanoVG](examples/core33-nanovg/README.md) | Its upstream GL3 vector renderer | 45 pixel probes; zero dirty stencil pixels |
 | [Sokol](examples/core33-sokol/README.md) | Its GL backend through public OpenGL | 1,843,200 component comparisons; zero mismatches |
-| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, 1/8/32 ordinary draws | Host oracle/fault checks; native timing candidate |
+| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, 1/8/32 ordinary draws | Native probes/timings passed; see performance report |
 
 The TV demo currently measures approximately **9.5 FPS**. Its 30 FPS setting is
 a pacing ceiling, not achieved performance. Controller connection was recorded;
