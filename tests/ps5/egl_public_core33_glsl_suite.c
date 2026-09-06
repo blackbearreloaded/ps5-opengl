@@ -8,6 +8,10 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/gl.h>
 
+#ifndef PS5_GLSL_HOST_REFERENCE
+int ps5_egl_current_draw_status(unsigned *draw_calls);
+#endif
+
 #define WIDTH 1920
 #define HEIGHT 1080
 #define SIZE 64
@@ -96,8 +100,16 @@ read_oracle(uint32_t expected, uint32_t expected_hash, uint32_t *pixels,
    unsigned matching = 0, different[4] = {0}, first_bad = SIZE * SIZE;
    GLenum error;
    uint32_t hash;
+   int draw_status = 0;
 
    glFinish();
+#ifndef PS5_GLSL_HOST_REFERENCE
+   unsigned draw_calls = 0;
+   draw_status = ps5_egl_current_draw_status(&draw_calls);
+   if (draw_status || getenv("PSBC_DEBUG_IO"))
+      printf("[ps5-egl-core33-glsl-suite] %s draw-status=%d calls=%u\n",
+             name, draw_status, draw_calls);
+#endif
    glReadPixels((WIDTH - SIZE) / 2, (HEIGHT - SIZE) / 2,
                 SIZE, SIZE, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
    error = glGetError();
@@ -118,7 +130,7 @@ read_oracle(uint32_t expected, uint32_t expected_hash, uint32_t *pixels,
              different[0], different[1], different[2], different[3],
              first_bad % SIZE, first_bad / SIZE, pixels[first_bad]);
    return matching == SIZE * SIZE && hash == expected_hash &&
-          error == GL_NO_ERROR;
+          error == GL_NO_ERROR && draw_status == 0;
 }
 
 static int
