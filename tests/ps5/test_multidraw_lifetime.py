@@ -1,8 +1,60 @@
 #!/usr/bin/env python3
 """Compile the actual batch retirement code with deterministic failure injection."""
 from pathlib import Path
+import json
+import re
 import subprocess
+import sys
 import tempfile
+
+
+def audit(text):
+    """Pixel success alone cannot prove that the optimized path ran."""
+    matches = list(re.finditer(r"\[ps5-multidraw\] mode=(\d+) serial_ns=(\d+) batch_ns=(\d+) pixels=6912 PASS", text))
+    assert len(matches) == text.count("[ps5-multidraw] mode=") == 4, "Missing/duplicate mode results"
+    result, start = [], 0
+    for mode, match in enumerate(matches):
+        actual_mode, serial, batch = map(int, match.groups())
+        assert actual_mode == mode and serial > 0 and batch > 0
+        section = text[start:match.start()]
+        chunks = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=(\d+)", section)
+        assert len(chunks) == section.count("[ps5-multidraw-batch]") == 2, "Two native chunks required per mode"
+        assert sum(int(c[0]) for c in chunks) == 10, "Every nonzero subdraw must be submitted"
+        for draws, attempted, waits, status in chunks:
+            assert 0 < int(draws) <= 8 and draws == attempted and int(waits) < 2000 and status == "0"
+        assert len(re.findall(r"\[ps5-gallium\] multi-draw-batched draws=(?:10|11) result=0", section)) == 1
+        assert section.count("multi-draw-batched") == 1
+        result.append({"mode": mode, "serial_ms": serial / 1e6, "batch_ms": batch / 1e6,
+                       "single_sample_ratio": serial / batch})
+        start = match.end()
+    assert text.count("[ps5-multidraw-batch]") == 8 and text.count("multi-draw-batched") == 4
+    for marker in ("[ps5-multidraw] completed=4 cleanup=1 result=0",
+                   "[pss-opengl-native] gate completed status=0"):
+        assert text.count(marker) == 1, "Missing/duplicate completion"
+    return result
+
+
+if len(sys.argv) == 2:
+    print(json.dumps(audit(Path(sys.argv[1]).read_text()), indent=2))
+    raise SystemExit
+assert len(sys.argv) == 1
+sample = "".join(
+    "[ps5-multidraw-batch] draws=7 attempted=7 waits=1 result=0\n"
+    "[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0\n"
+    "[ps5-gallium] multi-draw-batched draws=11 result=0\n"
+    f"[ps5-multidraw] mode={mode} serial_ns=2000000 batch_ns=1000000 pixels=6912 PASS\n"
+    for mode in range(4))
+sample += "[ps5-multidraw] completed=4 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
+assert len(audit(sample)) == 4
+for bad in (sample.replace("[ps5-multidraw-batch]", "[unused]"), sample.replace("attempted=7", "attempted=6", 1),
+            sample.replace("waits=1", "waits=2000", 1), sample.replace("result=0", "result=1", 1),
+            sample.replace("cleanup=1", "cleanup=0"), sample + "[ps5-multidraw-batch] malformed"):
+    try:
+        audit(bad)
+    except AssertionError:
+        continue
+    raise AssertionError("Invalid or unbatched receipt accepted")
+print("PASS: receipt audit rejects unbatched, incomplete and failed runs")
 
 root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()

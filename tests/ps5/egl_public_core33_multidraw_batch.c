@@ -73,7 +73,7 @@ int main(void)
    EGLSurface surface = EGL_NO_SURFACE;
    EGLConfig config;
    EGLint count = 0;
-   GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, ebo = 0;
+   GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, ebo = 0, fbo = 0, color = 0;
    int current = 0, passed = 0, clean = 1;
    unsigned completed = 0;
    GLint first[DRAWS], base[DRAWS];
@@ -88,6 +88,13 @@ int main(void)
    if (context == EGL_NO_CONTEXT || surface == EGL_NO_SURFACE ||
        !eglMakeCurrent(display, surface, surface, context)) goto cleanup;
    current = 1;
+   /* The PS5 EGL pbuffer has a depth/stencil attachment even when unused.
+    * Use an explicit color-only FBO to exercise the narrow batching contract. */
+   glGenFramebuffers(1, &fbo); glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+   glGenRenderbuffers(1, &color); glBindRenderbuffer(GL_RENDERBUFFER, color);
+   glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, WIDTH, HEIGHT);
+   glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, color);
+   if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) goto cleanup;
    vs = shader(GL_VERTEX_SHADER, "#version 330 core\nlayout(location=0) in vec2 p;"
       "layout(location=1) in vec4 c; out vec4 color; void main(){gl_Position=vec4(p,0,1); color=c;}");
    fs = shader(GL_FRAGMENT_SHADER, "#version 330 core\nin vec4 color; uniform vec4 tint;"
@@ -167,6 +174,9 @@ cleanup:
       if (program) glDeleteProgram(program);
       if (vs) glDeleteShader(vs);
       if (fs) glDeleteShader(fs);
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      if (fbo) glDeleteFramebuffers(1, &fbo);
+      if (color) glDeleteRenderbuffers(1, &color);
       clean &= glGetError() == GL_NO_ERROR;
    }
    if (display != EGL_NO_DISPLAY) {

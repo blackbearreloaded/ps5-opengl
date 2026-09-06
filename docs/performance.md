@@ -184,6 +184,13 @@ software Mesa validates the pixel oracle. CPU call timings are preliminary
 single samples, not a benchmark. This does not yet accelerate separate ImGui
 draw calls or transfer the historical CTS results to this candidate.
 
+The first native gate used the default EGL pbuffer, which supplies an unused
+depth/stencil attachment and correctly excludes batching. Its 27,648 pixels
+passed but no batch ran. The successor uses an explicit color-only RGBA8 FBO;
+audit with `python3 tests/ps5/test_multidraw_lifetime.py RECEIPT` to require native
+chunks as well as pixel success. Keep the original frozen app as the exclusion
+control; the driver/runtime is unchanged between these two app builds.
+
 ## Milestones
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
@@ -200,3 +207,4 @@ draw calls or transfer the historical CTS results to this candidate.
 - 2026-09-06 | G3 | 6e36f33 app / 5ad81b4 runner | pass: 1,260 draws, poll 15.433 ms/call, ~14 sleeps/call; submit 0.007 ms, suspend 0.006 ms; clean teardown/health | results/draw-wait-owner-confirmed/105943
 - 2026-09-06 | G3 | 75c0e19 | batching probe built/host-tested; no-run: PPSA02121 restarted at 11:17:54; no upload/launch, healthy services, lock released | results/submit-batch-probe
 - 2026-09-06 | G3 | 75c0e19 | pass: 73,728 pixels; 1/2/8 draws wait 15.399/15.432/15.458 ms median; clean teardown/health, lock released | results/submit-batch-probe/112328
+- 2026-09-06 | G3 | 9fd90a5 | partial-pass: 27,648 pixels, clean teardown/health; EGL depth attachment excluded batching | results/multidraw-batch/120153 | use color-only FBO
