@@ -109,6 +109,13 @@ The optional legacy public-triangle text audit still names the removed
 Next: the focused CTS smoke batch, including geometry/transform-feedback routes.
 The installed SDK and historical acceptance remain unchanged.
 
+- 2026-09-06 | G5 | 68f0f50 | partial: focused CTS 46/51 Pass, five GS transform-feedback failures; complete ordered QPA, no device loss, clean teardown/services/unlock | results/cts-geometry-lds-smoke/185151
+
+All five are pre-submit `-10` rejections: their GS generates vertices without ES
+inputs, so RADV correctly assigns output base zero. The new nonzero guard was
+too strict. The successor accepts that valid value while retaining slot/range
+checks; a real zero-input GS reproduces the rejection offline. Compiler unchanged.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

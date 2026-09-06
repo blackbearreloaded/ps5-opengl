@@ -6551,12 +6551,10 @@ ps5_draw_vbo_locked(struct pipe_context *base,
    vertex_metadata = &vertex_output->metadata;
    if (vertex_metadata->hardware_stage == PSBC_HW_STAGE_NGG) {
       /* RADV's NGG ABI places GS outputs after the ES input ring in LDS.
-       * Zero here aliases the two regions even when submission completes. */
+       * The compiler legitimately returns zero when the GS reads no ES inputs. */
       if (!vertex_metadata->ngg_lds_layout_valid ||
           vertex_metadata->ngg_lds_layout_user_data_dword >= user_data_count ||
-          vertex_metadata->ngg_lds_layout > UINT16_MAX ||
-          (vertex_metadata->source_stage == PSBC_STAGE_GEOMETRY &&
-           !vertex_metadata->ngg_lds_layout)) {
+          vertex_metadata->ngg_lds_layout > UINT16_MAX) {
          context->last_draw_status = -10;
          return;
       }
