@@ -46,8 +46,9 @@ make imgui-demo
 
 Source fetch checks immutable commits and the Mesa archive hash. Unexpected
 revisions or tracked edits are rejected, not reset. PSBC changes are supplied as
-one patch over public commit `a92a1228`; the resulting Git tree must be
-`51dcd101eb3235e6d650af5e3ee40e1a449035fc`, matching the validated compiler sources.
+one patch over public commit `a92a1228`; the resulting Git tree must match
+`psbc_patch.patched_tree` in `dependencies.json`. This performance branch includes
+a compiler candidate; it does not inherit the historical validation campaign.
 The local research commit `a11c1925` is provenance, not a remote prerequisite.
 
 The Mesa patch is checked before application. `make sdk` builds host and PS5

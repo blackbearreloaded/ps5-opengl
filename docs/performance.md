@@ -291,12 +291,21 @@ GPU's interpolated coordinates. It preserves normals/lighting and the flat
 material input. Use `summarize-cubes.py --uv`; its receipts are explicitly not
 accepted as texture validation. Host reference must pass before a native case.
 
-- 2026-09-06 | G4 | 249963d | failed: U becomes zero on instances 1/5; V/material intact; ordinary pass, healthy teardown/unlock | results/cubes-uv/134227 | compiler IO/NIR trace
+- 2026-09-06 | G4 | 249963d | failed: encoded U is zero on instances 1/5 (RGBA8 clamps negatives); V/material intact; ordinary pass, healthy teardown/unlock | results/cubes-uv/134227 | compiler IO/NIR trace
 
 UV output confirms the corruption precedes texture access. The trace successor
 changes diagnostics only, not shaders/rendering. Both native log streams now
 append after initial truncation: stdout previously could overwrite stderr's
 compiler diagnostics. A host test reproduces the old loss and verifies retention.
+
+- 2026-09-06 | G4 | ce9adb5 | failed: same UV probes, complete NIR/IO receipt; healthy teardown/unlock | results/cubes-trace/135443 | isolate unused implicit PrimitiveID export
+
+The standalone NGG compiler conservatively exports PrimitiveID with no fragment
+consumer attached. This scene does not read it. The next candidate omits only
+that implicit export when the bound FS proves it unused, includes that choice
+in the VS cache key, and preserves explicit outputs/unknown consumers. Real
+NIR/ACO host checks precede hardware. This is a hypothesis, not a confirmed fix;
+the instanced benchmark remains a release blocker.
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline

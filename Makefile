@@ -52,4 +52,5 @@ test-compiler:
 	python3 tools/fetch-sources.py --verify-psbc
 	python3 tests/ps5/test_fragment_exports.py
 	python3 tests/ps5/test_meta_vertex_inputs.py
+	python3 tests/ps5/test_unused_primitive_export.py
 	python3 tests/ps5/test_geometry_texture_bindings.py

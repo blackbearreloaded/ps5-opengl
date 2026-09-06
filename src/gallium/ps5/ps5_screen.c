@@ -222,6 +222,7 @@ struct ps5_shader_variant {
    bool provoking_vtx_last;
    bool alpha_to_one;
    bool poly_line_smooth;
+   bool omit_implicit_primitive_id;
    PsbcShaderOutput output;
    PsbcShaderOutput streamout_output;
    uint8_t *package;
@@ -317,6 +318,7 @@ ps5_select_shader_variant(struct ps5_shader *shader, uint32_t address32_hi,
                           uint32_t primitive_type,
                           bool provoking_vtx_last, bool alpha_to_one,
                           bool poly_line_smooth,
+                          bool omit_implicit_primitive_id,
                           const struct ps5_fragment_exports *exports);
 static bool
 ps5_select_geometry_pipeline(struct ps5_context *context,
@@ -6444,7 +6446,12 @@ ps5_draw_vbo_locked(struct pipe_context *base,
           context->vs, (uint32_t)((uintptr_t)descriptor_resource->data >> 32),
           &vertex_layout, primitive_type,
           context->rasterizer && !context->rasterizer->flatshade_first,
-          false, false, NULL)) {
+          false, false,
+          !context->gs &&
+             !(context->fs->nir->info.inputs_read & VARYING_BIT_PRIMITIVE_ID) &&
+             !BITSET_TEST(context->fs->nir->info.system_values_read,
+                          SYSTEM_VALUE_PRIMITIVE_ID),
+          NULL)) {
       context->last_draw_status = -14;
       return;
    }
@@ -6475,7 +6482,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
           provoking_vtx_last,
           sample_count > 1 && context->rasterizer &&
              context->rasterizer->multisample && graphics.alpha_to_one,
-          poly_line_smooth, &fragment_exports)) {
+          poly_line_smooth, false, &fragment_exports)) {
       context->last_draw_status = -14;
       return;
    }
@@ -8653,6 +8660,7 @@ ps5_select_shader_variant(struct ps5_shader *shader, uint32_t address32_hi,
                           uint32_t primitive_type,
                           bool provoking_vtx_last, bool alpha_to_one,
                           bool poly_line_smooth,
+                          bool omit_implicit_primitive_id,
                           const struct ps5_fragment_exports *exports)
 {
    const struct ps5_fragment_exports no_exports = {.color_mask = 1};
@@ -8673,6 +8681,7 @@ ps5_select_shader_variant(struct ps5_shader *shader, uint32_t address32_hi,
           variant->provoking_vtx_last == provoking_vtx_last &&
           variant->alpha_to_one == alpha_to_one &&
           variant->poly_line_smooth == poly_line_smooth &&
+          variant->omit_implicit_primitive_id == omit_implicit_primitive_id &&
           variant->exports.formats == exports->formats &&
           variant->exports.int8_mask == exports->int8_mask &&
           variant->exports.int10_mask == exports->int10_mask &&
@@ -8691,6 +8700,7 @@ ps5_select_shader_variant(struct ps5_shader *shader, uint32_t address32_hi,
    variant->provoking_vtx_last = provoking_vtx_last;
    variant->alpha_to_one = alpha_to_one;
    variant->poly_line_smooth = poly_line_smooth;
+   variant->omit_implicit_primitive_id = omit_implicit_primitive_id;
    variant->exports = *exports;
    if (!ps5_shader_compile_options(shader, address32_hi, layout,
                                    primitive_type, provoking_vtx_last,
@@ -8699,6 +8709,7 @@ ps5_select_shader_variant(struct ps5_shader *shader, uint32_t address32_hi,
       return false;
    }
    options.spi_shader_col_format = exports->formats;
+   options.omit_implicit_primitive_id = omit_implicit_primitive_id;
    options.color_is_int8 = exports->int8_mask;
    options.color_is_int10 = exports->int10_mask;
    if (poly_line_smooth ||
@@ -9122,7 +9133,7 @@ ps5_create_shader_state(struct pipe_screen *screen,
    }
    if (stage != PSBC_STAGE_GEOMETRY &&
        !ps5_select_shader_variant(shader, address32_hi, &layout, 0, false,
-                                  false, false, NULL)) {
+                                  false, false, false, NULL)) {
       ralloc_free(shader->nir);
       free(shader);
       return NULL;
