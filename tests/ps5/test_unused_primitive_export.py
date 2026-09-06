@@ -5,6 +5,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+screen = (ROOT / "src/gallium/ps5/ps5_screen.c").read_text()
+start = screen.index("   if (vertex_metadata->hardware_stage == PSBC_HW_STAGE_NGG)")
+ngg_setup = screen[start:screen.index("   if (vertex_metadata->clip_distance_mask", start)]
 code = r'''
 #include <assert.h>
 #include <stdio.h>
@@ -15,6 +18,12 @@ code = r'''
 #include "psbc_compile.h"
 #include "ps5_agc_package.h"
 
+static bool native_ngg_data(const PsbcShaderMetadata *vertex_metadata,
+                            uint32_t *user_data, unsigned user_data_count) {
+    struct { int last_draw_status; } state = {0}, *context = &state;
+''' + ngg_setup.replace("return;", "return false;") + r'''
+    return true;
+}
 static unsigned config(const PsbcShaderOutput *out, unsigned offset) {
     for (unsigned i = 0; i < out->metadata.context_register_count; ++i)
         if (out->metadata.context_registers[i].offset == offset)
@@ -80,6 +89,9 @@ static void check(unsigned varyings, bool explicit_id, bool last) {
         PsbcShaderOutput out;
         assert(psbc_compile_nir(b.shader, &options, &out) == PSBC_RESULT_OK);
         assert(out.machine_code_size && out.metadata.hardware_stage == PSBC_HW_STAGE_NGG);
+        uint32_t data[32] = {0};
+        assert(native_ngg_data(&out.metadata, data, out.metadata.user_sgpr_count));
+        assert(data[out.metadata.ngg_lds_layout_user_data_dword] == out.metadata.ngg_lds_layout);
         unsigned state = config(&out, 0x1b1);
         bool implicit_id = !explicit_id && i != 1;
         unsigned params = varyings + explicit_id + implicit_id;
@@ -186,8 +198,80 @@ static void consumer(unsigned varyings, bool mixed) {
     }
     ralloc_free(b.shader);
 }
+static void geometry(void) {
+    nir_builder v = nir_builder_init_simple_shader(MESA_SHADER_VERTEX,
+        psbc_get_nir_options(PSBC_STAGE_VERTEX), "geometry-lds-producer");
+    nir_builder g = nir_builder_init_simple_shader(MESA_SHADER_GEOMETRY,
+        psbc_get_nir_options(PSBC_STAGE_GEOMETRY), "geometry-lds-consumer");
+    v.shader->info.io_lowered = g.shader->info.io_lowered = true;
+    g.shader->info.gs.input_primitive = MESA_PRIM_TRIANGLES;
+    g.shader->info.gs.output_primitive = MESA_PRIM_TRIANGLE_STRIP;
+    g.shader->info.gs.vertices_in = g.shader->info.gs.vertices_out = 3;
+    g.shader->info.gs.invocations = 1;
+    g.shader->info.gs.active_stream_mask = 1;
+    nir_def *vz = nir_imm_int(&v, 0), *gz = nir_imm_int(&g, 0);
+    nir_def *position = nir_load_input(&v, 4, 32, vz,
+        .dest_type=nir_type_float32,
+        .io_semantics={.location=VERT_ATTRIB_GENERIC0, .num_slots=1});
+    nir_store_output(&v, position, vz, .src_type=nir_type_float32,
+        .io_semantics={.location=VARYING_SLOT_POS, .num_slots=1});
+    for (unsigned i = 0; i < 3; ++i) {
+        nir_def *p = nir_load_per_vertex_input(&g, 4, 32, nir_imm_int(&g, i), gz,
+            .dest_type=nir_type_float32,
+            .io_semantics={.location=VARYING_SLOT_POS, .num_slots=1});
+        nir_store_output(&g, p, gz, .src_type=nir_type_float32,
+            .io_semantics={.location=VARYING_SLOT_POS, .num_slots=1});
+        nir_store_output(&g, p, gz, .base=1, .src_type=nir_type_float32,
+            .io_semantics={.location=VARYING_SLOT_VAR0, .num_slots=1});
+        nir_emit_vertex(&g, 0);
+    }
+    nir_end_primitive(&g, 0);
+    nir_shader_gather_info(v.shader, nir_shader_get_entrypoint(v.shader));
+    nir_shader_gather_info(g.shader, nir_shader_get_entrypoint(g.shader));
+    PsbcCompileOptions options = {.target=PSBC_TARGET_PS5, .stage=PSBC_STAGE_GEOMETRY,
+        .optimise=true, .ngg=true, .primitive_type=4, .address32_hi=2,
+        .vertex_attribute_count=1,
+        .vertex_attributes={{.location=0, .binding=0,
+            .format=PSBC_VERTEX_FORMAT_R32G32B32A32_FLOAT, .stride=16, .alignment=16}}};
+    PsbcShaderOutput out;
+    assert(psbc_compile_nir_geometry_pipeline(v.shader, g.shader, &options, &out) == PSBC_RESULT_OK);
+    const PsbcShaderMetadata *m = &out.metadata;
+    assert(m->base_vertex_valid && m->vertex_buffer_table_valid);
+    unsigned supplied = (1u << m->base_vertex_user_data_dword) |
+                        (1u << m->vertex_buffer_table_user_data_dword);
+    assert(m->ngg_lds_layout_valid && m->ngg_lds_layout_user_data_dword < m->user_sgpr_count);
+    assert(!(supplied & (1u << m->ngg_lds_layout_user_data_dword)));
+    supplied |= 1u << m->ngg_lds_layout_user_data_dword;
+    /* Four components plus the bank-conflict padding dword per ES vertex. */
+    unsigned es_vertices = G_028A44_ES_VERTS_PER_SUBGRP(config(&out, 0x291));
+    assert(m->ngg_lds_layout >= es_vertices * 20 && m->ngg_lds_layout <= UINT16_MAX);
+    unsigned lds_bytes = 0;
+    for (unsigned i = 0; i < m->shader_register_count; ++i)
+        if (m->shader_registers[i].offset == 0x8b)
+            lds_bytes = G_00B22C_LDS_SIZE(m->shader_registers[i].value) * 512;
+    assert(lds_bytes > m->ngg_lds_layout);
+    uint32_t data[32] = {0};
+    assert(native_ngg_data(m, data, m->user_sgpr_count));
+    assert(data[m->ngg_lds_layout_user_data_dword] == m->ngg_lds_layout);
+    for (unsigned fault = 0; fault < 4; ++fault) {
+        PsbcShaderMetadata bad = *m;
+        if (fault == 0) bad.ngg_lds_layout_valid = false;
+        if (fault == 1) bad.ngg_lds_layout_user_data_dword = m->user_sgpr_count;
+        if (fault == 2) bad.ngg_lds_layout = UINT16_MAX + 1u;
+        if (fault == 3) bad.ngg_lds_layout = 0;
+        memset(data, 0, sizeof(data));
+        assert(!native_ngg_data(&bad, data, m->user_sgpr_count));
+        for (unsigned j = 0; j < 32; ++j) assert(data[j] == 0);
+    }
+    fprintf(stderr, "geometry LDS: user-sgprs=%u supplied-mask=%x\n", m->user_sgpr_count, supplied);
+    assert(supplied == (1u << m->user_sgpr_count) - 1);
+    psbc_free_output(&out);
+    ralloc_free(v.shader);
+    ralloc_free(g.shader);
+}
 int main(void) {
     psbc_init();
+    geometry();
     for (unsigned i = 0; i <= 2; ++i)
         for (unsigned last = 0; last < 2; ++last) { check(i, false, last); check(i, true, last); }
     for (unsigned i = 0; i <= 2; ++i) {
@@ -224,4 +308,7 @@ assert "variant->primitive_id_per_primitive = primitive_id_per_primitive" in sou
 assert "options.primitive_id_per_primitive = primitive_id_per_primitive" in source
 assert "!(context->fs->nir->info.inputs_read & VARYING_BIT_PRIMITIVE_ID)" in source
 assert "SYSTEM_VALUE_PRIMITIVE_ID)" in source
+assert "user_data[vertex_metadata->ngg_lds_layout_user_data_dword] =" in source
+assert "vertex_metadata->ngg_lds_layout_user_data_dword >= user_data_count" in source
+assert "vertex_metadata->ngg_lds_layout > UINT16_MAX" in source
 print("PASS: PrimitiveID exports/consumers, mixed interpolation, provoking vertex, packages, cache keys")

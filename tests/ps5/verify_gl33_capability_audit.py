@@ -1073,7 +1073,7 @@ require("-DHAVE_FUNC_ATTRIBUTE_PACKED=1" in PSBC_HOST_CONFIG,
         "host PSBC build lost the shared packed-NIR ABI")
 require('--verify-psbc' in PSBC_PS5_BUILD and
         json.loads((ROOT / 'dependencies.json').read_text())['psbc_patch']['patched_tree'] ==
-        '1f4892f8ad0b27bb5ae5215cadbb0f579ca5515f',
+        '7bd3e7743ba8d9b44f378ee1236e749211ff843d',
         "PS5 compiler archive is not pinned to the expected source tree")
 require("-DOPENGNM_PSBC_ORBIS=1" in PSBC_PS5_CONFIG and
         "defined(OPENGNM_PSBC_ORBIS)" in ACO_ISEL_HELPERS and
@@ -1411,7 +1411,7 @@ require("egl_public_core33_raster_semantics.o:" in MAKEFILE and
         "Core 3.3 raster semantics gate regressed")
 
 require("info->instance_count != 1" not in SCREEN and
-        "#define PSBC_SHADER_METADATA_VERSION 7u" in PSBC_H and
+        "#define PSBC_SHADER_METADATA_VERSION 8u" in PSBC_H and
         "uint32_t         instance_divisor;" in PSBC_H and
         "bool                 start_instance_valid;" in PSBC_H and
         "gfx_state.vi.instance_rate_inputs" in PSBC_C and

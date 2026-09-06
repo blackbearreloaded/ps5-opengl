@@ -778,7 +778,7 @@ require("bool                 base_vertex_valid;" in PSBC_HEADER and
         "bool                 start_instance_valid;" in PSBC_HEADER and
         "uint32_t             start_instance_user_data_dword;" in PSBC_HEADER and
         "uint32_t         instance_divisor;" in PSBC_HEADER and
-        "#define PSBC_SHADER_METADATA_VERSION 6u" in PSBC_HEADER and
+        "#define PSBC_SHADER_METADATA_VERSION 8u" in PSBC_HEADER and
         "metadata->version = PSBC_SHADER_METADATA_VERSION;" in PSBC_COMPILE and
         "ctx->rargs->ac.base_vertex.used" in PSBC_COMPILE and
         "ctx->rargs->ac.start_instance.used" in PSBC_COMPILE and

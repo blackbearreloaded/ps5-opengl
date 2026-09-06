@@ -41,7 +41,7 @@ index 21c97d352fd7ef52c04cf590138205328266d8c4..5596cb2e6bf098b0f1509ab07c09fa2c
  # === Static library (libpsbc.a) ===
  # Contains all Mesa objects + psbc compilation logic. Can be linked
 diff --git a/cmd/psbc/main.c b/cmd/psbc/main.c
-index 945737db85a6e86c1e06b09b32af1d3b1de12485..e6a06ae8648241f443e83f6b528b52b73f607851 100644
+index 945737db85a6e86c1e06b09b32af1d3b1de12485..72a6f1f19de69061e51e4af3fee1c2a168b52542 100644
 --- a/cmd/psbc/main.c
 +++ b/cmd/psbc/main.c
 @@ -18,15 +18,78 @@ static const char* VERSION_STR = "0.1.0";
@@ -249,7 +249,7 @@ index 945737db85a6e86c1e06b09b32af1d3b1de12485..e6a06ae8648241f443e83f6b528b52b7
  	    "\t-vv -- Enable verbose messages output\n"
  	    "\t-h -- Show this help message\n",
  	    VERSION_STR
-@@ -102,6 +264,136 @@ static inline _Noreturn void fatalf(const char* fmt, ...) {
+@@ -102,6 +264,142 @@ static inline _Noreturn void fatalf(const char* fmt, ...) {
  	exit(EXIT_FAILURE);
  }
  
@@ -337,6 +337,12 @@ index 945737db85a6e86c1e06b09b32af1d3b1de12485..e6a06ae8648241f443e83f6b528b52b7
 +		fprintf(h, "%u", metadata->start_instance_user_data_dword);
 +	else
 +		fprintf(h, "null");
++	fprintf(h, ",\n  \"ngg_lds_layout\": ");
++	if (metadata->ngg_lds_layout_valid)
++		fprintf(h, "{\"user_data_dword\": %u, \"value\": %u}",
++		        metadata->ngg_lds_layout_user_data_dword, metadata->ngg_lds_layout);
++	else
++		fprintf(h, "null");
 +	fprintf(h, ",\n  \"streamout\": ");
 +	if (metadata->streamout_valid) {
 +		fprintf(h,
@@ -386,7 +392,7 @@ index 945737db85a6e86c1e06b09b32af1d3b1de12485..e6a06ae8648241f443e83f6b528b52b7
  int main(int argc, char** argv) {
  	const CmdOptions opts = parsecmdoptions(argc, argv);
  
-@@ -113,6 +405,9 @@ int main(int argc, char** argv) {
+@@ -113,6 +411,9 @@ int main(int argc, char** argv) {
  	if (!opts.inputfile) {
  		fatal("Please pass an input file");
  	}
@@ -396,7 +402,7 @@ index 945737db85a6e86c1e06b09b32af1d3b1de12485..e6a06ae8648241f443e83f6b528b52b7
  	if (!opts.outputfile) {
  		fatal("Please pass an output file");
  	}
-@@ -120,7 +415,7 @@ int main(int argc, char** argv) {
+@@ -120,7 +421,7 @@ int main(int argc, char** argv) {
  		fatal("Please pass a valid shader stage");
  	}
  
@@ -405,7 +411,7 @@ index 945737db85a6e86c1e06b09b32af1d3b1de12485..e6a06ae8648241f443e83f6b528b52b7
  	if (!inputhandle) {
  		fatalf("Failed to open input file with %s", strerror(errno));
  	}
-@@ -140,42 +435,82 @@ int main(int argc, char** argv) {
+@@ -140,42 +441,82 @@ int main(int argc, char** argv) {
  
  	fclose(inputhandle);
  
@@ -497,7 +503,7 @@ index 945737db85a6e86c1e06b09b32af1d3b1de12485..e6a06ae8648241f443e83f6b528b52b7
  
  	psbc_free_output(&output);
 diff --git a/libpsbc/psbc_compile.c b/libpsbc/psbc_compile.c
-index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f2583853f9415a1 100644
+index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec69d06884 100644
 --- a/libpsbc/psbc_compile.c
 +++ b/libpsbc/psbc_compile.c
 @@ -12,6 +12,7 @@
@@ -627,7 +633,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
  typedef struct {
      const struct nir_shader* nir;
      const struct radv_shader_info* rinfo;
-@@ -216,9 +312,630 @@ typedef struct {
+@@ -216,9 +312,636 @@ typedef struct {
      PsbcStage psbc_stage;
      const uint32_t* spirv_data;
      size_t spirv_size;
@@ -925,6 +931,12 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
 +    metadata->cull_distance_mask = ctx->rinfo->outinfo.cull_dist_mask;
 +    metadata->address32_hi = ctx->address32_hi;
 +    metadata->user_sgpr_count = ctx->rargs->num_user_sgprs;
++    if (ctx->ngg && ctx->rargs->ngg_lds_layout.used) {
++        metadata->ngg_lds_layout_valid = true;
++        metadata->ngg_lds_layout_user_data_dword =
++            ctx->rargs->user_sgprs_locs.shader_data[AC_UD_NGG_LDS_LAYOUT].sgpr_idx;
++        metadata->ngg_lds_layout = ctx->rinfo->ngg_info.esgs_ring_size;
++    }
 +    if (ctx->config->scratch_bytes_per_wave) {
 +        metadata->scratch_valid = true;
 +        metadata->scratch_bytes_per_wave =
@@ -1258,7 +1270,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
  /* Build the shader binary into a memory buffer instead of a file. */
  static PsbcResult buildshaderbinary(
      const BuildContext* ctx,
-@@ -287,7 +1004,7 @@ static PsbcResult buildshaderbinary(
+@@ -287,7 +1010,7 @@ static PsbcResult buildshaderbinary(
              outputswritten * sizeof(GnmVertexExportSemantic);
          break;
      case MESA_SHADER_FRAGMENT:
@@ -1267,7 +1279,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
                            sizeof(GnmPixelInputSemantic);
          break;
      case MESA_SHADER_GEOMETRY:
-@@ -433,7 +1150,7 @@ static PsbcResult buildshaderbinary(
+@@ -433,7 +1156,7 @@ static PsbcResult buildshaderbinary(
                          clip_dist_mask,
                  },
              .numinputsemantics =
@@ -1276,7 +1288,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
              .numexportsemantics = outputswritten,
          };
          memcpy(buf + offset, &vsh, sizeof(vsh));
-@@ -465,18 +1182,16 @@ static PsbcResult buildshaderbinary(
+@@ -465,18 +1188,16 @@ static PsbcResult buildshaderbinary(
                          ctx->rinfo->ps.writes_mrt0_alpha
                      ),
                      .spishadercolformat =
@@ -1298,7 +1310,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
                      .dbshadercontrol = compute_db_shader_control(ctx->rinfo),
                      .cbshadermask = ac_get_cb_shader_mask(
                          ctx->rinfo->ps.spi_shader_col_format
-@@ -524,8 +1239,8 @@ static PsbcResult buildshaderbinary(
+@@ -524,8 +1245,8 @@ static PsbcResult buildshaderbinary(
          uint32_t gs_out_prim;
          switch (ctx->nir->info.gs.output_primitive) {
          case MESA_PRIM_POINTS:       gs_out_prim = V_028A6C_POINTLIST; break;
@@ -1309,7 +1321,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
          default:                     gs_out_prim = V_028A6C_TRISTRIP;  break;
          }
  
-@@ -736,10 +1451,11 @@ static PsbcResult buildshaderbinary(
+@@ -736,10 +1457,11 @@ static PsbcResult buildshaderbinary(
          }
          break;
      case MESA_SHADER_FRAGMENT:
@@ -1324,7 +1336,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
              };
              memcpy(buf + offset, &input, sizeof(input));
              offset += sizeof(input);
-@@ -852,19 +1568,21 @@ static PsbcResult buildshaderbinary(
+@@ -852,19 +1574,21 @@ static PsbcResult buildshaderbinary(
  
  static void setup_ac_info(struct ac_compiler_info* ac_info, enum amd_gfx_level gfxlevel) {
      ac_info->gfx_level = gfxlevel;
@@ -1353,7 +1365,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
          ac_info->has_fma_mix = true;
      } else if (gfxlevel == GFX10) {
          ac_info->max_waves_per_simd = 20;
-@@ -928,26 +1646,173 @@ static void setup_target(PsbcTarget target,
+@@ -928,26 +1652,173 @@ static void setup_target(PsbcTarget target,
      }
  }
  
@@ -1531,7 +1543,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
  
      /* Ensure library is initialized */
      psbc_init();
-@@ -961,17 +1826,39 @@ PsbcResult psbc_compile_shader(
+@@ -961,17 +1832,39 @@ PsbcResult psbc_compile_shader(
      /* Construct ac_compiler_info for the target GPU */
      struct ac_compiler_info ac_info = {0};
      setup_ac_info(&ac_info, gfxlevel);
@@ -1572,7 +1584,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
      /* ACO uses debug.family for disassembly and init_program assertion */
      compiler_info.debug.family = chipfamily;
  
-@@ -981,6 +1868,7 @@ PsbcResult psbc_compile_shader(
+@@ -981,6 +1874,7 @@ PsbcResult psbc_compile_shader(
      /* Construct radv_shader_stage */
      struct radv_shader_stage stage = {0};
      stage.stage = mesa_stage;
@@ -1580,7 +1592,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
      /* Set next_stage based on the pipeline graph.
       * For standalone compilation we assume the simplest pipeline:
       *   VS → FS, VS → HS → DS → FS, VS → GS → FS
-@@ -992,46 +1880,360 @@ PsbcResult psbc_compile_shader(
+@@ -992,46 +1886,360 @@ PsbcResult psbc_compile_shader(
      case MESA_SHADER_GEOMETRY:  stage.next_stage = MESA_SHADER_FRAGMENT;     break;
      default:                    stage.next_stage = MESA_SHADER_NONE;         break;
      }
@@ -1964,7 +1976,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
  
      /* Determine previous stage for shader args declaration.
       * HS/GS need previous_stage=VERTEX so that the merged-pipeline args
-@@ -1049,10 +2251,16 @@ PsbcResult psbc_compile_shader(
+@@ -1049,10 +2257,16 @@ PsbcResult psbc_compile_shader(
      radv_declare_shader_args(
          &compiler_info, &gfx_state, &stage, previous_stage, NULL
      );
@@ -1982,7 +1994,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
  
      /* For geometry shaders, run the legacy GS lowering pass.
       * On GFX10.3 (PS5), NGG GS requires merging with the previous stage,
-@@ -1080,16 +2288,72 @@ PsbcResult psbc_compile_shader(
+@@ -1080,16 +2294,72 @@ PsbcResult psbc_compile_shader(
              ralloc_free(gs_copy);
      }
  
@@ -2059,7 +2071,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
          psbc_shutdown();
          return PSBC_RESULT_COMPILE_ACO;
      }
-@@ -1098,6 +2362,22 @@ PsbcResult psbc_compile_shader(
+@@ -1098,6 +2368,22 @@ PsbcResult psbc_compile_shader(
      struct radv_shader_binary_legacy* legacy =
          (struct radv_shader_binary_legacy*)binary;
  
@@ -2082,7 +2094,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
      /* The data layout in radv_shader_binary_legacy is:
       * [stats | code | ir | disasm | debug_info]
       * Code starts at offset stats_size. */
-@@ -1116,28 +2396,103 @@ PsbcResult psbc_compile_shader(
+@@ -1116,28 +2402,103 @@ PsbcResult psbc_compile_shader(
          .psbc_stage = opts->stage,
          .spirv_data = spirv,
          .spirv_size = spirv_size,
@@ -2191,14 +2203,14 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..0d0602a2fd0dbe17eb72f32c2f258385
  
  const char* psbc_result_string(PsbcResult result) {
 diff --git a/libpsbc/psbc_compile.h b/libpsbc/psbc_compile.h
-index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..e27bddec0a4f80a6945fc3235c4513cb0978c78d 100644
+index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..9a0530c7afc4ea5c18d6417ff7ad5decb34baed6 100644
 --- a/libpsbc/psbc_compile.h
 +++ b/libpsbc/psbc_compile.h
 @@ -20,6 +20,11 @@
  extern "C" {
  #endif
  
-+#define PSBC_SHADER_METADATA_VERSION 7u
++#define PSBC_SHADER_METADATA_VERSION 8u
 +
 +struct nir_shader;
 +struct nir_shader_compiler_options;
@@ -2206,7 +2218,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..e27bddec0a4f80a6945fc3235c4513cb
  /* === Types === */
  
  typedef enum {
-@@ -51,9 +56,139 @@ typedef enum {
+@@ -51,9 +56,142 @@ typedef enum {
      PSBC_RESULT_INTERNAL_ERROR,
  } PsbcResult;
  
@@ -2337,6 +2349,9 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..e27bddec0a4f80a6945fc3235c4513cb
 +    uint32_t             scratch_bytes_per_wave;
 +    uint32_t             scratch_size_per_thread;
 +    uint32_t             scratch_buffer_table_user_data_dword;
++    bool                 ngg_lds_layout_valid;
++    uint32_t             ngg_lds_layout_user_data_dword;
++    uint32_t             ngg_lds_layout; /* GS output base in bytes, after ES inputs. */
 +} PsbcShaderMetadata;
 +
 +typedef struct {
@@ -2348,7 +2363,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..e27bddec0a4f80a6945fc3235c4513cb
  } PsbcShaderOutput;
  
  typedef struct {
-@@ -61,6 +196,22 @@ typedef struct {
+@@ -61,6 +199,22 @@ typedef struct {
      PsbcStage   stage;
      const char* entrypoint;  /* Default: "main" */
      bool        optimise;    /* Default: true */
@@ -2371,7 +2386,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..e27bddec0a4f80a6945fc3235c4513cb
  } PsbcCompileOptions;
  
  /* === API === */
-@@ -77,20 +228,26 @@ void psbc_init(void);
+@@ -77,20 +231,26 @@ void psbc_init(void);
   */
  void psbc_shutdown(void);
  
@@ -2403,7 +2418,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..e27bddec0a4f80a6945fc3235c4513cb
   */
  PsbcResult psbc_compile_shader(
      const uint32_t*       spirv,
-@@ -99,6 +256,35 @@ PsbcResult psbc_compile_shader(
+@@ -99,6 +259,35 @@ PsbcResult psbc_compile_shader(
      PsbcShaderOutput*     out
  );
  

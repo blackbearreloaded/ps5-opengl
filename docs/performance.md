@@ -90,6 +90,15 @@ coverage. Explicit GS ID plus user-varying transport remains unproven: its first
 readback is clear black; later GS and restored-program cases did not execute.
 Investigate the merged VS/GS output/linkage before CTS or release promotion.
 
+- 2026-09-06 | G5 | 7095c24 | diagnostic: GS draw-status=0, same black output; clean teardown/services/unlock | results/glsl-primitive-id-mixed-gs-trace/181433
+
+The trace exposes a live NGG LDS-layout argument that the runtime never supplies.
+RADV places GS outputs after the ES input ring; zero aliases those regions.
+The successor carries the compiler's final byte offset and user-data slot in
+metadata v8 and supplies it for every NGG draw, with bounds checks. A real merged
+NIR/ACO regression reproduces the unaccounted argument before the fix. Native
+acceptance of the corrected transport is pending; GLSL and submission are unchanged.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
