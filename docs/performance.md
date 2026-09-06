@@ -123,3 +123,4 @@ submission. Release the exact token before offline analysis/building.
 - 2026-09-06 | G2 | 58d4cb7 | 1.56x demo throughput; six-frame ImGui and masked-clear regressions pass; all titles closed, healthy services, locks released | results/gpu-clear-profile, gpu-clear-imgui, gpu-clear-masked
 - 2026-09-06 | G3 | 0810d38 | 1,263 submissions: pool flush 0.360 ms, submit+wait 15.416 ms/call; clean pass | results/draw-profile-control | split wait timing; leave cache policy unchanged
 - 2026-09-06 | G3 | 6e36f33 | no-run: WSL preflight found 2121/3232/9021 closed; no upload/launch; exact lock released | build/frozen/draw-wait-control | owner service recovery required
+- 2026-09-06 | G3 | 9732033 | no-run: services recovered, fresh log lacks title lifecycle; home screen observed, background idle unconfirmed; locks released | results/draw-wait-control-recovery
