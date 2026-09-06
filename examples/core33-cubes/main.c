@@ -111,7 +111,8 @@ static int pixel(int x, int y, const uint8_t expected[4])
    uint8_t got[4] = {0};
    glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, got);
    for (unsigned c = 0; c < 4; ++c) if (abs((int)got[c] - expected[c]) > 1) {
-      printf("[ps5-cubes] pixel=%d,%d channel=%u actual=%u expected=%u\n", x, y, c, got[c], expected[c]);
+      printf("[ps5-cubes] pixel=%d,%d actual=%u,%u,%u,%u expected=%u,%u,%u,%u\n", x, y,
+         got[0],got[1],got[2],got[3],expected[0],expected[1],expected[2],expected[3]);
       return 0;
    }
    return glGetError() == GL_NO_ERROR;
@@ -120,7 +121,7 @@ static int pixel(int x, int y, const uint8_t expected[4])
 static int oracle(unsigned count, unsigned mode)
 {
    const uint8_t background[4] = {8,12,20,255};
-   if (!pixel(5, 5, background)) return 0;
+   int passed = pixel(5, 5, background);
    for (unsigned i = 0; i < count; ++i) {
       float p[4]; object_position(count, i, p);
       for (unsigned v = 0; v < 2; ++v) for (unsigned u = 0; u < 2; ++u) {
@@ -129,11 +130,11 @@ static int oracle(unsigned count, unsigned mode)
          const float z = -p[2] - p[3];
          int sx = (int)((1 + x * 1.5f * HEIGHT / WIDTH / z) * WIDTH * .5f);
          int sy = (int)((1 + y * 1.5f / z) * HEIGHT * .5f);
-         if (!pixel(sx, sy, &texels[i % 2][4 * (v * 2 + u)])) return 0;
+         passed &= pixel(sx, sy, &texels[i % 2][4 * (v * 2 + u)]);
       }
    }
-   printf("[ps5-cubes] oracle mode=%u objects=%u probes=%u PASS\n", mode, count, 1 + count * 4);
-   return 1;
+   printf("[ps5-cubes] oracle mode=%u objects=%u probes=%u %s\n", mode, count, 1 + count * 4, passed ? "PASS" : "FAIL");
+   return passed;
 }
 
 int main(void)

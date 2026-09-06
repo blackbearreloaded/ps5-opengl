@@ -254,7 +254,13 @@ six workloads, 668 probes and 48 measured frames. Both paths use identical
 shaders and two persistent texture bindings, unlike the earlier baseline's
 per-object texture bind. Compare the successor's paired results, not just old
 versus new binaries. This exercises existing instancing with no new driver
-behavior or experimental flags; native validation is pending.
+behavior or experimental flags. The first native comparison failed one texture
+probe in the eight-instance scene after all ordinary workloads and one-instance
+checks passed. This is not an accepted instancing benchmark or speedup result.
+The diagnostic successor records all probe RGBA mismatches before stopping;
+it does not change rendering or relax the oracle. Root cause remains open.
+
+- 2026-09-06 | G4 | b6429a9 app / 356ea89 runner | failed: eight-instance texture probe; ordinary/one-instance pass, healthy teardown/unlock | results/cubes-instanced/130057 | classify full probe mismatches
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
