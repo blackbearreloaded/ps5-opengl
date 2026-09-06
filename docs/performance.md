@@ -261,6 +261,13 @@ The diagnostic successor records all probe RGBA mismatches before stopping;
 it does not change rendering or relax the oracle. Root cause remains open.
 
 - 2026-09-06 | G4 | b6429a9 app / 356ea89 runner | failed: eight-instance texture probe; ordinary/one-instance pass, healthy teardown/unlock | results/cubes-instanced/130057 | classify full probe mismatches
+- 2026-09-06 | G4 | 6f1e1d6 | failed: five right-texel probes read left texel; healthy teardown/unlock | results/cubes-diagnostic/131120 | explicit-LOD fragment-shader control
+
+The next control changes only `texture` to `textureLod(..., 0.0)` in both
+material branches; textures are single-level nearest-filtered 2x2 images.
+This isolates implicit sampling from the existing geometry/instance inputs.
+It does not establish a driver fix or dismiss the original failure as undefined
+behavior. Native validation of this control is pending.
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline

@@ -182,7 +182,7 @@ int main(void)
       "n=rotate(normal);texcoord=uv;material=(instanced!=0?gl_InstanceID:object_index)%2;}");
    fs = compile(GL_FRAGMENT_SHADER, "#version 330 core\n"
       "in vec2 texcoord; in vec3 n; flat in int material; uniform sampler2D albedo0; uniform sampler2D albedo1; out vec4 color;"
-      "void main(){vec3 c=material==0?texture(albedo0,texcoord).rgb:texture(albedo1,texcoord).rgb;"
+      "void main(){vec3 c=material==0?textureLod(albedo0,texcoord,0.0).rgb:textureLod(albedo1,texcoord,0.0).rgb;"
       "color=vec4(c*(0.25+0.75*max(normalize(n).z,0.0)),1);}");
    if (!vs || !fs) goto cleanup;
    program = glCreateProgram(); glAttachShader(program,vs); glAttachShader(program,fs); glLinkProgram(program);
