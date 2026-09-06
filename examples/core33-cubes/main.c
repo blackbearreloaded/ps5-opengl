@@ -21,7 +21,7 @@ static const uint8_t texels[2][16] = {
 struct vertex { float p[3], n[3], uv[2]; };
 static struct vertex vertices[36];
 static GLuint textures[2];
-static GLint placement, rotation;
+static GLint placement, rotation, instanced, object_index;
 #ifdef PS5_NATIVE_CUBES_TEST
 extern int ps5_egl_current_draw_status(unsigned *);
 #endif
@@ -78,18 +78,23 @@ static void object_position(unsigned count, unsigned i, float out[4])
    out[3] = count == 1 ? .8f : .25f;
 }
 
-static int draw(unsigned count, float angle, int64_t times[3])
+static int draw(unsigned count, unsigned mode, float angle, int64_t times[3])
 {
    times[0] = now_ns();
    glClearColor(8 / 255.0f, 12 / 255.0f, 20 / 255.0f, 1);
    glClearDepth(1); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
    times[1] = now_ns();
    glUniform4f(rotation, cosf(angle), sinf(angle), cosf(angle * .6f), sinf(angle * .6f));
-   for (unsigned i = 0; i < count; ++i) {
-      float position[4]; object_position(count, i, position);
-      glUniform4fv(placement, 1, position);
-      glBindTexture(GL_TEXTURE_2D, textures[i % 2]);
-      glDrawArrays(GL_TRIANGLES, 0, 36);
+   glUniform1i(instanced, mode);
+   for (unsigned i = 0; i < (mode ? 1u : count); ++i) {
+      if (mode) {
+         glDrawArraysInstanced(GL_TRIANGLES, 0, 36, count);
+      } else {
+         float position[4]; object_position(count, i, position);
+         glUniform4fv(placement, 1, position);
+         glUniform1i(object_index, i);
+         glDrawArrays(GL_TRIANGLES, 0, 36);
+      }
 #ifdef PS5_NATIVE_CUBES_TEST
       if (!check(ps5_egl_current_draw_status(NULL) == 0, "native draw")) return 0;
 #endif
@@ -112,7 +117,7 @@ static int pixel(int x, int y, const uint8_t expected[4])
    return glGetError() == GL_NO_ERROR;
 }
 
-static int oracle(unsigned count)
+static int oracle(unsigned count, unsigned mode)
 {
    const uint8_t background[4] = {8,12,20,255};
    if (!pixel(5, 5, background)) return 0;
@@ -127,7 +132,7 @@ static int oracle(unsigned count)
          if (!pixel(sx, sy, &texels[i % 2][4 * (v * 2 + u)])) return 0;
       }
    }
-   printf("[ps5-cubes] oracle objects=%u probes=%u PASS\n", count, 1 + count * 4);
+   printf("[ps5-cubes] oracle mode=%u objects=%u probes=%u PASS\n", mode, count, 1 + count * 4);
    return 1;
 }
 
@@ -146,7 +151,7 @@ int main(void)
    EGLSurface surface = EGL_NO_SURFACE;
    EGLContext context = EGL_NO_CONTEXT;
    EGLConfig config = NULL; EGLint count = 0;
-   GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0;
+   GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, instances = 0;
    int current = 0, passed = 0, clean = 1;
    unsigned completed = 0;
    if (!check(display != EGL_NO_DISPLAY && eglInitialize(display,NULL,NULL) && eglBindAPI(EGL_OPENGL_API) &&
@@ -167,15 +172,16 @@ int main(void)
        "surface dimensions")) goto cleanup;
    vs = compile(GL_VERTEX_SHADER, "#version 330 core\n"
       "layout(location=0) in vec3 p; layout(location=1) in vec3 normal; layout(location=2) in vec2 uv;"
-      "uniform vec4 placement; uniform vec4 rotation; out vec2 texcoord; out vec3 n;"
+      "layout(location=3) in vec4 instance_placement; uniform int instanced; uniform int object_index;"
+      "uniform vec4 placement; uniform vec4 rotation; out vec2 texcoord; out vec3 n; flat out int material;"
       "vec3 rotate(vec3 q){vec3 a=vec3(q.x,rotation.z*q.y-rotation.w*q.z,rotation.w*q.y+rotation.z*q.z);"
       "return vec3(rotation.x*a.x+rotation.y*a.z,a.y,-rotation.y*a.x+rotation.x*a.z);}"
-      "void main(){vec3 q=rotate(p)*placement.w+placement.xyz;"
+      "void main(){vec4 place=instanced!=0?instance_placement:placement; vec3 q=rotate(p)*place.w+place.xyz;"
       "gl_Position=vec4(q.x*0.84375,q.y*1.5,-1.002002*q.z-0.2002002,-q.z);"
-      "n=rotate(normal);texcoord=uv;}");
+      "n=rotate(normal);texcoord=uv;material=(instanced!=0?gl_InstanceID:object_index)%2;}");
    fs = compile(GL_FRAGMENT_SHADER, "#version 330 core\n"
-      "in vec2 texcoord; in vec3 n; uniform sampler2D albedo; out vec4 color;"
-      "void main(){vec3 c=texture(albedo,texcoord).rgb;"
+      "in vec2 texcoord; in vec3 n; flat in int material; uniform sampler2D albedo0; uniform sampler2D albedo1; out vec4 color;"
+      "void main(){vec3 c=material==0?texture(albedo0,texcoord).rgb:texture(albedo1,texcoord).rgb;"
       "color=vec4(c*(0.25+0.75*max(normalize(n).z,0.0)),1);}");
    if (!vs || !fs) goto cleanup;
    program = glCreateProgram(); glAttachShader(program,vs); glAttachShader(program,fs); glLinkProgram(program);
@@ -183,11 +189,14 @@ int main(void)
    if (!check(linked, "link")) goto cleanup;
    glUseProgram(program);
    placement = glGetUniformLocation(program,"placement"); rotation = glGetUniformLocation(program,"rotation");
-   GLint albedo = glGetUniformLocation(program,"albedo");
-   if (!check(placement >= 0 && rotation >= 0 && albedo >= 0, "uniforms")) goto cleanup;
-   glUniform1i(albedo,0); glActiveTexture(GL_TEXTURE0);
+   instanced = glGetUniformLocation(program,"instanced"); object_index = glGetUniformLocation(program,"object_index");
+   GLint albedo0 = glGetUniformLocation(program,"albedo0"), albedo1 = glGetUniformLocation(program,"albedo1");
+   if (!check(placement >= 0 && rotation >= 0 && albedo0 >= 0 && albedo1 >= 0 && instanced >= 0 && object_index >= 0,
+       "uniforms")) goto cleanup;
+   glUniform1i(albedo0,0); glUniform1i(albedo1,1);
    glGenTextures(2,textures);
    for (unsigned i = 0; i < 2; ++i) {
+      glActiveTexture(GL_TEXTURE0 + i);
       glBindTexture(GL_TEXTURE_2D,textures[i]);
       glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
       glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
@@ -202,30 +211,37 @@ int main(void)
    glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,sizeof(struct vertex),(void *)offsetof(struct vertex,n));
    glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,sizeof(struct vertex),(void *)offsetof(struct vertex,uv));
    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1); glEnableVertexAttribArray(2);
+   glGenBuffers(1,&instances); glBindBuffer(GL_ARRAY_BUFFER,instances);
+   glVertexAttribPointer(3,4,GL_FLOAT,GL_FALSE,4*sizeof(float),NULL);
+   glEnableVertexAttribArray(3); glVertexAttribDivisor(3,1);
    glViewport(0,0,WIDTH,HEIGHT); glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS); glDepthMask(GL_TRUE);
    glDisable(GL_DITHER); glDisable(GL_CULL_FACE); glDisable(GL_BLEND);
-   printf("[ps5-cubes] start width=%u height=%u warmup=%u frames=%u triangles_per_object=12\n", WIDTH,HEIGHT,WARMUP,FRAMES);
-   for (unsigned w = 0; w < sizeof(workloads) / sizeof(workloads[0]); ++w) {
+   printf("[ps5-cubes] start width=%u height=%u warmup=%u frames=%u triangles_per_object=12 modes=2\n", WIDTH,HEIGHT,WARMUP,FRAMES);
+   for (unsigned mode = 0; mode < 2; ++mode) for (unsigned w = 0; w < sizeof(workloads) / sizeof(workloads[0]); ++w) {
       unsigned objects = workloads[w];
+      float positions[32][4];
+      for (unsigned i = 0; i < objects; ++i) object_position(objects,i,positions[i]);
+      glBufferData(GL_ARRAY_BUFFER,objects*sizeof(positions[0]),positions,GL_STATIC_DRAW);
       int64_t t[3];
-      if (!draw(objects,0,t) || !oracle(objects) || !eglSwapBuffers(display,surface)) goto cleanup;
+      if (!draw(objects,mode,0,t) || !oracle(objects,mode) || !eglSwapBuffers(display,surface)) goto cleanup;
       for (unsigned frame = 0; frame < WARMUP + FRAMES; ++frame) {
-         if (!draw(objects,.2f + frame * .075f,t)) goto cleanup;
+         if (!draw(objects,mode,.2f + frame * .075f,t)) goto cleanup;
          if (!check(eglSwapBuffers(display,surface), "present")) goto cleanup;
          int64_t end = now_ns();
          if (!check(end > t[2], "clock")) goto cleanup;
          if (frame >= WARMUP)
-            printf("[ps5-cubes] objects=%u frame=%u clear_ns=%lld draw_ns=%lld swap_ns=%lld total_ns=%lld\n",
-               objects,frame-WARMUP,(long long)(t[1]-t[0]),(long long)(t[2]-t[1]),
+            printf("[ps5-cubes] mode=%u objects=%u frame=%u clear_ns=%lld draw_ns=%lld swap_ns=%lld total_ns=%lld\n",
+               mode,objects,frame-WARMUP,(long long)(t[1]-t[0]),(long long)(t[2]-t[1]),
                (long long)(end-t[2]),(long long)(end-t[0]));
       }
-      if (!draw(objects,0,t) || !oracle(objects) || !eglSwapBuffers(display,surface)) goto cleanup;
+      if (!draw(objects,mode,0,t) || !oracle(objects,mode) || !eglSwapBuffers(display,surface)) goto cleanup;
       ++completed;
    }
    passed = 1;
 cleanup:
    if (current) {
       glUseProgram(0); glDeleteTextures(2,textures);
+      if (instances) glDeleteBuffers(1,&instances);
       if (vbo) glDeleteBuffers(1,&vbo);
       if (vao) glDeleteVertexArrays(1,&vao);
       if (program) glDeleteProgram(program);

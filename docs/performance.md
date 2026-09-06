@@ -249,8 +249,12 @@ G4 baseline (`af98e68`): 334 probes and 24 measured frames passed. At 1080p,
 Clear was 18–20 ms and swap ~16 ms; drawing grew from 13 to 531 ms. Receipt:
 `results/cubes-control/PPSA99005-20260906-124439-opengl.log`; frozen artifact:
 `build/frozen/cubes-control/manifest.md`. Title teardown/health/unlock passed.
-Next compare standard instancing against ordinary calls in the same app;
-the existing driver supports it, with no new runtime behavior required.
+The successor compares ordinary calls and standard instancing in the same app:
+six workloads, 668 probes and 48 measured frames. Both paths use identical
+shaders and two persistent texture bindings, unlike the earlier baseline's
+per-object texture bind. Compare the successor's paired results, not just old
+versus new binaries. This exercises existing instancing with no new driver
+behavior or experimental flags; native validation is pending.
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline

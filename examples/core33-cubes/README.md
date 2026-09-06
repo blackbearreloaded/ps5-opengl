@@ -10,16 +10,19 @@ not modify the installed SDK. Follow the normal folder deployment and testing
 protocol. Host reference: `make test-cubes` (requires the existing SDK headers
 and host software Mesa).
 
-Three 1080p workloads issue 1, 8 or 32 ordinary draws per frame (12 triangles
-per cube), changing object uniforms and alternating textures. Each has two
-warm-up frames and eight measured frames. The short low-poly scene measures
+Three 1080p workloads render 1, 8 or 32 cubes (12 triangles per cube), first
+using ordinary draws (`mode=0`), then one `glDrawArraysInstanced` (`mode=1`).
+Both paths use the same shaders, lighting, geometry, alternating materials and
+object positions. Instancing reads a per-instance placement attribute instead
+of changing object uniforms. The two textures stay bound in both modes.
+Each workload has two warm-up frames and eight measured frames. The short low-poly scene measures
 draw-call overhead, **not a full game's expected FPS or maximum GPU throughput**.
 Different object counts also change coverage; it is not a fixed-fill-rate test.
 
 Frame timings include color/depth clear, draws, one `glFinish`, and EGL swap.
 Numerical depth/texture checks run before and after each workload, outside the
-timed interval: 334 probes in total. Host tests deliberately disable depth or
-bind the wrong texture and require these checks to fail. Do not use host timings
+timed interval: 668 probes in total. Host tests deliberately disable depth or
+upload the wrong texture and require these checks to fail. Do not use host timings
 as PS5 results. CPU wall-time throughput is not a TV refresh-rate measurement.
 
 Audit a saved native receipt:
@@ -28,5 +31,8 @@ Audit a saved native receipt:
 python3 tools/summarize-cubes.py results/your-cycle-opengl.log
 ```
 
-Require all probes, all 24 measured frames, cleanup, exact-title teardown and
+Require all probes, all 48 measured frames, cleanup, exact-title teardown and
 healthy post-run services. Experimental runtime flags remain off by default.
+This uses existing OpenGL instancing, not a new driver optimization: existing
+applications need to group compatible objects themselves to use this path.
+The audit tool also accepts the original ordinary-only baseline receipts.
