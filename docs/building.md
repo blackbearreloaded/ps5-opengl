@@ -58,6 +58,9 @@ Rebuild the SDK after runtime changes before testing those consumers.
 `make cubes` instead links the current source runtime for performance comparisons;
 it does not update the installed SDK. `make test-cubes` runs its software-Mesa
 reference and deliberate fault checks locally, without console access.
+Native test/CTS builds verify the patched compiler source and reuse its archive
+only when source, build configuration, compiler identity and archive hash match.
+A changed compiler patch triggers a rebuild even when upstream Git HEAD is unchanged.
 
 | Output | Purpose |
 | --- | --- |

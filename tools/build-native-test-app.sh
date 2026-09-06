@@ -76,6 +76,7 @@ if [[ $gate_object =~ ^egl_public_core33_(imgui(_tv)?|nanovg|sokol)\.o$ ]]; then
         static_libraries+=("$sdk/target/lib/libScePad.so" "$sdk/target/lib/libSceUserService.so")
     fi
 else
+    PS5_PAYLOAD_SDK="$sdk" bash "$root/toolchain/build-opengnm-psbc-ps5.sh" --if-needed
     make -C "$root/tests/ps5" --no-print-directory -j8 \
         PS5_PAYLOAD_SDK="$sdk" "$gate_object"
     gate_object_path="$root/tests/ps5/$gate_object"

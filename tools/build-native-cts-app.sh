@@ -16,17 +16,7 @@ cts_build=${VK_GL_CTS_BUILD:-"$cts/build-ps5-gl33"}
 
 sdk="$template/.deps/native/ps5-payload-sdk"
 export PS5_PAYLOAD_SDK="$sdk"
-psbc="$root/third_party/opengnm-psbc"
-psbc_revision=$(git -C "$psbc" rev-parse HEAD)
-psbc_stamp="$root/build/core33-native-runtime/psbc-revision"
-psbc_stamped_revision=
-[[ ! -f "$psbc_stamp" ]] || read -r psbc_stamped_revision < "$psbc_stamp"
-if [[ ! -s "$psbc/libpsbc.ps5.a" ||
-      "$psbc_stamped_revision" != "$psbc_revision" ]]; then
-    "$root/toolchain/build-opengnm-psbc-ps5.sh"
-    mkdir -p "$(dirname -- "$psbc_stamp")"
-    printf '%s\n' "$psbc_revision" > "$psbc_stamp"
-fi
+bash "$root/toolchain/build-opengnm-psbc-ps5.sh" --if-needed
 "$root/conformance/vk-gl-cts/prepare.sh" "$cts"
 if [[ ! -f "$cts_build/build.ninja" ]]; then
     cmake -S "$cts" -B "$cts_build" -G Ninja \

@@ -1,11 +1,71 @@
 """Changing runtime flags must rebuild objects; identical flags must not."""
 from pathlib import Path
+import os
+import shutil
 import subprocess
 import tempfile
 import unittest
 
 
 class RuntimeConfigTest(unittest.TestCase):
+    def test_native_compiler_identity(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            for name in ("toolchain", "tools", "src/platform", "third_party/opengnm-psbc", "sdk/bin", "bin"):
+                (work / name).mkdir(parents=True)
+            script = work / "toolchain/build-opengnm-psbc-ps5.sh"
+            shutil.copyfile(root / "toolchain/build-opengnm-psbc-ps5.sh", script)
+            for name in ("dependencies.json", "toolchain/Makefile.opengnm-psbc-ps5",
+                         "toolchain/opengnm-psbc-ps5.mak", "src/platform/ps5_mesa_shims.c"):
+                (work / name).write_text("original\n")
+            (work / "tools/fetch-sources.py").write_text(
+                "import os,sys\nassert sys.argv[1:] == ['--verify-psbc']\n"
+                "raise SystemExit(2 if os.environ.get('BAD_SOURCE') else 0)\n")
+            for compiler in ("prospero-clang", "prospero-clang++"):
+                path = work / "sdk/bin" / compiler
+                path.write_text("#!/bin/sh\nprintf 'compiler version 1\\n'\n")
+                path.chmod(0o755)
+            make = work / "bin/make"
+            make.write_text("#!/bin/sh\n[ -z \"${FAIL_MAKE:-}\" ] || exit 9\n"
+                "printf 'build\\n' >> \"$2/count\"\nprintf 'archive\\n' > \"$2/libpsbc.ps5.a\"\n")
+            make.chmod(0o755)
+            source = work / "third_party/opengnm-psbc"
+            subprocess.run(["git", "init", "-q", str(source)], check=True)
+            def change_source(value):
+                (source / "input.c").write_text(value)
+                subprocess.run(["git", "-C", str(source), "add", "input.c"], check=True)
+            change_source("first\n")
+            subprocess.run(["git", "-C", str(source), "-c", "user.name=Test",
+                            "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture"], check=True)
+            head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"])
+            env = dict(os.environ, PATH=str(work / "bin") + os.pathsep + os.environ["PATH"],
+                       PS5_PAYLOAD_SDK=str(work / "sdk"))
+            def run(expected, *args, overrides=None, success=True):
+                result = subprocess.run(["bash", str(script), *args], env=env | (overrides or {}),
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
+                self.assertEqual(len((source / "count").read_text().splitlines()), expected)
+            run(1)
+            run(1, "--if-needed")
+            change_source("changed patch, same HEAD\n")
+            self.assertEqual(subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"]), head)
+            run(2, "--if-needed")
+            run(2, "--if-needed")
+            (source / "libpsbc.ps5.a").write_text("old or damaged archive\n")
+            run(3, "--if-needed")
+            (work / "toolchain/opengnm-psbc-ps5.mak").write_text("new flags\n")
+            run(4, "--if-needed")
+            (work / "sdk/bin/prospero-clang").write_text("#!/bin/sh\nprintf 'compiler version 2\\n'\n")
+            run(5, "--if-needed")
+            stamp = (source / "libpsbc.ps5.identity").read_bytes()
+            change_source("pending patch\n")
+            run(5, "--if-needed", overrides={"FAIL_MAKE": "1"}, success=False)
+            self.assertEqual((source / "libpsbc.ps5.identity").read_bytes(), stamp)
+            run(5, "--if-needed", overrides={"BAD_SOURCE": "1"}, success=False)
+            run(6, "--if-needed")
+            run(6, "--invalid", success=False)
+
     def test_flags_roundtrip(self):
         source = (Path(__file__).resolve().parents[1] / "toolchain/ps5-opengl-core33.mk").read_text()
         start = source.index("# Track command-line configuration")

@@ -313,6 +313,25 @@ Removing that export eliminates all observed UV failures, including 32 instances
 The driver keeps the conservative variant for unknown or PrimitiveID-reading
 fragment consumers. Their per-primitive linkage is not validated by this result.
 
+- 2026-09-06 | G4 | af19be8 | pass: 668 texture/depth probes, six workloads/48 frames; healthy teardown/unlock | results/cubes-textured-fixed/143002 | draw regressions and longer workload validation
+
+Original textured scene, 1920x1080, eight measured frames per cell:
+
+| Cubes (12 triangles each) | Ordinary calls, ms/frame (FPS) | One instanced call, ms/frame (FPS) |
+| --- | ---: | ---: |
+| 1 | 43.60 (22.93) | 49.86 (20.06) |
+| 8 | 166.64 (6.00) | 49.86 (20.06) |
+| 32 | 567.04 (1.76) | 49.85 (20.06) |
+
+Both paths use the same shaders and texture bindings. These are short,
+CPU-observed clear/draw/swap timings with completion waits, not game performance
+or maximum GPU throughput. One-cube medians are ~49.8 ms in both paths; the
+ordinary mean includes faster frames. At 32 cubes, instancing removes repeated
+per-draw waits and gives an 11.4x frame-throughput ratio. Approximately 20 ms of
+clear, 14 ms of draw/wait and 16 ms of swap still dominate the instanced frame.
+The previously failing instanced UV/texture scene is fixed; broader regressions,
+long runs, affected CTS and the final release matrix remain before promotion.
+
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
 - G2 scope: full single-target RGBA8 GPU clears via Mesa u_blitter; driver synchronization unchanged. Other cases retain CPU fallbacks.

@@ -38,7 +38,7 @@ See [Performance](docs/performance.md) for measurements and remaining work.
 | [ImGui TV demo](examples/core33-imgui/README.md#g10-visible-tv-demo) | Readable 1080p UI, animated shapes, gamepad navigation | TV-confirmed; 2,851 frames over five minutes |
 | [NanoVG](examples/core33-nanovg/README.md) | Its upstream GL3 vector renderer | 45 pixel probes; zero dirty stencil pixels |
 | [Sokol](examples/core33-sokol/README.md) | Its GL backend through public OpenGL | 1,843,200 component comparisons; zero mismatches |
-| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, ordinary versus instanced draws | Ordinary baseline passed; instanced texture mismatch under investigation |
+| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, ordinary versus instanced draws | Both paths pass; ~20 FPS instanced at 1080p in this small scene ([scope](docs/performance.md)) |
 
 The accepted baseline TV demo measured approximately **9.5 FPS**; the GPU-clear
 candidate measured approximately **15 FPS** in a separate short profile, not the

@@ -29,7 +29,7 @@ def verify_psbc():
     if git(path, "write-tree") != pin["patched_tree"]:
         raise ValueError("compiler source tree mismatch; run make source-fetch")
     git(path, "diff", "--exit-code", "--quiet")
-    print("PSBC: exact validated source tree verified", flush=True)
+    print("PSBC: exact pinned source tree verified", flush=True)
 
 
 def fetch_repo(name, pin):

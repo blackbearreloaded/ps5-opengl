@@ -1,15 +1,18 @@
 # Known limitations
 
-The defined Core 3.3 implementation and acceptance campaign are complete. No
-required Core 3.3 feature gap is known in the accepted test scope. This does not
-prove universal compatibility or production-grade stability.
+The frozen Core 3.3 acceptance campaign is complete within its documented scope,
+not a proof of universal compatibility or production-grade stability. Later
+real-workload testing exposed an instanced-varying bug. The performance branch
+fix passes focused native UV and texture checks, but still needs broader
+regressions and release-candidate revalidation.
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
   desktop installation model or compatibility-profile guarantee.
 - **Performance:** some transfers/format paths use CPU fallbacks. The accepted
   1080p TV demo measured about 9.5 FPS for five minutes; a newer GPU-clear
   candidate measured about 15 FPS in a short profile. Ordinary draws still incur
-  substantial per-call synchronization cost. Thirty FPS is only the demo's cap;
+  substantial per-call synchronization cost. A short 1080p textured-cube test
+  measured about 20 FPS with 1/8/32 instanced cubes. Thirty FPS is only the demo's cap;
   these measurements do not predict full-game FPS. See [Performance](performance.md).
 - **Input:** the demo has a minimal current-state pad adapter. Hardware logs show
   connection but no widget changes; host navigation checks passed.
