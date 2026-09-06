@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile the implicit PrimitiveID liveness contract with real NIR/ACO."""
+"""Compile PrimitiveID liveness and producer/consumer linkage with real NIR/ACO."""
 import subprocess
 import tempfile
 from pathlib import Path
@@ -8,15 +8,25 @@ ROOT = Path(__file__).resolve().parents[2]
 code = r'''
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "compiler/nir/nir_builder.h"
 #include "amd/common/amdgfxregs.h"
 #include "psbc_compile.h"
+#include "ps5_agc_package.h"
 
-static unsigned config(const PsbcShaderOutput *out) {
+static unsigned config(const PsbcShaderOutput *out, unsigned offset) {
     for (unsigned i = 0; i < out->metadata.context_register_count; ++i)
-        if (out->metadata.context_registers[i].offset == 0x1b1)
+        if (out->metadata.context_registers[i].offset == offset)
             return out->metadata.context_registers[i].value;
-    assert(!"missing SPI_VS_OUT_CONFIG"); return 0;
+    assert(!"missing shader register"); return 0;
+}
+static void package(const PsbcShaderOutput *out) {
+    uint8_t *data = NULL;
+    size_t size = 0;
+    assert(!(out->metadata.unresolved_fields & PSBC_UNRESOLVED_AGC_LINKAGE));
+    assert(ps5_agc_package_build(out, 4, &data, &size) == 0 && size);
+    free(data);
 }
 static void check(unsigned varyings, bool explicit_id) {
     nir_builder b = nir_builder_init_simple_shader(
@@ -48,7 +58,7 @@ static void check(unsigned varyings, bool explicit_id) {
         PsbcShaderOutput out;
         assert(psbc_compile_nir(b.shader, &options, &out) == PSBC_RESULT_OK);
         assert(out.machine_code_size && out.metadata.hardware_stage == PSBC_HW_STAGE_NGG);
-        unsigned state = config(&out);
+        unsigned state = config(&out, 0x1b1);
         unsigned params = varyings + explicit_id;
         assert(G_0286C4_VS_EXPORT_COUNT(state) == (params ? params - 1 : 0));
         assert(G_0286C4_PRIM_EXPORT_COUNT(state) == (!explicit_id && i != 1));
@@ -56,15 +66,108 @@ static void check(unsigned varyings, bool explicit_id) {
         if (!i) baseline_size = out.machine_code_size;
         if (explicit_id || i == 2) assert(out.machine_code_size == baseline_size);
         if (!explicit_id && i == 1) assert(out.machine_code_size < baseline_size);
+        bool exports_id = explicit_id || i != 1;
+        assert(out.metadata.output_semantic_count == varyings + exports_id);
+        if (exports_id) {
+            unsigned semantic = out.metadata.output_semantics[varyings];
+            assert((semantic & 255) == PSBC_SEMANTIC_PRIMITIVE_ID);
+            /* Explicit per-vertex ID is assigned before generic outputs;
+             * implicit per-primitive ID follows them. */
+            assert(((semantic >> 8) & 31) == (explicit_id ? 0 : varyings));
+        }
+        package(&out);
         printf("primitive-export varyings=%u explicit=%u omit=%u config=%x bytes=%zu\n",
                varyings, explicit_id, options.omit_implicit_primitive_id, state, out.machine_code_size);
         psbc_free_output(&out);
     }
     ralloc_free(b.shader);
 }
+static void consumer(unsigned varyings, bool mixed) {
+    nir_builder b = nir_builder_init_simple_shader(
+        MESA_SHADER_FRAGMENT, psbc_get_nir_options(PSBC_STAGE_FRAGMENT), "primitive-consumer");
+    b.shader->info.io_lowered = true;
+    nir_def *zero = nir_imm_int(&b, 0);
+    /* io_lowered input follows Mesa's assigned FS attribute order. */
+    nir_def *id = nir_load_input(&b, 1, 32, zero, .base=varyings, .dest_type=nir_type_int32,
+        .io_semantics={.location=VARYING_SLOT_PRIMITIVE_ID, .num_slots=1});
+    nir_def *value = nir_i2f32(&b, id);
+    for (unsigned i = 0; i < varyings; ++i) {
+        nir_def *bary = nir_load_barycentric_pixel(&b, 32, .interp_mode=INTERP_MODE_SMOOTH);
+        nir_def *v = nir_load_interpolated_input(&b, 1, 32, bary, zero,
+            .base=i, .dest_type=nir_type_float32,
+            .io_semantics={.location=VARYING_SLOT_VAR0 + i, .num_slots=1});
+        value = nir_fadd(&b, value, v);
+    }
+    if (mixed) {
+        nir_def *flat = nir_load_input(&b, 1, 32, zero, .component=1,
+            .dest_type=nir_type_float32,
+            .io_semantics={.location=VARYING_SLOT_VAR0, .num_slots=1});
+        value = nir_fadd(&b, value, flat);
+    }
+    nir_store_output(&b, nir_vec4(&b, value, value, value, nir_imm_float(&b, 1)), zero,
+        .src_type=nir_type_float32, .io_semantics={.location=FRAG_RESULT_DATA0, .num_slots=1});
+    nir_shader_gather_info(b.shader, nir_shader_get_entrypoint(b.shader));
+    PsbcCompileOptions options = {.target=PSBC_TARGET_PS5, .stage=PSBC_STAGE_FRAGMENT,
+        .optimise=true, .primitive_type=4, .spi_shader_col_format=9};
+    for (unsigned per_primitive = 0; per_primitive < 2; ++per_primitive) {
+        void *first_code = NULL;
+        size_t first_size = 0;
+        for (unsigned last = 0; last < 2; ++last) {
+            options.primitive_id_per_primitive = per_primitive;
+            options.provoking_vtx_last = last;
+            PsbcShaderOutput out;
+            assert(psbc_compile_nir(b.shader, &options, &out) == PSBC_RESULT_OK);
+            unsigned state = config(&out, 0x1b6);
+            unsigned count = varyings + mixed + 1;
+            assert(out.metadata.input_semantic_count == count);
+            assert(G_0286D8_NUM_INTERP(state) == count - per_primitive);
+            assert(G_0286D8_NUM_PRIM_INTERP(state) == per_primitive);
+            unsigned id_attribute = per_primitive ? count - 1 : varyings;
+            assert(out.metadata.input_semantics[id_attribute] ==
+                (PSBC_SEMANTIC_PRIMITIVE_ID | (per_primitive ? 0 : 1u << 22)));
+            if (mixed) {
+                unsigned flat_attribute = per_primitive ? count - 2 : count - 1;
+                assert(out.metadata.input_semantics[flat_attribute] == (15u | 1u << 22));
+            }
+            package(&out);
+            if (!last) {
+                first_size = out.machine_code_size;
+                first_code = malloc(first_size);
+                assert(first_code);
+                memcpy(first_code, out.machine_code, first_size);
+            } else {
+                bool identical = first_size == out.machine_code_size &&
+                    !memcmp(first_code, out.machine_code, first_size);
+                assert(identical == (per_primitive && !mixed));
+                free(first_code);
+            }
+            printf("primitive-consumer varyings=%u mixed=%u per-primitive=%u last=%u inputs=%u config=%x\n",
+                varyings, mixed, per_primitive, last, count, state);
+            psbc_free_output(&out);
+        }
+    }
+    options.target = PSBC_TARGET_PS4_BASE;
+    PsbcShaderOutput invalid;
+    assert(psbc_compile_nir(b.shader, &options, &invalid) == PSBC_RESULT_UNSUPPORTED_STAGE);
+    assert(!invalid.machine_code && !invalid.data);
+    options.target = PSBC_TARGET_PS5;
+    if (varyings) {
+        /* Reject a malformed already-lowered producer/consumer alias. */
+        nir_intrinsic_set_base(nir_instr_as_intrinsic(nir_def_instr(id)), 0);
+        options.primitive_id_per_primitive = false;
+        PsbcShaderOutput out;
+        assert(psbc_compile_nir(b.shader, &options, &out) == PSBC_RESULT_INTERNAL_ERROR);
+        assert(!out.machine_code && !out.data);
+    }
+    ralloc_free(b.shader);
+}
 int main(void) {
     psbc_init();
     for (unsigned i = 0; i <= 2; ++i) { check(i, false); check(i, true); }
+    for (unsigned i = 0; i <= 2; ++i) {
+        consumer(i, false);
+        if (i) consumer(i, true);
+    }
     psbc_shutdown();
 }
 '''
@@ -77,14 +180,22 @@ with tempfile.TemporaryDirectory() as temporary:
         "-DHAVE_STRUCT_TIMESPEC=1", "-D_GNU_SOURCE",
         "-I", str(psbc / "include/mesa"), "-I", str(psbc / "include"),
         "-I", str(psbc / "src"), "-I", str(psbc / "libpsbc"),
+        "-I", str(ROOT / "src/platform"),
         "-x", "c", "-c", "-o", obj, "-"], input=code, text=True, check=True)
-    subprocess.run(["g++", "-o", executable, obj, str(psbc / "libpsbc.a"),
+    package_obj = str(Path(temporary) / "package.o")
+    subprocess.run(["clang-18", "-std=c11", "-Wall", "-Werror",
+        "-I", str(psbc / "libpsbc"), "-c", str(ROOT / "src/platform/ps5_agc_package.c"),
+        "-o", package_obj], check=True)
+    subprocess.run(["g++", "-o", executable, obj, package_obj, str(psbc / "libpsbc.a"),
                     "-pthread", "-lm"], check=True)
     subprocess.run([executable], check=True)
 source = (ROOT / "src/gallium/ps5/ps5_screen.c").read_text()
 assert "variant->omit_implicit_primitive_id == omit_implicit_primitive_id" in source
 assert "variant->omit_implicit_primitive_id = omit_implicit_primitive_id" in source
 assert "options.omit_implicit_primitive_id = omit_implicit_primitive_id" in source
+assert "variant->primitive_id_per_primitive == primitive_id_per_primitive" in source
+assert "variant->primitive_id_per_primitive = primitive_id_per_primitive" in source
+assert "options.primitive_id_per_primitive = primitive_id_per_primitive" in source
 assert "!(context->fs->nir->info.inputs_read & VARYING_BIT_PRIMITIVE_ID)" in source
 assert "SYSTEM_VALUE_PRIMITIVE_ID)" in source
-print("PASS: unknown/dead/explicit PrimitiveID, unchanged vertex exports, cache discriminator")
+print("PASS: PrimitiveID exports/consumers, mixed interpolation, provoking vertex, packages, cache keys")

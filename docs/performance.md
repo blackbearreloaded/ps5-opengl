@@ -37,6 +37,14 @@ unchanged GLSL and all four fault checks pass Zink over software Vulkan, which
 suite's non-portable EGL profile query was replaced with the standard GL query.
 
 - 2026-09-06 | G5 | f86b1fd | failed: math/texture pass; first PrimitiveID saturates red, user inputs pass; healthy teardown/unlock | results/glsl-primitive-id/155220 | NIR/linkage trace
+- 2026-09-06 | G5 | be832e2 | failed: trace-only build returns ID 0 for the second primitive; healthy teardown/unlock | results/glsl-primitive-id-trace/155846
+
+The trace identifies missing built-in input/output semantics, an incorrect
+per-vertex input count for an implicit per-primitive export, and an inappropriate
+provoking-vertex rewrite. The successor fills the existing package metadata and
+keys the fragment variant by producer type; no submission path is changed.
+Host tests cover 18 producer and 20 consumer compilations, including mixed
+interpolation and first/last provoking vertices. Native acceptance is pending.
 
 ## G1: Measure the existing frame path
 
