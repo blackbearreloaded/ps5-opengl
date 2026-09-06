@@ -18,8 +18,11 @@ The SDK verifier checks Make/pkg-config/CMake links and 344 Core exports;
 behavioral evidence comes from CTS and native renderer oracles.
 
 `test-compiler` runs existing real NIR/ACO regressions for framebuffer exports,
-vertex inputs and geometry descriptors, including invalid-input rejection. The
-historical upstream `tests/verify_sb.py` still asserts metadata ABI 6; the frozen
+vertex inputs and geometry descriptors, including invalid-input rejection.
+Performance-branch checks also cover implicit PrimitiveID export liveness,
+zero-stride constant inputs and byte-bounded buffer descriptors. These host checks
+do not replace the native draw/current-attribute/cube regressions or affected CTS.
+The historical upstream `tests/verify_sb.py` still asserts metadata ABI 6; the frozen
 PS5 compiler uses ABI 7. That stale suite is retained in the pinned source for
 provenance, not silently patched or reported as passing. It is not invoked by
 the publication build. Current compiler checks and the Core capability audit

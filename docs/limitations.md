@@ -2,9 +2,12 @@
 
 The frozen Core 3.3 acceptance campaign is complete within its documented scope,
 not a proof of universal compatibility or production-grade stability. Later
-real-workload testing exposed an instanced-varying bug. The performance branch
-fix passes focused native UV and texture checks, but still needs broader
-regressions and release-candidate revalidation.
+real-workload testing exposed an instanced-varying bug and rejection of constant
+vertex attributes. The performance branch fixes pass native UV/texture, combined
+draw and mixed float/integer current-attribute checks, but still need broader
+regressions and release-candidate revalidation. Fragment shaders that consume
+PrimitiveID retain the conservative compiler path; the new instancing results
+do not validate that path.
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
   desktop installation model or compatibility-profile guarantee.

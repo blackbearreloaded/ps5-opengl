@@ -3,6 +3,21 @@
 The accepted correctness campaign remains tied to the frozen identities in
 [Validation](validation.md). Performance candidates do not inherit its results.
 
+## Current candidate — 2026-09-06
+
+Runtime/compiler `2df7d88` passes the combined indexed/instanced/restart/base-vertex
+draw regression, mixed float/integer constant attributes, and the original
+textured/depth-tested cube benchmark. All three native cycles closed cleanly.
+The final 1080p cube rerun measured 21.89 / 6.00 / 1.76 FPS for 1 / 8 / 32 ordinary
+draws and approximately 20.06 FPS for each instanced workload (eight measured
+frames per cell). This is a small draw-overhead benchmark, not expected game FPS.
+
+Before promotion: validate PrimitiveID-consuming fragment shaders and affected
+CTS families, rebuild the installed SDK and recheck external renderers, run longer
+sessions, then freeze and complete the four-configuration release matrix. The
+installed SDK and historical validation export have not been replaced. Batching
+remains opt-in; per-draw completion waits remain the main scaling limitation.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
@@ -98,7 +113,7 @@ Raw receipts remain local under `results/`; IDs below identify
 
 ## Console boundary
 
-Current G3 case: instrument submission setup, display-pool flush, video setup,
+G3 instrumentation covers submission setup, display-pool flush, video setup,
 command construction/flush, submit+wait, and cleanup. Opt-in `PS5_DRAW_PROFILE=1`
 uses the same 30-frame warm-up as the ImGui profile and leaves submission/cache
 operations unchanged. Force-rebuild the native runtime when toggling this build
@@ -338,7 +353,23 @@ Host reproduction confirms zero-stride rejection with either PrimitiveID option;
 the guard also exists in the original publication source. Mesa represents current
 attributes as zero-stride uploads. The successor permits this PS5 compiler input
 and selects byte-bounded RAW descriptors only for zero stride, preserving CPU
-range checks and the ordinary descriptor path. This remains pending hardware.
+range checks and the ordinary descriptor path. Both native attribute regressions
+and the unchanged cube benchmark now pass with this fix.
+
+- 2026-09-06 | G4 | 2df7d88 | pass: combined draw matrix, 256 pixels; clean teardown/health/unlock | results/draw-matrix-constant-input/150601
+- 2026-09-06 | G4 | 2df7d88 | pass: mixed float/uint constants, 1,024 pixels and queries; clean teardown/health/unlock | results/current-attrib-constant-input/150921
+- 2026-09-06 | G4 | 2df7d88 | pass: 668 texture/depth probes, six workloads/48 frames; ~20 FPS instanced; healthy teardown/unlock | results/cubes-constant-input/151315
+
+Final compiler tree: `267ff517bd902e4b35a1b40fd50ee984a118eb55`; native archive
+SHA-256: `4ac8aa5221eb24dd4492799808939d667b55268075162fc4d4e20e9e9557dc12`.
+The existing source/toolchain/archive guard verified reuse for the latter two
+builds. All experimental runtime flags were off. Final executable identities:
+
+| Check | eboot.bin SHA-256 |
+| --- | --- |
+| Combined draw matrix | `02d8247ff8538f80d214b3ab55168e2ecd8aeea04ee4b6f12cba71a7ec5d9f56` |
+| Mixed current attributes | `6345c81f70cbf16257116e6750b49491da14de28ad962772d38468c11e445d53` |
+| Textured cubes | `ffc6aeb35dff9755e2be5134485a2ad178ccc8571b4aefeef6d675827e3dcee0` |
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline

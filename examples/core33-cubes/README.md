@@ -33,6 +33,7 @@ python3 tools/summarize-cubes.py results/your-cycle-opengl.log
 
 Require all probes, all 48 measured frames, cleanup, exact-title teardown and
 healthy post-run services. Experimental runtime flags remain off by default.
-This uses existing OpenGL instancing, not a new driver optimization: existing
-applications need to group compatible objects themselves to use this path.
+The compiler fix makes this tested instanced path render correctly; it does not
+automatically merge ordinary draws. Applications must group compatible objects
+themselves to benefit from instancing.
 The audit tool also accepts the original ordinary-only baseline receipts.

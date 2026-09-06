@@ -12,7 +12,8 @@ or a guarantee that every desktop application will run unchanged.
 
 **Performance-branch status:** the validation totals below describe the frozen
 publication baseline, not the newer runtime in this branch. GPU-clear changes
-have focused hardware validation; experimental multi-draw batching is opt-in.
+have focused hardware validation, as do fixes for instanced varyings and constant
+vertex attributes. Experimental multi-draw batching is opt-in.
 The updated runtime still needs release-candidate validation before promotion.
 See [Performance](docs/performance.md) for measurements and remaining work.
 
