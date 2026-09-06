@@ -12,9 +12,12 @@ The final 1080p cube rerun measured 21.89 / 6.00 / 1.76 FPS for 1 / 8 / 32 ordin
 draws and approximately 20.06 FPS for each instanced workload (eight measured
 frames per cell). This is a small draw-overhead benchmark, not expected game FPS.
 
-Before promotion: validate PrimitiveID-consuming fragment shaders and affected
-CTS families, rebuild the installed SDK and recheck external renderers, run longer
-sessions, then freeze and complete the four-configuration release matrix. The
+PrimitiveID/flat/program-transition checks now pass; the corrected geometry CTS
+batch passes all 24 cases, including the five zero-input GS failures from the
+initial 51-case smoke run. These are separate frozen binaries, not a fresh 51/51
+or full-campaign acceptance result. Before promotion: rebuild the installed SDK
+and recheck external renderers, run longer sessions, then freeze and complete the
+four-configuration release matrix. The
 installed SDK and historical validation export have not been replaced. Batching
 remains opt-in; per-draw completion waits remain the main scaling limitation.
 
@@ -115,6 +118,12 @@ All five are pre-submit `-10` rejections: their GS generates vertices without ES
 inputs, so RADV correctly assigns output base zero. The new nonzero guard was
 too strict. The successor accepts that valid value while retaining slot/range
 checks; a real zero-input GS reproduces the rejection offline. Compiler unchanged.
+
+- 2026-09-06 | G5 | b9214c2 | pass: 24/24 geometry CTS, including all five prior failures; zero NotSupported/device loss, clean teardown/services/unlock | results/cts-geometry-lds-zero-input/191349
+
+The scoped G5 blockers are resolved. This batch took 3.92 seconds of summed CTS
+case time and reused the verified CTS assets. Next: a separate candidate SDK and
+fresh installed-package consumers; retain the historical SDK and acceptance.
 
 ## G1: Measure the existing frame path
 

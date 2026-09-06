@@ -24,7 +24,8 @@ for import in libSceAgc.so libSceAgcDriver.so; do
 done
 
 make -C "$root/examples/core33-triangle" --no-print-directory \
-    -f Makefile.installed clean
+    -f Makefile.installed clean \
+    PS5_PAYLOAD_SDK="$sdk" PS5_OPENGL_PREFIX="$prefix"
 make -C "$root/examples/core33-triangle" --no-print-directory \
     -f Makefile.installed -j8 \
     PS5_PAYLOAD_SDK="$sdk" PS5_OPENGL_PREFIX="$prefix"

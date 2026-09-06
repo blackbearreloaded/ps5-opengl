@@ -9,9 +9,10 @@ regressions and release-candidate revalidation. A corrected GPU PrimitiveID path
 passes ID 0/1, draw reset and instance reset with smooth and genuinely flat inputs
 in both provoking-vertex modes. Explicit geometry-shader IDs/user varyings and
 returning to the implicit program now also pass after supplying the missing
-NGG LDS-layout argument. The focused CTS batch is 46/51 passing; five zero-input
-GS transform-feedback cases hit an overly strict pre-submit guard. Its correction
-and release acceptance are still pending. See
+NGG LDS-layout argument. The initial CTS smoke was 46/51 passing; the corrected
+runtime passes all 24 geometry cases, including the five prior zero-input GS
+transform-feedback failures. These separate binaries do not constitute a new
+full-campaign acceptance. SDK consumers and release acceptance remain pending. See
 [the current candidate and failure history](performance.md).
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,

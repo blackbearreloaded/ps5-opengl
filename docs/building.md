@@ -55,6 +55,10 @@ The Mesa patch is checked before application. `make sdk` builds host and PS5
 compiler libraries, Mesa, the native backend and the installed SDK. ImGui,
 NanoVG and Sokol consume that package without rebuilding the graphics stack.
 Rebuild the SDK after runtime changes before testing those consumers.
+For an isolated candidate, pass its prefix to `tools/verify-installed-sdk.sh`
+(which installs and verifies it), then set `PS5_OPENGL_PREFIX` to that same
+absolute path when invoking `tools/build-native-test-app.sh`. This leaves the
+default SDK unchanged.
 `make cubes` instead links the current source runtime for performance comparisons;
 it does not update the installed SDK. `make test-cubes` runs its software-Mesa
 reference and deliberate fault checks locally, without console access.
