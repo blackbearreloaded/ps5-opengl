@@ -60,9 +60,11 @@ is pending; the submission path and GLSL oracle remain unchanged.
 
 The per-vertex candidate is **not accepted**: submission returned success but its
 completion marker was not reached in 2,000 polls. It must not be rerun unchanged
-or promoted. Post-run ports were healthy; UI responsiveness remains unverified
-because action review blocked starting Remote Play. The owned Chiaki process
-and exact UI-check lock were released. Establish UI health before further tests.
+or promoted. Post-run ports were healthy. A subsequently approved Remote Play
+check showed the live home screen and advancing clock, but two Right presses
+and Chiaki's local menu shortcut produced no visible response. Input health is
+inconclusive, not a confirmed soft lock. The owned Chiaki process and exact lock
+were released; establish input health before further tests.
 
 ## G1: Measure the existing frame path
 
