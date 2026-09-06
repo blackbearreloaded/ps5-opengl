@@ -15,10 +15,11 @@ frames per cell). This is a small draw-overhead benchmark, not expected game FPS
 PrimitiveID/flat/program-transition checks now pass; the corrected geometry CTS
 batch passes all 24 cases, including the five zero-input GS failures from the
 initial 51-case smoke run. These are separate frozen binaries, not a fresh 51/51
-or full-campaign acceptance result. Before promotion: rebuild the installed SDK
-and recheck external renderers, run longer sessions, then freeze and complete the
-four-configuration release matrix. The
-installed SDK and historical validation export have not been replaced. Batching
+or full-campaign acceptance result. The separate G6 SDK passes clean Make,
+CMake/pkg-config consumers and native ImGui, NanoVG and Sokol. Next: longer
+sessions, practical 3D application use and lifecycle/performance work, then freeze
+and complete the four-configuration release matrix. The default SDK and historical
+validation export have not been replaced. Batching
 remains opt-in; per-draw completion waits remain the main scaling limitation.
 
 ## Release sequence
@@ -124,6 +125,18 @@ checks; a real zero-input GS reproduces the rejection offline. Compiler unchange
 The scoped G5 blockers are resolved. This batch took 3.92 seconds of summed CTS
 case time and reused the verified CTS assets. Next: a separate candidate SDK and
 fresh installed-package consumers; retain the historical SDK and acceptance.
+
+- 2026-09-06 | G6 | 472bd33 | pass: isolated SDK, clean Make/CMake/pkg-config, 344 exports | .local/g6-sdk-verify.log
+- 2026-09-06 | G6 | 472bd33 | pass: ImGui six frames/60 probes, state/font/recreation; clean teardown/health/unlock | results/g6-imgui/192836
+- 2026-09-06 | G6 | 472bd33 | pass: NanoVG three frames/45 probes, cleared stencil/recreation; clean teardown/health/unlock | results/g6-nanovg/193104
+- 2026-09-06 | G6 | 472bd33 | pass: Sokol three frames/1,843,200 RGBA components, zero mismatches/logs; clean teardown/health/unlock | results/g6-sokol/193340
+
+Candidate SDK: `build/sdk/ps5-opengl-core33-g6-20260906`, manifest SHA-256
+`0e1306f99f21d8102592189c1b4998172f277cd8a81dfcffb9ff12a0823fec06`.
+Compiler archive exactly matches G5. The previous SDK remains intact; no release
+promotion. All three renderers still report busy VideoOut unregister followed by
+successful close. G7 starts with periodic readbacks throughout the five-minute TV
+demo; practical 3D application coverage and lifecycle hardening remain open.
 
 ## G1: Measure the existing frame path
 

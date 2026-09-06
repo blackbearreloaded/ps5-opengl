@@ -12,7 +12,9 @@ returning to the implicit program now also pass after supplying the missing
 NGG LDS-layout argument. The initial CTS smoke was 46/51 passing; the corrected
 runtime passes all 24 geometry cases, including the five prior zero-input GS
 transform-feedback failures. These separate binaries do not constitute a new
-full-campaign acceptance. SDK consumers and release acceptance remain pending. See
+full-campaign acceptance. A separate rebuilt SDK passes Make/CMake/pkg-config and
+native ImGui/NanoVG/Sokol checks; longer sessions and release acceptance remain
+pending. See
 [the current candidate and failure history](performance.md).
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
