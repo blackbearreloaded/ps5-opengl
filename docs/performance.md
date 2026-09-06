@@ -214,11 +214,21 @@ release-wide result. Receipt: `results/multidraw-batch-egl/PPSA99005-20260906-12
 eboot SHA-256: `ec594b209deea0e0be56b17d844686688606cab414c89f60c804ad3481dde634`.
 Exact-title teardown, post-health and exact-token release passed. No SDK promotion.
 
-The next gate adds an active-query multi-draw exclusion check (2,560 samples),
-fence wait and VBO orphan/reuse: 4,608 further pixels, 32,256 total. Require its
-`query_samples=2560 fence=1 orphan=1 pixels=4608 PASS` marker, no additional native
-batch chunks, and the same clean lifecycle. Runtime is unchanged.
-Use `python3 tests/ps5/test_multidraw_lifetime.py RECEIPT --postchecks` for this successor.
+The follow-up gate at `dd9905eac2067351ae8d437ff91702d823e3dcf5` also passed:
+active-query exclusion (2,560 samples), fence wait and VBO orphan/reuse;
+32,256 total exact pixel comparisons. Eight native chunks ran, with no extra
+batch during the active query. Timings repeated at 150–167 ms serial versus
+33–34 ms batched (4.44–5.09x); these remain preliminary small-workload samples.
+Receipt: `results/multidraw-postchecks/PPSA99005-20260906-122150-opengl.log`;
+eboot: `ab65f94bdde319cad4cad3ecd0b21bd83dbd7b75885d85f775620ee6f86ff453`.
+Exact-title teardown, post-health and exact-token release passed.
+Audit with `python3 tests/ps5/test_multidraw_lifetime.py RECEIPT --postchecks`.
+
+Next: handle staged targets/textures and resource/state changes before extending
+batching across ordinary draw calls (including ImGui). Then measure real workloads
+and run affected CTS families before release promotion. Keep batching opt-in;
+the installed SDK is unchanged and the default local runtime is rebuilt without
+batching or diagnostic flags after freezing these apps.
 
 ## Milestones
 
@@ -239,3 +249,4 @@ Use `python3 tests/ps5/test_multidraw_lifetime.py RECEIPT --postchecks` for this
 - 2026-09-06 | G3 | 9fd90a5 | partial-pass: 27,648 pixels, clean teardown/health; EGL depth attachment excluded batching | results/multidraw-batch/120153 | use color-only FBO
 - 2026-09-06 | G3 | 82df5ab | partial-pass: FBO pixels pass, staged renderbuffer excluded batching; healthy teardown/unlock | results/multidraw-batch-fbo/120752 | retain inactive EGL depth
 - 2026-09-06 | G3 | 8eb024f | pass: real multi-draw, 27,648 pixels; 150–167 to 33–34 ms/call; healthy teardown/unlock | results/multidraw-batch-egl/121541 | query/fence/reuse regression
+- 2026-09-06 | G3 | dd9905e | pass: 32,256 pixels, query exclusion, fence/orphan; 4.44–5.09x small-workload ratio; healthy teardown/unlock | results/multidraw-postchecks/122150 | broader draw-state batching
