@@ -50,7 +50,9 @@ static size_t ps5_copied_constant_offset(unsigned slot) { assert(slot == 1); ret
    }
    return true;
 }
+static void test_adapter(void);
 int main(void) {
+    test_adapter();
     uint8_t bytes[PS5_MAX_CONSTANT_BUFFER_SIZE + 16]; memset(bytes, 0xa5, sizeof(bytes));
     struct ps5_resource target = {.base = {.target=2, .format=1}};
     struct ps5_resource storage = {.data=bytes, .size=sizeof(bytes)};
@@ -87,9 +89,46 @@ int main(void) {
     storage.size = 15; assert(!ps5_clear_gpu_color(&good, 4, 15, 0, &color));
 }
 '''
+start = source.index("   if (templ && templ->type == PIPE_SHADER_IR_TGSI")
+adapter = source[start:source.index("\n   if (!templ || templ->type != PIPE_SHADER_IR_NIR", start)]
+code += r'''
+enum { PIPE_SHADER_IR_TGSI, PIPE_SHADER_IR_NIR, PSBC_STAGE_GEOMETRY = 3 };
+struct pipe_shader_state { int type; const void *tokens; struct { void *nir; } ir;
+    struct { unsigned num_outputs; } stream_output; };
+static unsigned conversions;
+static int conversion_fails;
+static void *tgsi_to_nir(const void *tokens, void *screen, bool cache) {
+    assert(tokens && screen && !cache); ++conversions;
+    return conversion_fails ? NULL : screen;
+}
+static bool adapt(const struct pipe_shader_state *templ, int stage) {
+    int sentinel;
+    void *screen = &sentinel;
+    struct pipe_shader_state converted;
+''' + adapter + r'''
+    return templ && templ->type == PIPE_SHADER_IR_NIR && templ->ir.nir;
+}
+static void test_adapter(void) {
+    int sentinel;
+    struct pipe_shader_state state = {.type=PIPE_SHADER_IR_NIR, .ir.nir=&sentinel};
+    assert(adapt(&state, 1) && conversions == 0); /* Original NIR unchanged. */
+    state = (struct pipe_shader_state){.type=PIPE_SHADER_IR_TGSI, .tokens=&sentinel};
+    assert(adapt(&state, 1) && conversions == 1);
+    assert(adapt(&state, 2) && conversions == 2);
+    assert(!adapt(&state, PSBC_STAGE_GEOMETRY) && conversions == 2);
+    state.stream_output.num_outputs = 1;
+    assert(!adapt(&state, 1) && conversions == 2);
+    state.stream_output.num_outputs = 0;
+    conversion_fails = 1;
+    assert(!adapt(&state, 1) && conversions == 3);
+    state.tokens = NULL;
+    assert(!adapt(&state, 1) && conversions == 3);
+    assert(!adapt(NULL, 1));
+}
+'''
 with tempfile.TemporaryDirectory() as temporary:
     executable = str(Path(temporary) / "gpu-clear-state")
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
                     "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], check=True)
-print("PASS: GPU-clear eligibility, fallback boundaries, resource/inline uniform snapshot bounds")
+print("PASS: GPU-clear eligibility, uniform snapshot bounds, guarded TGSI adapter, NIR unchanged")

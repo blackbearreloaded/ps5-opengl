@@ -21,6 +21,7 @@ ps5_runtime_printf(const char *format, ...)
 
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
+#include "nir/tgsi_to_nir.h"
 #include "amd/common/amdgfxregs.h"
 #include "amd/common/ac_descriptors.h"
 #include "amd/common/ac_formats.h"
@@ -8897,11 +8898,23 @@ ps5_select_geometry_pipeline(struct ps5_context *context,
 }
 
 static void *
-ps5_create_shader_state(const struct pipe_shader_state *templ, PsbcStage stage,
+ps5_create_shader_state(struct pipe_screen *screen,
+                        const struct pipe_shader_state *templ, PsbcStage stage,
                         uint32_t address32_hi)
 {
    struct ps5_shader *shader;
    struct ps5_vertex_layout layout;
+   struct pipe_shader_state converted;
+
+   /* u_blitter's simple VS/FS generators still emit TGSI. Reuse Mesa's
+    * translator; the public shader path and PSBC backend remain NIR-only. */
+   if (templ && templ->type == PIPE_SHADER_IR_TGSI && templ->tokens &&
+       stage != PSBC_STAGE_GEOMETRY && !templ->stream_output.num_outputs) {
+      converted = *templ;
+      converted.type = PIPE_SHADER_IR_NIR;
+      converted.ir.nir = tgsi_to_nir(templ->tokens, screen, false);
+      templ = &converted;
+   }
 
    if (!templ || templ->type != PIPE_SHADER_IR_NIR || !templ->ir.nir ||
        !ps5_stream_output_info_valid(&templ->stream_output, stage) ||
@@ -8984,7 +8997,7 @@ ps5_create_vs_state(struct pipe_context *context,
    if (!descriptors)
       return NULL;
    return ps5_create_shader_state(
-      templ, PSBC_STAGE_VERTEX,
+      context->screen, templ, PSBC_STAGE_VERTEX,
       (uint32_t)((uintptr_t)descriptors->data >> 32));
 }
 
@@ -8999,7 +9012,7 @@ ps5_create_fs_state(struct pipe_context *context,
    if (!storage)
       return NULL;
    return ps5_create_shader_state(
-      templ, PSBC_STAGE_FRAGMENT,
+      context->screen, templ, PSBC_STAGE_FRAGMENT,
       (uint32_t)((uintptr_t)storage->data >> 32));
 }
 
@@ -9017,7 +9030,7 @@ ps5_create_gs_state(struct pipe_context *context,
       return NULL;
    }
    state = ps5_create_shader_state(
-      templ, PSBC_STAGE_GEOMETRY,
+      context->screen, templ, PSBC_STAGE_GEOMETRY,
       (uint32_t)((uintptr_t)descriptors->data >> 32));
    printf("[ps5-gallium] create-geometry state=%s\n",
           state ? "ready" : "failed");
