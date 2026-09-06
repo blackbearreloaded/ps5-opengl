@@ -83,6 +83,13 @@ the known busy warning (`80290009`), followed by successful close and layer rele
 Next: genuinely varying-dependent flat inputs, both provoking-vertex modes and
 explicit geometry-shader IDs, then the focused CTS batch. No SDK promotion yet.
 
+- 2026-09-06 | G5 | ad3f517 | failed: all 8 implicit-ID/flat cases pass; first GS case black, no timeout; clean teardown/services/unlock | results/glsl-primitive-id-mixed-gs/180727
+
+The first/last provoking-vertex path now has native varying-dependent flat-input
+coverage. Explicit GS ID plus user-varying transport remains unproven: its first
+readback is clear black; later GS and restored-program cases did not execute.
+Investigate the merged VS/GS output/linkage before CTS or release promotion.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

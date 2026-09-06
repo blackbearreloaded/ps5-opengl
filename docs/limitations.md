@@ -6,8 +6,9 @@ real-workload testing exposed an instanced-varying bug and rejection of constant
 vertex attributes. The performance branch fixes pass native UV/texture, combined
 draw and mixed float/integer current-attribute checks, but still need broader
 regressions and release-candidate revalidation. A corrected GPU PrimitiveID path
-passes ID 0/1, draw reset and instance reset with smooth inputs, but broader
-flat-input/provoking-vertex and geometry-shader coverage is still pending. See
+passes ID 0/1, draw reset and instance reset with smooth and genuinely flat inputs
+in both provoking-vertex modes. The explicit geometry-shader ID/user-varying
+case currently fails with black readback; broader acceptance is blocked. See
 [the current candidate and failure history](performance.md).
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
