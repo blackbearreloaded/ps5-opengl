@@ -274,6 +274,12 @@ the intended nearest/clamp sampling for these 2x2 calibration textures. This
 separates normalized sampling from UV/geometry while retaining the oracle.
 
 - 2026-09-06 | G4 | 2570886 | failed: explicit LOD reproduces all five mismatches; healthy teardown/unlock | results/cubes-lod0/131824 | direct texel-fetch control
+- 2026-09-06 | G4 | 5862af1 | failed: direct texel fetch reproduces the same five mismatches; healthy teardown/unlock | results/cubes-fetch/132623 | first-provoking-vertex control
+
+The next control changes only the provoking-vertex convention to first.
+Material IDs are constant across every triangle, so expected output is unchanged;
+this exercises the alternate flat-input compiler path. It retains direct texel
+fetches to compare against the last frozen control. Native result pending.
 
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline

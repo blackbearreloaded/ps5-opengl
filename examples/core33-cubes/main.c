@@ -218,6 +218,7 @@ int main(void)
    glEnableVertexAttribArray(3); glVertexAttribDivisor(3,1);
    glViewport(0,0,WIDTH,HEIGHT); glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS); glDepthMask(GL_TRUE);
    glDisable(GL_DITHER); glDisable(GL_CULL_FACE); glDisable(GL_BLEND);
+   glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
    printf("[ps5-cubes] start width=%u height=%u warmup=%u frames=%u triangles_per_object=12 modes=2\n", WIDTH,HEIGHT,WARMUP,FRAMES);
    for (unsigned mode = 0; mode < 2; ++mode) for (unsigned w = 0; w < sizeof(workloads) / sizeof(workloads[0]); ++w) {
       unsigned objects = workloads[w];
