@@ -1,0 +1,486 @@
+diff --git a/src/gallium/include/pipe/p_state.h b/src/gallium/include/pipe/p_state.h
+--- a/src/gallium/include/pipe/p_state.h
++++ b/src/gallium/include/pipe/p_state.h
+@@ -861,7 +861,8 @@ struct pipe_draw_info
+    bool increment_draw_id:1;  /**< whether drawid increments for direct draws */
+    bool index_bias_varies:1;   /**< true if index_bias varies between draws */
+    bool was_line_loop:1; /**< true if mesa_prim was LINE_LOOP before translation */
+-   uint8_t _pad:2;
++   bool was_primitive_restart:1; /**< true if restart was lowered away */
++   bool was_index_ubyte:1; /**< true if U8 indices were expanded */
+ 
+    unsigned start_instance; /**< first instance id */
+    unsigned instance_count; /**< number of instances */
+diff --git a/src/mesa/main/draw.c b/src/mesa/main/draw.c
+--- a/src/mesa/main/draw.c
++++ b/src/mesa/main/draw.c
+@@ -1645,7 +1645,8 @@ _mesa_initialize_exec_dispatch(const struct gl_context *ctx,
+       draw->info.increment_draw_id = false;
+       draw->info.index_bias_varies = false;
+       draw->info.was_line_loop = false;
+-      draw->info._pad = 0;
++      draw->info.was_primitive_restart = false;
++      draw->info.was_index_ubyte = false;
+       /* Packed section end. */
+       draw->info.start_instance = baseInstance;
+       draw->info.instance_count = numInstances;
+diff --git a/src/gallium/auxiliary/util/u_threaded_context.c b/src/gallium/auxiliary/util/u_threaded_context.c
+--- a/src/gallium/auxiliary/util/u_threaded_context.c
++++ b/src/gallium/auxiliary/util/u_threaded_context.c
+@@ -3768,7 +3768,6 @@ simplify_draw_info(struct pipe_draw_info *info)
+    info->has_user_indices = false;
+    info->index_bounds_valid = false;
+    info->index_bias_varies = false;
+-   info->_pad = 0;
+ 
+    /* This shouldn't be set when merging single draws. */
+    info->increment_draw_id = false;
+diff --git a/src/gallium/auxiliary/indices/u_primconvert.c b/src/gallium/auxiliary/indices/u_primconvert.c
+--- a/src/gallium/auxiliary/indices/u_primconvert.c
++++ b/src/gallium/auxiliary/indices/u_primconvert.c
+@@ -119,6 +119,7 @@ primconvert_init_draw(struct primconvert_context *pc,
+    void *dst;
+    unsigned ib_offset;
+    unsigned total_index_count = draws->count;
++   uint32_t primtypes_mask = pc->cfg.primtypes_mask;
+    void *rewrite_buffer = NULL;
+ 
+    struct pipe_draw_start_count_bias draw = draws[0];
+@@ -143,6 +144,8 @@ primconvert_init_draw(struct primconvert_context *pc,
+    new_info->start_instance = info->start_instance;
+    new_info->instance_count = info->instance_count;
+    new_info->primitive_restart = info->primitive_restart;
++   new_info->was_primitive_restart = info->was_primitive_restart;
++   new_info->was_index_ubyte = info->was_index_ubyte || info->index_size == 1;
+    new_info->restart_index = info->restart_index;
+    if (info->index_size) {
+       enum mesa_prim mode = new_info->mode = u_index_prim_type_convert(pc->cfg.primtypes_mask, info->mode, true);
+@@ -176,6 +178,16 @@ primconvert_init_draw(struct primconvert_context *pc,
+          direct_draws = util_prim_restart_convert_to_direct(restart_src, info, &draw, &num_direct_draws,
+                                                             &new_info->min_index, &new_info->max_index, &total_index_count);
+          new_info->primitive_restart = false;
++         new_info->was_primitive_restart = true;
++
++         /* Concatenating multiple restart-separated strips or fans would
++          * reconnect them. Force each range to independent primitives.
++          */
++         if (num_direct_draws > 1) {
++            primtypes_mask &= ~BITFIELD_BIT(info->mode);
++            new_info->mode = u_index_prim_type_convert(primtypes_mask,
++                                                       info->mode, true);
++         }
+          /* step 2: get a translator function which does nothing but handle any index size conversions
+           * which may or may not occur (8bit -> 16bit)
+           */
+@@ -199,7 +211,7 @@ primconvert_init_draw(struct primconvert_context *pc,
+          }
+       }
+       /* (step 4: get the actual primitive conversion translator function) */
+-      u_index_translator(pc->cfg.primtypes_mask,
++      u_index_translator(primtypes_mask,
+                          info->mode, index_size, total_index_count,
+                          pc->api_pv, pc->api_pv,
+                          new_info->primitive_restart ? PR_ENABLE : PR_DISABLE,
+@@ -207,6 +219,17 @@ primconvert_init_draw(struct primconvert_context *pc,
+                          &trans_func);
+       assert(new_info->mode == mode);
+       assert(new_info->index_size == index_size);
++
++      if (num_direct_draws) {
++         uint64_t converted_count = 0;
++
++         for (unsigned i = 0; i < num_direct_draws; i++)
++            converted_count += u_index_count_converted_indices(
++               primtypes_mask, true, info->mode, direct_draws[i].count);
++         if (converted_count > UINT_MAX)
++            goto fail;
++         new_draw->count = converted_count;
++      }
+    }
+    else {
+       enum mesa_prim mode = 0;
+@@ -224,11 +247,11 @@ primconvert_init_draw(struct primconvert_context *pc,
+    /* (step 5: allocate gpu memory sized for the FINAL index count) */
+    uint64_t new_size = (uint64_t)new_info->index_size * new_draw->count;
+    if (new_size > UINT_MAX)
+-      return false;
++      goto fail;
+    u_upload_alloc(pc->pipe->stream_uploader, 0, new_size, 4,
+                   &ib_offset, &new_info->index.resource, releasebuf, &dst);
+    if (!dst)
+-      return false;
++      goto fail;
+    new_draw->start = ib_offset / new_info->index_size;
+    new_draw->index_bias = info->index_size ? draw.index_bias : 0;
+ 
+@@ -242,7 +265,7 @@ primconvert_init_draw(struct primconvert_context *pc,
+           */
+          for (unsigned i = 0; i < num_direct_draws; i++) {
+             /* step 6a: get the index count for this draw, once converted */
+-            unsigned tmp_count = u_index_count_converted_indices(pc->cfg.primtypes_mask, true, info->mode, direct_draws[i].count);
++            unsigned tmp_count = u_index_count_converted_indices(primtypes_mask, true, info->mode, direct_draws[i].count);
+             /* step 6b: handle index size conversion using the temp buffer; no change in index count
+              * TODO: this step can be optimized out if the index size is known to not change
+              */
+@@ -253,8 +276,6 @@ primconvert_init_draw(struct primconvert_context *pc,
+             ptr += new_info->index_size * direct_draws[i].count;
+             dst_ptr += new_info->index_size * tmp_count;
+          }
+-         /* step 7: set the final index count, which is the converted total index count from the original draw rewrite */
+-         new_draw->count = u_index_count_converted_indices(pc->cfg.primtypes_mask, true, info->mode, total_index_count);
+       } else
+          trans_func(src, draw.start, draw.count, new_draw->count, info->restart_index, dst);
+ 
+@@ -279,6 +300,13 @@ primconvert_init_draw(struct primconvert_context *pc,
+    free(direct_draws);
+    free(rewrite_buffer);
+    return true;
++
++fail:
++   if (src_transfer)
++      pipe_buffer_unmap(pc->pipe, src_transfer);
++   free(direct_draws);
++   free(rewrite_buffer);
++   return false;
+ }
+ 
+ static void
+diff --git a/src/mesa/state_tracker/st_format.c b/src/mesa/state_tracker/st_format.c
+--- a/src/mesa/state_tracker/st_format.c
++++ b/src/mesa/state_tracker/st_format.c
+@@ -226,6 +226,7 @@
+       PIPE_FORMAT_Z16_UNORM, \
+       PIPE_FORMAT_Z24_UNORM_S8_UINT, \
+       PIPE_FORMAT_S8_UINT_Z24_UNORM, \
++      PIPE_FORMAT_Z32_FLOAT, \
+       0
+ 
+ #define DEFAULT_SNORM8_RGBA_FORMATS \
+@@ -421,7 +421,9 @@ static const struct format_mapping format_map[] =
+    },
+    {
+       { GL_DEPTH_COMPONENT, 0 },
+-      { DEFAULT_DEPTH_FORMATS }
++      { PIPE_FORMAT_Z24X8_UNORM, PIPE_FORMAT_X8Z24_UNORM,
++        PIPE_FORMAT_Z16_UNORM, PIPE_FORMAT_Z24_UNORM_S8_UINT,
++        PIPE_FORMAT_S8_UINT_Z24_UNORM, PIPE_FORMAT_Z32_FLOAT, 0 }
+    },
+    {
+       { GL_DEPTH_COMPONENT32F, 0 },
+@@ -436,7 +438,8 @@ static const struct format_mapping format_map[] =
+         GL_STENCIL_INDEX8_EXT, GL_STENCIL_INDEX16_EXT, 0 },
+       {
+          PIPE_FORMAT_S8_UINT, PIPE_FORMAT_Z24_UNORM_S8_UINT,
+-         PIPE_FORMAT_S8_UINT_Z24_UNORM, 0
++         PIPE_FORMAT_S8_UINT_Z24_UNORM,
++         PIPE_FORMAT_Z32_FLOAT_S8X24_UINT, 0
+       }
+    },
+ 
+@@ -453,7 +456,8 @@ static const struct format_mapping format_map[] =
+    /* Depth / Stencil formats */
+    {
+       { GL_DEPTH_STENCIL_EXT, GL_DEPTH24_STENCIL8_EXT, 0 },
+-      { PIPE_FORMAT_Z24_UNORM_S8_UINT, PIPE_FORMAT_S8_UINT_Z24_UNORM, 0 }
++      { PIPE_FORMAT_Z24_UNORM_S8_UINT, PIPE_FORMAT_S8_UINT_Z24_UNORM,
++        PIPE_FORMAT_Z32_FLOAT_S8X24_UINT, 0 }
+    },
+    {
+       { GL_DEPTH32F_STENCIL8, 0 },
+diff --git a/src/mesa/state_tracker/st_manager.c b/src/mesa/state_tracker/st_manager.c
+--- a/src/mesa/state_tracker/st_manager.c
++++ b/src/mesa/state_tracker/st_manager.c
+@@ -403,6 +403,9 @@ st_new_renderbuffer_fb(enum pipe_format format, unsigned samples, bool sw)
+    case PIPE_FORMAT_Z32_FLOAT:
+       rb->InternalFormat = GL_DEPTH_COMPONENT32F;
+       break;
++   case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
++      rb->InternalFormat = GL_DEPTH32F_STENCIL8;
++      break;
+    case PIPE_FORMAT_Z24_UNORM_S8_UINT:
+    case PIPE_FORMAT_S8_UINT_Z24_UNORM:
+       rb->InternalFormat = GL_DEPTH24_STENCIL8_EXT;
+diff --git a/src/glx/libgl-symbols.txt b/src/glx/libgl-symbols.txt
+--- a/src/glx/libgl-symbols.txt
++++ b/src/glx/libgl-symbols.txt
+@@ -468,8 +468,10 @@
+ glGetQueryIndexediv
+ glGetQueryiv
+ glGetQueryivARB
++glGetQueryObjecti64v
+ glGetQueryObjectiv
+ glGetQueryObjectivARB
++glGetQueryObjectui64v
+ glGetQueryObjectuiv
+ glGetQueryObjectuivARB
+ glGetRenderbufferParameteriv
+@@ -822,6 +824,7 @@
+ glPushDebugGroup
+ glPushMatrix
+ glPushName
++glQueryCounter
+ glRasterPos2d
+ glRasterPos2dv
+ glRasterPos2f
+diff --git a/src/mesa/state_tracker/st_format.c b/src/mesa/state_tracker/st_format.c
+--- a/src/mesa/state_tracker/st_format.c
++++ b/src/mesa/state_tracker/st_format.c
+@@ -1307,7 +1307,8 @@
+ static mesa_format
+ choose_format_with_bindings(struct gl_context *ctx, GLint internalFormat,
+                             GLenum format, GLenum type,
+-                            enum pipe_texture_target target, unsigned bindings)
++                            enum pipe_texture_target target, unsigned bindings,
++                            unsigned sample_count)
+ {
+    struct st_context *st = st_context(ctx);
+ 
+@@ -1332,13 +1333,17 @@
+             st_choose_matching_format(st, bindings, format, type,
+                                       ctx->Unpack.SwapBytes);
+ 
+-         if (pFormat != PIPE_FORMAT_NONE)
++         if (pFormat != PIPE_FORMAT_NONE &&
++             (!sample_count || st->screen->is_format_supported(
++                st->screen, pFormat, target, sample_count, sample_count,
++                bindings)))
+             return st_pipe_format_to_mesa_format(pFormat);
+       }
+    }
+ 
+-   return st_choose_format(st, internalFormat, format, type, target, 0, 0,
+-                           bindings, ctx->Unpack.SwapBytes, true);
++   return st_choose_format(st, internalFormat, format, type, target,
++                           sample_count, sample_count, bindings,
++                           ctx->Unpack.SwapBytes, true);
+ }
+ 
+ /**
+@@ -1353,6 +1358,7 @@
+    enum pipe_format pFormat;
+    mesa_format mFormat;
+    unsigned bindings;
++   unsigned sample_count = 0;
+    bool is_renderbuffer = false;
+    enum pipe_texture_target pTarget;
+ 
+@@ -1383,6 +1389,19 @@
+       }
+    }
+ 
++   if (target == GL_TEXTURE_2D_MULTISAMPLE ||
++       target == GL_PROXY_TEXTURE_2D_MULTISAMPLE ||
++       target == GL_TEXTURE_2D_MULTISAMPLE_ARRAY ||
++       target == GL_PROXY_TEXTURE_2D_MULTISAMPLE_ARRAY) {
++      if (_mesa_is_enum_format_integer(internalFormat))
++         sample_count = ctx->Const.MaxIntegerSamples;
++      else if (_mesa_is_depth_or_stencil_format(internalFormat))
++         sample_count = ctx->Const.MaxDepthTextureSamples;
++      else
++         sample_count = ctx->Const.MaxColorTextureSamples;
++      sample_count = MAX2(sample_count, 1u);
++   }
++
+    /* For an unsized GL_RGB but a 2_10_10_10 type, try to pick one of the
+     * 2_10_10_10 formats.  This is important for
+     * GL_EXT_texture_type_2_10_10_10_REV support, which says that these
+@@ -1456,11 +1475,12 @@
+       bindings |= PIPE_BIND_RENDER_TARGET;
+ 
+    pFormat = choose_format_with_bindings(ctx, internalFormat, format, type,
+-                                         pTarget, bindings);
++                                         pTarget, bindings, sample_count);
+ 
+    if (pFormat == PIPE_FORMAT_NONE && !is_renderbuffer) {
+       pFormat = choose_format_with_bindings(ctx, internalFormat, format, type,
+-                                            pTarget, PIPE_BIND_SAMPLER_VIEW);
++                                            pTarget, PIPE_BIND_SAMPLER_VIEW,
++                                            sample_count);
+    }
+ 
+    if (pFormat == PIPE_FORMAT_NONE) {
+diff --git a/src/mesa/state_tracker/st_cb_texture.c b/src/mesa/state_tracker/st_cb_texture.c
+--- a/src/mesa/state_tracker/st_cb_texture.c
++++ b/src/mesa/state_tracker/st_cb_texture.c
+@@ -3489,7 +3489,8 @@
+       enum pipe_texture_target ptarget = gl_target_to_pipe(texObj->Target);
+       bool found = false;
+ 
+-      if (ctx->Const.MaxSamples > 1 && num_samples == 1) {
++      if (ctx->Const.MaxSamples > 1 && num_samples == 1 &&
++          !util_format_is_pure_integer(fmt)) {
+          /* don't try num_samples = 1 with drivers that support real msaa */
+          num_samples = 2;
+       }
+diff --git a/src/mesa/main/renderbuffer.c b/src/mesa/main/renderbuffer.c
+--- a/src/mesa/main/renderbuffer.c
++++ b/src/mesa/main/renderbuffer.c
+@@ -170,7 +170,8 @@
+    if (rb->NumSamples > 0) {
+       unsigned start, start_storage;
+ 
+-      if (ctx->Const.MaxSamples > 1 &&  rb->NumSamples == 1) {
++      if (ctx->Const.MaxSamples > 1 && rb->NumSamples == 1 &&
++          !_mesa_is_enum_format_integer(internalFormat)) {
+          /* don't try num_samples = 1 with drivers that support real msaa */
+          start = 2;
+          start_storage = 2;
+diff --git a/src/mesa/main/fbobject.c b/src/mesa/main/fbobject.c
+--- a/src/mesa/main/fbobject.c
++++ b/src/mesa/main/fbobject.c
+@@ -2818,6 +2818,7 @@
+    }
+    else {
+       /* Probably ran out of memory - clear the fields */
++      _mesa_error(ctx, GL_OUT_OF_MEMORY, "glRenderbufferStorage");
+       rb->Width = 0;
+       rb->Height = 0;
+       rb->Format = MESA_FORMAT_NONE;
+@@ -3159,10 +3160,14 @@
+    case GL_RENDERBUFFER_GREEN_SIZE_EXT:
+    case GL_RENDERBUFFER_BLUE_SIZE_EXT:
+    case GL_RENDERBUFFER_ALPHA_SIZE_EXT:
+-   case GL_RENDERBUFFER_DEPTH_SIZE_EXT:
+    case GL_RENDERBUFFER_STENCIL_SIZE_EXT:
+       *params = get_component_bits(pname, rb->_BaseFormat, rb->Format);
+       return;
++   case GL_RENDERBUFFER_DEPTH_SIZE_EXT:
++      *params = rb->InternalFormat == GL_DEPTH24_STENCIL8_EXT
++                  ? 24
++                  : get_component_bits(pname, rb->_BaseFormat, rb->Format);
++      return;
+    case GL_RENDERBUFFER_SAMPLES:
+       if ((_mesa_is_desktop_gl(ctx) && ctx->Extensions.ARB_framebuffer_object)
+           || _mesa_is_gles3(ctx)) {
+@@ -5099,7 +5104,14 @@
+             return;
+          }
+ 
+-         if (format == MESA_FORMAT_S_UINT8) {
++         if ((att->Renderbuffer->InternalFormat == GL_DEPTH_COMPONENT16 ||
++              att->Renderbuffer->InternalFormat == GL_DEPTH_COMPONENT24 ||
++              att->Renderbuffer->InternalFormat == GL_DEPTH_COMPONENT32 ||
++              att->Renderbuffer->InternalFormat == GL_DEPTH24_STENCIL8_EXT) &&
++             attachment != GL_STENCIL_ATTACHMENT) {
++            *params = GL_UNSIGNED_NORMALIZED;
++         }
++         else if (format == MESA_FORMAT_S_UINT8) {
+             /* special cases */
+             *params = GL_INDEX;
+          }
+@@ -5133,16 +5145,24 @@
+             _mesa_select_tex_image(att->Texture, att->Texture->Target,
+                                    att->TextureLevel);
+          if (texImage) {
+-            *params = get_component_bits(pname, texImage->_BaseFormat,
+-                                         texImage->TexFormat);
++            *params = pname == GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE &&
++                            texImage->InternalFormat == GL_DEPTH24_STENCIL8_EXT
++                         ? 24
++                         : get_component_bits(pname, texImage->_BaseFormat,
++                                              texImage->TexFormat);
+          }
+          else {
+             *params = 0;
+          }
+       }
+       else if (att->Renderbuffer) {
+-         *params = get_component_bits(pname, att->Renderbuffer->_BaseFormat,
+-                                      att->Renderbuffer->Format);
++         *params = pname == GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE &&
++                         att->Renderbuffer->InternalFormat ==
++                            GL_DEPTH24_STENCIL8_EXT
++                      ? 24
++                      : get_component_bits(pname,
++                                           att->Renderbuffer->_BaseFormat,
++                                           att->Renderbuffer->Format);
+       }
+       else {
+          assert(att->Type == GL_NONE);
+diff --git a/src/mesa/main/texparam.c b/src/mesa/main/texparam.c
+--- a/src/mesa/main/texparam.c
++++ b/src/mesa/main/texparam.c
+@@ -1866,7 +1866,9 @@
+          }
+          break;
+       case GL_TEXTURE_DEPTH_SIZE_ARB:
+-         *params = _mesa_get_format_bits(texFormat, pname);
++         *params = img->InternalFormat == GL_DEPTH24_STENCIL8_EXT
++                      ? 24
++                      : _mesa_get_format_bits(texFormat, pname);
+          break;
+       case GL_TEXTURE_STENCIL_SIZE:
+          *params = _mesa_get_format_bits(texFormat, pname);
+@@ -1913,7 +1915,13 @@
+          if (!_mesa_has_float_textures(ctx))
+             goto invalid_pname;
+          if (_mesa_base_format_has_channel(img->_BaseFormat, pname))
+-            *params = _mesa_get_format_datatype(texFormat);
++            *params = pname == GL_TEXTURE_DEPTH_TYPE_ARB &&
++                            (img->InternalFormat == GL_DEPTH_COMPONENT16 ||
++                             img->InternalFormat == GL_DEPTH_COMPONENT24 ||
++                             img->InternalFormat == GL_DEPTH_COMPONENT32 ||
++                             img->InternalFormat == GL_DEPTH24_STENCIL8_EXT)
++                         ? GL_UNSIGNED_NORMALIZED
++                         : _mesa_get_format_datatype(texFormat);
+          else
+             *params = GL_NONE;
+          break;
+diff --git a/src/mesa/state_tracker/st_extensions.c b/src/mesa/state_tracker/st_extensions.c
+--- a/src/mesa/state_tracker/st_extensions.c
++++ b/src/mesa/state_tracker/st_extensions.c
+@@ -1432,10 +1432,10 @@
+                                      PIPE_BIND_SAMPLER_VIEW);
+ 
+       consts->MaxIntegerSamples =
+-         get_max_samples_for_formats(screen, ARRAY_SIZE(int_formats),
+-                                     int_formats, consts->MaxSamples,
+-                                     PIPE_BIND_SAMPLER_VIEW);
++         MAX2(1u, get_max_samples_for_formats(screen, ARRAY_SIZE(int_formats),
++                                              int_formats, consts->MaxSamples,
++                                              PIPE_BIND_SAMPLER_VIEW));
+ 
+       /* ARB_framebuffer_no_attachments, assume max no. of samples 32 */
+          consts->MaxFramebufferSamples =
+             get_max_samples_for_formats(screen, ARRAY_SIZE(void_formats),
+
+diff --git a/src/compiler/nir/nir_intrinsics.py b/src/compiler/nir/nir_intrinsics.py
+--- a/src/compiler/nir/nir_intrinsics.py
++++ b/src/compiler/nir/nir_intrinsics.py
+@@ -1627,6 +1627,15 @@
+ # src[] = { offset }.
+ load("shared_ir3", [1], [BASE, ALIGN_MUL, ALIGN_OFFSET], [CAN_ELIMINATE])
+ 
++# IR3-specific load/store global intrinsics. They take a 64-bit base address
++# and a 32-bit offset. The hardware adds them, avoiding 64-bit address math.
++store("global_ir3", [1, 1],
++      indices=[ACCESS, ALIGN_MUL, ALIGN_OFFSET, OFFSET_SHIFT, BASE])
++load("global_ir3", [1, 1],
++     indices=[ACCESS, ALIGN_MUL, ALIGN_OFFSET, RANGE_BASE, RANGE,
++              OFFSET_SHIFT, BASE],
++     flags=[CAN_ELIMINATE])
++
+ # Etnaviv-specific load/glboal intrinsics. They take a 32-bit base address and
+ # a 32-bit offset, which doesn't need to be an immediate.
+ # src[] = { value, address, 32-bit offset }.
+diff --git a/src/util/os_file.c b/src/util/os_file.c
+--- a/src/util/os_file.c
++++ b/src/util/os_file.c
+@@ -214,7 +214,7 @@
+ #include <sys/epoll.h>
+ #endif
+ 
+-#if DETECT_OS_DRAGONFLY || DETECT_OS_FREEBSD
++#if DETECT_OS_DRAGONFLY || (DETECT_OS_FREEBSD && !defined(__PROSPERO__))
+ 
+ #include "macros.h" /* ARRAY_SIZE */
+ 
+@@ -257,7 +257,7 @@
+ 
+ #ifdef SYS_kcmp
+    return syscall(SYS_kcmp, pid, pid, KCMP_FILE, fd1, fd2);
+-#elif DETECT_OS_DRAGONFLY || DETECT_OS_FREEBSD
++#elif DETECT_OS_DRAGONFLY || (DETECT_OS_FREEBSD && !defined(__PROSPERO__))
+    int mib[] = { CTL_KERN, KERN_FILE };
+    size_t len;
+    if (sysctl(mib, ARRAY_SIZE(mib), NULL, &len, NULL, 0))

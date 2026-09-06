@@ -1,0 +1,72 @@
+# Build only the target-side compiler archive with PS5-specific object names.
+
+OPENGNM_PSBC_ORBIS := 1
+PSBC :=
+CLI_SRCS :=
+CLI_OBJS :=
+LIBPSBC := libpsbc.ps5.a
+CONFIG := ../../toolchain/opengnm-psbc-ps5.mak
+
+include Makefile
+
+PSBC_OBJS := $(PSBC_SRCS:.c=.ps5.o)
+NIR_OBJS := $(NIR_SRCS:.c=.ps5.o)
+SPIRV_OBJS := $(SPIRV_SRCS:.c=.ps5.o)
+ACO_OBJS := $(ACO_SRCS:.cpp=.ps5.cpp.o)
+AMD_COMMON_OBJS := $(AMD_COMMON_SRCS:.c=.ps5.o)
+AMD_COMMON_NIR_OBJS := $(AMD_COMMON_NIR_SRCS:.c=.ps5.o)
+RADV_OBJS := $(RADV_SRCS:.c=.ps5.o)
+RADV_NIR_OBJS := $(RADV_NIR_SRCS:.c=.ps5.o)
+UTIL_SRCS := $(filter-out \
+	src/util/anon_file.c \
+	src/util/log.c \
+	src/util/mesa_cache_db.c \
+	src/util/mesa_cache_db_multipart.c \
+	src/util/os_file.c \
+	src/util/os_time.c \
+	src/util/u_process.c \
+	src/util/u_thread.c \
+	,$(UTIL_SRCS))
+UTIL_OBJS := $(patsubst %.c,%.ps5.o,$(filter %.c,$(UTIL_SRCS))) \
+	$(patsubst %.cpp,%.ps5.cpp.o,$(filter %.cpp,$(UTIL_SRCS)))
+UTIL_FORMAT_SRCS := $(filter-out src/util/format/u_format_s3tc.c,$(UTIL_FORMAT_SRCS))
+UTIL_FORMAT_OBJS := $(UTIL_FORMAT_SRCS:.c=.ps5.o)
+COMPILER_COMMON_OBJS := $(COMPILER_COMMON_SRCS:.c=.ps5.o)
+BLAKE3_OBJS := $(BLAKE3_SRCS:.c=.ps5.o)
+C11_THREADS_OBJS := $(C11_THREADS_SRCS:.c=.ps5.o)
+VK_RUNTIME_OBJS := $(VK_RUNTIME_SRCS:.c=.ps5.o)
+PS5_PLATFORM_OBJS := ../../src/platform/ps5_mesa_shims.ps5.o
+
+LIBPSBC_OBJS := \
+	$(PSBC_OBJS) \
+	$(NIR_OBJS) \
+	$(SPIRV_OBJS) \
+	$(ACO_OBJS) \
+	$(AMD_COMMON_OBJS) \
+	$(AMD_COMMON_NIR_OBJS) \
+	$(RADV_OBJS) \
+	$(RADV_NIR_OBJS) \
+	$(UTIL_OBJS) \
+	$(UTIL_FORMAT_OBJS) \
+	$(COMPILER_COMMON_OBJS) \
+	$(BLAKE3_OBJS) \
+	$(C11_THREADS_OBJS) \
+	$(VK_RUNTIME_OBJS) \
+	$(PS5_PLATFORM_OBJS)
+
+%.ps5.o: %.c | $(GENERATED)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+%.ps5.cpp.o: %.cpp | $(GENERATED)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+libpsbc/psbc_compile.ps5.o: libpsbc/psbc_compile.h
+
+src/util/futex.ps5.o: CFLAGS += -D__ORBIS__
+
+libpsbc: $(LIBPSBC)
+
+$(LIBPSBC): $(LIBPSBC_OBJS)
+	$(AR) rcs $@ $(LIBPSBC_OBJS)
+
+.DEFAULT_GOAL := libpsbc

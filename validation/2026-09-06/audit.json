@@ -1,0 +1,87 @@
+{
+  "scope": "single-candidate-CTS-matrix-only",
+  "eboot_sha256": "cbb5b718c7727484d60b0a1c7b0c1d421a7bf1eda2f1a75e28fc14fa961e361a",
+  "complete": true,
+  "clean_cycles": 21,
+  "configurations": {
+    "0": {
+      "executed": 9886,
+      "counts": {
+        "Pass": 9351,
+        "NotSupported": 535
+      },
+      "missing": []
+    },
+    "1": {
+      "executed": 9886,
+      "counts": {
+        "Pass": 9351,
+        "NotSupported": 535
+      },
+      "missing": []
+    },
+    "2": {
+      "executed": 9886,
+      "counts": {
+        "Pass": 9351,
+        "NotSupported": 535
+      },
+      "missing": []
+    },
+    "3": {
+      "executed": 9886,
+      "counts": {
+        "Pass": 9351,
+        "NotSupported": 535
+      },
+      "missing": []
+    }
+  },
+  "render_targets": {
+    "0": {
+      "Width": 64,
+      "Height": 64,
+      "RedBits": 8,
+      "GreenBits": 8,
+      "BlueBits": 8,
+      "AlphaBits": 8,
+      "DepthBits": 32,
+      "StencilBits": 8,
+      "SampleCount": 0
+    },
+    "1": {
+      "Width": 113,
+      "Height": 47,
+      "RedBits": 8,
+      "GreenBits": 8,
+      "BlueBits": 8,
+      "AlphaBits": 8,
+      "DepthBits": 32,
+      "StencilBits": 8,
+      "SampleCount": 0
+    },
+    "2": {
+      "Width": 64,
+      "Height": 8192,
+      "RedBits": 8,
+      "GreenBits": 8,
+      "BlueBits": 8,
+      "AlphaBits": 8,
+      "DepthBits": 24,
+      "StencilBits": 8,
+      "SampleCount": -1
+    },
+    "3": {
+      "Width": 8192,
+      "Height": 64,
+      "RedBits": 8,
+      "GreenBits": 8,
+      "BlueBits": 8,
+      "AlphaBits": 8,
+      "DepthBits": 24,
+      "StencilBits": 8,
+      "SampleCount": -1
+    }
+  },
+  "manifest_sha256": "92097daa6dc0e33c6d79f88c92f18327b9994a3e8d5ad5a9d5b2274c531a4436"
+}

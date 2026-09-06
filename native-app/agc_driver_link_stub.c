@@ -1,0 +1,12 @@
+#include <stdint.h>
+
+uint32_t sceAgcDriverGetWaitRenderingPacketSizeInDwords(void) { return 0; }
+uint32_t sceAgcDriverWaitUntilSafeForRendering(uint32_t **command,
+                                               uint32_t video_handle,
+                                               uint32_t buffer_index,
+                                               uint32_t generation,
+                                               int mode)
+{
+    return command != 0 || video_handle || buffer_index || generation || mode;
+}
+int sceAgcDriverSubmitDcb(void *description) { return description ? -1 : 0; }

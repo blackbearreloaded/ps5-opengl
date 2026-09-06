@@ -1,0 +1,9 @@
+prefix=${pcfiledir}/../..
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: PS5 OpenGL Core 3.3
+Description: Experimental Mesa OpenGL 3.3 Core runtime for PS5 homebrew
+Version: 0.1.0
+Cflags: -DGL_GLEXT_PROTOTYPES=1 -I${includedir}
+Libs: -Wl,-u,ps5_agc_gate2_run -L${libdir} -Wl,--start-group -lPS5OpenGLCore33 -Wl,--end-group -lSceAgc -lSceAgcDriver -lSceVideoOut -lkernel_web -lSceSystemService

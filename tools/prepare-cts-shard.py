@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Prepare one exact Khronos GL 3.3 must-pass shard for PPSA99005."""
+
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import hashlib
+import json
+import math
+from pathlib import Path
+
+
+CONFIGURATIONS = (
+    (64, 64, 1, ()),
+    (113, 47, 2, ()),
+    (64, -1, 3, ("--deqp-gl-config-name=rgba8888d24s8", "--deqp-surface-type=fbo")),
+    (-1, 64, 3, ("--deqp-gl-config-name=rgba8888d24s8", "--deqp-surface-type=fbo")),
+)
+
+
+def select_cases(cases, patterns):
+    selected = set()
+    for pattern in patterns:
+        matches = {name for name in cases if fnmatch.fnmatchcase(name, pattern)}
+        if not matches:
+            raise ValueError(f"selector matches no pinned CTS case: {pattern}")
+        selected.update(matches)
+    return [name for name in cases if name in selected]
+
+
+def timed_prefix(cases, timings, budget, unknown_seconds=30):
+    family_seconds = {}
+    for name, value in timings.items():
+        seconds = float(value)
+        if not math.isfinite(seconds) or seconds < 0:
+            raise ValueError(f"invalid duration for {name}")
+        family = name.rsplit('.', 1)[0]
+        family_seconds[family] = max(family_seconds.get(family, 0), seconds)
+    total, selected = 0.0, []
+    for name in cases:
+        fallback = max(unknown_seconds, family_seconds.get(name.rsplit('.', 1)[0], 0))
+        seconds = float(timings.get(name, fallback))
+        if not math.isfinite(seconds) or seconds < 0:
+            raise ValueError(f"invalid duration for {name}")
+        if selected and total + seconds > budget:
+            break
+        selected.append(name)
+        total += seconds
+    return selected, total
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parent.parent
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--offset", type=int, default=0)
+    parser.add_argument("--count", type=int)
+    selector = parser.add_mutually_exclusive_group()
+    selector.add_argument("--suite")
+    selector.add_argument("--case-list", type=Path)
+    parser.add_argument("--timings", type=Path, help="JSON from summarize-cts-qpa.py --inventory")
+    parser.add_argument("--budget-seconds", type=float)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--configuration", type=int, choices=range(4), default=0)
+    parser.add_argument(
+        "--app",
+        type=Path,
+        default=root / "build/native-app/PPSA99005-cts/dist/PPSA99005",
+    )
+    arguments = parser.parse_args()
+    if arguments.offset < 0 or (arguments.count is not None and arguments.count <= 0):
+        parser.error("offset must be nonnegative and count must be positive")
+    if arguments.budget_seconds is not None and (
+            not math.isfinite(arguments.budget_seconds) or arguments.budget_seconds <= 0
+            or not arguments.timings):
+        parser.error("a finite positive budget requires --timings")
+    if not (arguments.suite or arguments.case_list or arguments.count or arguments.budget_seconds):
+        parser.error("select a suite, case list, count, or time budget")
+
+    source = (
+        root
+        / "third_party/VK-GL-CTS/external/openglcts/data/gl_cts/data/mustpass"
+        / "gl/khronos_mustpass/main/gl33-main.txt"
+    )
+    cases = [line.strip() for line in source.read_text().splitlines() if line.strip()]
+    if arguments.suite:
+        suites = json.loads((root / "tests/ps5/cts-regressions.json").read_text())
+        if arguments.suite not in suites:
+            parser.error(f"unknown suite; choose from {', '.join(suites)}")
+        try:
+            cases = select_cases(cases, suites[arguments.suite])
+        except ValueError as error:
+            parser.error(str(error))
+    elif arguments.case_list:
+        requested = [line.strip() for line in arguments.case_list.read_text().splitlines()
+                     if line.strip() and not line.lstrip().startswith('#')]
+        if len(requested) != len(set(requested)) or set(requested) - set(cases):
+            parser.error("case list contains duplicates or names outside the pinned must-pass list")
+        cases = requested
+    end = arguments.offset + arguments.count if arguments.count else len(cases)
+    selected = cases[arguments.offset:end]
+    if not selected or (arguments.count and len(selected) != arguments.count):
+        parser.error(f"requested range exceeds the {len(cases)}-case selection")
+    if len(selected) != len(set(selected)):
+        parser.error("selected must-pass range contains duplicate case names")
+    estimated = None
+    if arguments.timings:
+        timings = json.loads(arguments.timings.read_text())["timings"]
+        try:
+            selected, estimated = timed_prefix(selected, timings, arguments.budget_seconds or math.inf)
+        except ValueError as error:
+            parser.error(str(error))
+
+    app = arguments.app.resolve()
+    if not arguments.dry_run and not (app / "eboot.bin").is_file():
+        parser.error(f"native CTS app is missing: {app}")
+    case_list = app / "cts-shard.txt"
+    case_bytes = ("\n".join(selected) + "\n").encode()
+
+    width, height, seed, extra = CONFIGURATIONS[arguments.configuration]
+    cts_arguments = [
+        "# One argument per line. Generated by prepare-cts-shard.py.",
+        "--deqp-archive-dir=/app0",
+        "--deqp-log-filename=/download0/pss-opengl-cts.qpa",
+        "--deqp-caselist-file=/app0/cts-shard.txt",
+        f"--deqp-surface-width={width}",
+        f"--deqp-surface-height={height}",
+        "--deqp-screen-rotation=unspecified",
+        f"--deqp-base-seed={seed}",
+        *extra,
+        "--deqp-terminate-on-device-lost=disable",
+        "--deqp-watchdog=disable",
+        "--deqp-crashhandler=disable",
+        "--deqp-log-images=disable",
+        "--deqp-log-shader-sources=disable",
+        "--deqp-log-flush=enable",
+    ]
+    argument_file = app / "cts-args.txt"
+    argument_bytes = ("\n".join(cts_arguments) + "\n").encode()
+    if not arguments.dry_run:
+        case_list.write_bytes(case_bytes)
+        argument_file.write_bytes(argument_bytes)
+
+    print(f"offset={arguments.offset}")
+    print(f"selection={arguments.suite or arguments.case_list or 'mustpass'}")
+    print(f"count={len(selected)}")
+    print(f"next_offset={arguments.offset + len(selected)}")
+    print(f"selection_total={len(cases)}")
+    print(f"configuration={arguments.configuration}")
+    print(f"first={selected[0]}")
+    print(f"last={selected[-1]}")
+    if estimated is not None:
+        print(f"estimated_seconds={estimated:.2f}")
+        print(f"suggested_observation_seconds={max(120, math.ceil(estimated * 1.5 + 60))}")
+    print(f"arguments_sha256={hashlib.sha256(argument_bytes).hexdigest()}")
+    print(f"case_list_sha256={hashlib.sha256(case_bytes).hexdigest()}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

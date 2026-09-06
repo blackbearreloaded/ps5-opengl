@@ -1,0 +1,49 @@
+{
+  "info": ["KHR-GL33.info.*"],
+  "fbo-extents": [
+    "KHR-GL33.info.*",
+    "KHR-GL33.buffer_objects.triangles",
+    "KHR-GL33.nearest_edge.*",
+    "KHR-GL33.draw_buffers.*",
+    "KHR-GL33.packed_depth_stencil.clear_buffer.*"
+  ],
+  "smoke": [
+    "KHR-GL33.info.*",
+    "KHR-GL33.buffer_objects.*",
+    "KHR-GL33.draw_buffers.*",
+    "KHR-GL33.framebuffer_blit.*",
+    "KHR-GL33.get_uniform_tests.get_uniform",
+    "KHR-GL33.glsl_noperspective.functionaltest",
+    "KHR-GL33.nearest_edge.*",
+    "KHR-GL33.packed_depth_stencil.blit.*",
+    "KHR-GL33.packed_depth_stencil.clear_buffer.*",
+    "KHR-GL33.primitive_restart.restart_mode",
+    "KHR-GL33.texture_lod_basic.lod_selection",
+    "KHR-GL33.texture_repeat_mode.r32ui_49x23_1_mirrored_repeat",
+    "KHR-GL33.texture_repeat_mode.depth_component16_11x131_0_repeat",
+    "KHR-GL33.texture_size_promotion.functional",
+    "KHR-GL33.texture_swizzle.functional_format_idx_5_target_idx_7",
+    "KHR-GL33.texture_swizzle.functional_format_idx_5_target_idx_8",
+    "KHR-GL33.transform_feedback.*"
+  ],
+  "geometry": [
+    "KHR-GL33.buffer_objects.elements",
+    "KHR-GL33.buffer_objects.triangles",
+    "KHR-GL33.primitive_restart.restart_mode",
+    "KHR-GL33.transform_feedback.*"
+  ],
+  "shaders": ["KHR-GL33.shaders.*", "KHR-GL33.shaders30.*"],
+  "textures": [
+    "KHR-GL33.texture_lod_basic.*",
+    "KHR-GL33.texture_repeat_mode.*",
+    "KHR-GL33.texture_size_promotion.*",
+    "KHR-GL33.texture_swizzle.functional*"
+  ],
+  "swizzle-exhaustive": ["KHR-GL33.texture_swizzle.smoke*"],
+  "swizzle-access-discovery": [
+    "KHR-GL33.texture_swizzle.smoke_access_idx_3_channel_idx_0",
+    "KHR-GL33.texture_swizzle.smoke_access_idx_4_channel_idx_0",
+    "KHR-GL33.texture_swizzle.smoke_access_idx_5_channel_idx_0",
+    "KHR-GL33.texture_swizzle.smoke_access_idx_7_channel_idx_0"
+  ]
+}

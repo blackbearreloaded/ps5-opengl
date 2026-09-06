@@ -1,0 +1,20 @@
+SHELL := bash
+
+PS5_PAYLOAD_SDK ?= /opt/ps5-payload-sdk/
+PS5_OPENGL_PREFIX ?= ../../build/sdk/ps5-opengl-core33
+include $(PS5_PAYLOAD_SDK)/toolchain/prospero.mk
+include $(PS5_OPENGL_PREFIX)/share/ps5-opengl-core33/ps5-opengl-core33.mk
+
+.PHONY: all clean
+all: core33-triangle-installed.elf
+
+main-installed.o: main.c
+	$(CC) -std=c11 -Os -g -Wall -Wextra -Werror \
+		$(PS5_OPENGL_PUBLIC_CFLAGS) -c -o $@ $<
+
+core33-triangle-installed.elf: main-installed.o
+	$(CXX) -o $@ main-installed.o $(PS5_OPENGL_LDLIBS) \
+		$(PS5_OPENGL_LDFLAGS)
+
+clean:
+	rm -f main-installed.o core33-triangle-installed.elf

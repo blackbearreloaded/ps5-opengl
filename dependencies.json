@@ -1,0 +1,29 @@
+{
+  "mesa": {
+    "version": "26.2.0",
+    "url": "https://archive.mesa3d.org/mesa-26.2.0.tar.xz",
+    "sha256": "efd4bb08cdb7c365a812cd4e6c9202ab55b2f22cdcd13c7d6c4f9647b799a4ef"
+  },
+  "repositories": {
+    "opengnm-psbc": {"url": "https://github.com/PS4-OpenGNM/opengnm-psbc.git", "revision": "a92a1228ea3a64e4be9f0e61c2a65a5aa7ffed92"},
+    "opengnm": {"url": "https://github.com/PS4-OpenGNM/opengnm.git", "revision": "4b295ca54c82c83acf308d1c646a2dfa9ae57350"},
+    "SPIRV-Headers": {"url": "https://github.com/KhronosGroup/SPIRV-Headers.git", "revision": "0d25db97cb9b8f725e4c95e4553001710e7fc39d"},
+    "Vulkan-Headers": {"url": "https://github.com/KhronosGroup/Vulkan-Headers.git", "revision": "b51f6b865c18fc5b33990d12f75e8dfd672cede6"},
+    "imgui": {"url": "https://github.com/ocornut/imgui.git", "revision": "f5befd2d29e66809cd1110a152e375a7f1981f06"},
+    "nanovg": {"url": "https://github.com/memononen/nanovg.git", "revision": "ce3bf745eb2d2dbc14a50bf2446783f691ac4353"},
+    "sokol": {"url": "https://github.com/floooh/sokol.git", "revision": "48c85905aeaa1350feb17515961aecb6c75447d8"},
+    "VK-GL-CTS": {"url": "https://github.com/KhronosGroup/VK-GL-CTS.git", "revision": "cf7edb26d3be2d8763595ed08fdc41f3c1b1966f", "optional": true}
+  },
+  "psbc_patch": {
+    "path": "toolchain/opengnm-psbc-ps5.patch",
+    "sha256": "20e8ff46662a8ac87fff29c9b09c4ea17c8a6008a6d0416da65c7376bcfee3c0",
+    "patched_tree": "51dcd101eb3235e6d650af5e3ee40e1a449035fc",
+    "research_commit": "a11c1925e53c555ff882930fcfdb2d8936f52b88"
+  },
+  "native_boilerplate": {
+    "url": "https://github.com/blackbearreloaded/ps5-native-app-boilerplate.git",
+    "revision": "4e1d1277dd0531a9a9df8c780e446b9cc26534dd",
+    "payload_sdk": "v0.42",
+    "payload_sdk_archive_sha256": "8cfbc7cd5811e719eb4f0c47eea668d3dc7b40bc8ab11c4a5031d40c23ec02da"
+  }
+}

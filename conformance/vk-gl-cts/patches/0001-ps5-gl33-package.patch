@@ -1,0 +1,21 @@
+diff --git a/external/openglcts/modules/CMakeLists.txt b/external/openglcts/modules/CMakeLists.txt
+index 2c800df06..279173b2e 100644
+--- a/external/openglcts/modules/CMakeLists.txt
++++ b/external/openglcts/modules/CMakeLists.txt
+@@ -48,6 +48,16 @@ set(GLCTS_LIBS
+ # \note This module contains multiple packages (ES2-CTS, ES3-CTS, ..)
+ add_deqp_module(glcts "${GLCTS_SRCS}" "${GLCTS_LIBS}" "tcutil-platform" glcTestPackageEntry.cpp)
+ 
++if (DEQP_TARGET_NAME STREQUAL "PS5 OpenGL")
++    add_library(ps5-gl33-package STATIC
++        ps5/glcPS5GL33PackageEntry.cpp
++        ps5/glcPS5GL33PackageEntry.hpp
++    )
++    target_include_directories(ps5-gl33-package PRIVATE gl ps5)
++    target_link_libraries(ps5-gl33-package PUBLIC glcts-gl tcutil-platform)
++    add_dependencies(ps5-gl33-package glcts-data)
++endif ()
++
+ # Data directories
+ add_data_dir(glcts ../data/gl_cts gl_cts)
+ add_data_dir(glcts ../../../data/gles2 gles2)

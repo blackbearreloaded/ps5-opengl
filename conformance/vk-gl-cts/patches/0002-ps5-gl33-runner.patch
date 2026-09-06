@@ -1,0 +1,15 @@
+diff --git a/external/openglcts/modules/CMakeLists.txt b/external/openglcts/modules/CMakeLists.txt
+index 279173b2e..7d304de6e 100644
+--- a/external/openglcts/modules/CMakeLists.txt
++++ b/external/openglcts/modules/CMakeLists.txt
+@@ -56,6 +56,10 @@ if (DEQP_TARGET_NAME STREQUAL "PS5 OpenGL")
+     target_include_directories(ps5-gl33-package PRIVATE gl ps5)
+     target_link_libraries(ps5-gl33-package PUBLIC glcts-gl tcutil-platform)
+     add_dependencies(ps5-gl33-package glcts-data)
++
++    add_library(ps5-gl33-runner STATIC ps5/glcPS5Main.cpp)
++    target_include_directories(ps5-gl33-runner PRIVATE ps5)
++    target_link_libraries(ps5-gl33-runner PUBLIC ps5-gl33-package)
+ endif ()
+ 
+ # Data directories

@@ -1,0 +1,14 @@
+diff --git a/external/openglcts/modules/common/glcShaderNegativeTests.cpp b/external/openglcts/modules/common/glcShaderNegativeTests.cpp
+--- a/external/openglcts/modules/common/glcShaderNegativeTests.cpp
++++ b/external/openglcts/modules/common/glcShaderNegativeTests.cpp
+@@ -361,7 +361,8 @@ public:
+         }
+ 
+-        // Compute shader, not available for GLES2 and GLES3
+-        if (!glslVersionIsES(m_glslVersion) || m_glslVersion >= GLSL_VERSION_310_ES)
++        // Compute shaders require GLSL 4.30 on desktop and GLSL ES 3.10.
++        if ((!glslVersionIsES(m_glslVersion) && m_glslVersion >= GLSL_VERSION_430) ||
++            (glslVersionIsES(m_glslVersion) && m_glslVersion >= GLSL_VERSION_310_ES))
+         {
+             // Layout qualifier test
+             args["QUALIFIER"] = layout_str;

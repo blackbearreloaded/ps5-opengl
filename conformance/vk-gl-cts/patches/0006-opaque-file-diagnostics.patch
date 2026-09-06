@@ -1,0 +1,21 @@
+diff --git a/framework/qphelper/qpDebugOut.c b/framework/qphelper/qpDebugOut.c
+--- a/framework/qphelper/qpDebugOut.c
++++ b/framework/qphelper/qpDebugOut.c
+@@ -167,7 +167,7 @@ void printRaw(MessageType type, const char *message)
+ 
+     if (type == MESSAGETYPE_ERROR)
+     {
+-        putc('\n', out);
++        fputc('\n', out);
+         fflush(out);
+     }
+ }
+@@ -194,7 +194,7 @@ void printFmt(MessageType type, const char *format, va_list args)
+ 
+     if (type == MESSAGETYPE_ERROR)
+     {
+-        putc('\n', out);
++        fputc('\n', out);
+         fflush(out);
+     }
+ }

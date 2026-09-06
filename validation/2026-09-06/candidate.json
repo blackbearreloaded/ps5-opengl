@@ -1,0 +1,2721 @@
+{
+  "scope": "Project validation candidate; not Khronos certification",
+  "source_commit": "92bcfbbd255c405c6342bf03d6d2676a27d879cb",
+  "eboot_sha256": "cbb5b718c7727484d60b0a1c7b0c1d421a7bf1eda2f1a75e28fc14fa961e361a",
+  "libc_sha256": "e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036",
+  "cts_commit": "cf7edb26d3be2d8763595ed08fdc41f3c1b1966f",
+  "mustpass_sha256": "0a77b99fd165a5a11001dde4cbb33fb3e3ec937e5a1541692eee222ad9b41f56",
+  "psbc_commit": "a11c1925e53c555ff882930fcfdb2d8936f52b88",
+  "boilerplate_commit": "4e1d1277dd0531a9a9df8c780e446b9cc26534dd",
+  "protocol_commit": "8d9639c5cbce0b6addc0536449da1cfe733e439a",
+  "sdk_manifest_sha256": "bd0b2bfaf0861723f3a095c866c796cd0dd067eca0cae2873050167e9d9c55f7",
+  "param_sha256": "5b258d1d7bfb0059ac879cc2e47a017b8e7c0953db90cf4bc24457df01ba3d6b",
+  "mesa_patch_sha256": "b86147d968d84f8f74ae38766da95b0a35faafa72660687b7bbac64981bf14c4",
+  "compiler": "Ubuntu clang 18.1.8 (20ubuntu8)",
+  "expected_render_targets": {
+    "0": {"Width": 64, "Height": 64, "RedBits": 8, "GreenBits": 8, "BlueBits": 8, "AlphaBits": 8, "DepthBits": 32, "StencilBits": 8, "SampleCount": 0},
+    "1": {"Width": 113, "Height": 47, "RedBits": 8, "GreenBits": 8, "BlueBits": 8, "AlphaBits": 8, "DepthBits": 32, "StencilBits": 8, "SampleCount": 0},
+    "2": {"Width": 64, "Height": 8192, "RedBits": 8, "GreenBits": 8, "BlueBits": 8, "AlphaBits": 8, "DepthBits": 24, "StencilBits": 8, "SampleCount": -1},
+    "3": {"Width": 8192, "Height": 64, "RedBits": 8, "GreenBits": 8, "BlueBits": 8, "AlphaBits": 8, "DepthBits": 24, "StencilBits": 8, "SampleCount": -1}
+  },
+  "receipts": [
+    "config-0/PPSA99005-20260905-183711-pss-opengl-cts.qpa",
+    "config-0/PPSA99005-20260905-185740-pss-opengl-cts.qpa",
+    "config-0/PPSA99005-20260905-190208-pss-opengl-cts.qpa",
+    "config-0/PPSA99005-20260905-191819-pss-opengl-cts.qpa",
+    "config-0/PPSA99005-20260905-194450-pss-opengl-cts.qpa",
+    "config-0/PPSA99005-20260905-200858-pss-opengl-cts.qpa",
+    "config-1/PPSA99005-20260905-202057-pss-opengl-cts.qpa",
+    "config-2/PPSA99005-20260905-204358-pss-opengl-cts.qpa",
+    "config-2/PPSA99005-20260905-223625-pss-opengl-cts.qpa",
+    "config-2/PPSA99005-20260905-223824-pss-opengl-cts.qpa",
+    "config-3/PPSA99005-20260905-224710-pss-opengl-cts.qpa",
+    "config-3/PPSA99005-20260905-231252-pss-opengl-cts.qpa",
+    "config-1/PPSA99005-20260905-232220-pss-opengl-cts.qpa",
+    "config-1/PPSA99005-20260905-234856-pss-opengl-cts.qpa",
+    "config-1/PPSA99005-20260906-002152-pss-opengl-cts.qpa",
+    "config-2/PPSA99005-20260906-003327-pss-opengl-cts.qpa",
+    "config-2/PPSA99005-20260906-005950-pss-opengl-cts.qpa",
+    "config-2/PPSA99005-20260906-012424-pss-opengl-cts.qpa",
+    "config-3/PPSA99005-20260906-013617-pss-opengl-cts.qpa",
+    "config-3/PPSA99005-20260906-020256-pss-opengl-cts.qpa",
+    "config-3/PPSA99005-20260906-022701-pss-opengl-cts.qpa"
+  ],
+  "not_supported": {
+    "KHR-GL33.CommonBugs.CommonBug_PerVertexValidation": {
+      "message": "Test implemented for OpenGL 4.1 contexts or newer.",
+      "basis": "Upstream requires a Core 4.1 context; tested context is Core 3.3.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cCommonBugsTests.cpp:2478"
+    },
+    "KHR-GL33.cull_distance.coverage": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_0_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_1_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_2_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_3_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_4_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_5_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_6_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_7_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_lines_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_lines_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_lines_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_lines_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_lines_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_lines_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_lines_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_lines_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_points_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_points_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_points_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_points_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_points_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_points_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_points_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_points_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_triangles_max_culldist_0": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_triangles_max_culldist_1": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_triangles_max_culldist_2": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_triangles_max_culldist_3": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_triangles_max_culldist_4": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_triangles_max_culldist_5": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_triangles_max_culldist_6": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.functional_test_item_8_primitive_mode_triangles_max_culldist_7": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.cull_distance.negative": {
+      "message": "GL_ARB_clip_distance is not supported",
+      "basis": "Core 4.5 / optional ARB_cull_distance absent; upstream message incorrectly names clip distance.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcCullDistance.cpp:357"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texture.sampler2darrayshadow_bias_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texture.sampler2darrayshadow_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texture.samplercubearrayshadow_bias_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texture.samplercubearrayshadow_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texture.samplercubearrayshadow_vertex": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texturelod.sampler2darrayshadow_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texturelod.sampler2darrayshadow_vertex": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texturelod.samplercubearrayshadow_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texturelod.samplercubeshadow_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texturelod.samplercubeshadow_vertex": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texturelodoffset.sampler2darrayshadow_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.texturelodoffset.sampler2darrayshadow_vertex": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.textureoffset.sampler2darrayshadow_bias_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.textureoffset.sampler2darrayshadow_fragment": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.ext_texture_shadow_lod.textureoffset.sampler2darrayshadow_vertex": {
+      "message": "EXT_texture_shadow_lod is not supported on the platform",
+      "basis": "Optional GL_EXT_texture_shadow_lod is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/glesext/texture_shadow_lod/esextcTextureShadowLodFunctionsTest.cpp:367"
+    },
+    "KHR-GL33.gpu_shader5_gl.float_encoding": {
+      "message": "GL_ARB_gpu_shader5 is not supported.",
+      "basis": "Optional GL_ARB_gpu_shader5 is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cGPUShader5Tests.cpp:433"
+    },
+    "KHR-GL33.gpu_shader5_gl.function_overloading": {
+      "message": "GL_ARB_gpu_shader5 is not supported.",
+      "basis": "Optional GL_ARB_gpu_shader5 is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cGPUShader5Tests.cpp:433"
+    },
+    "KHR-GL33.gpu_shader5_gl.implicit_conversions": {
+      "message": "GL_ARB_gpu_shader5 is not supported.",
+      "basis": "Optional GL_ARB_gpu_shader5 is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cGPUShader5Tests.cpp:433"
+    },
+    "KHR-GL33.packed_depth_stencil.stencil_texturing.depth24_stencil8": {
+      "message": "stencil_texturing extension is not supported",
+      "basis": "Upstream requires Core 4.3; message says extension but code gates context version.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcPackedDepthStencilTests.cpp:2640"
+    },
+    "KHR-GL33.packed_depth_stencil.stencil_texturing.depth32f_stencil8": {
+      "message": "stencil_texturing extension is not supported",
+      "basis": "Upstream requires Core 4.3; message says extension but code gates context version.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcPackedDepthStencilTests.cpp:2640"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.api_coverage_invalid_glbeginquery_calls": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.api_coverage_unsupported_calls": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.functional_compute_shader_invocations": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.functional_default_qo_values": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.functional_fragment_shader_invocations": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.functional_geometry_shader_queries": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.functional_non_rendering_commands_do_not_affect_queries": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.functional_primitives_vertices_submitted_and_clipping_input_output_primitives": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.functional_tess_queries": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.pipeline_statistics_query_tests_ARB.functional_vertex_shader_invocations": {
+      "message": "GL_ARB_pipeline_statistics_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_pipeline_statistics_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl4cPipelineStatisticsQueryTests.cpp:1464"
+    },
+    "KHR-GL33.shaders.shader_integer_mix.prototypes": {
+      "message": "NotSupported",
+      "basis": "Positive non-extension variant requires GLSL 4.50; advertised integer-mix extension has a separate passing case.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcShaderIntegerMixTests.cpp:227"
+    },
+    "KHR-GL33.texture_filter_minmax_tests.TextureFilterMinmaxMagnificationFiltering": {
+      "message": "Not Supported",
+      "basis": "Optional GL_ARB_texture_filter_minmax is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureFilterMinmaxTests.cpp:521"
+    },
+    "KHR-GL33.texture_filter_minmax_tests.TextureFilterMinmaxMinificationFiltering": {
+      "message": "Not Supported",
+      "basis": "Optional GL_ARB_texture_filter_minmax is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureFilterMinmaxTests.cpp:521"
+    },
+    "KHR-GL33.texture_filter_minmax_tests.TextureFilterMinmaxMipmapMinificationFiltering": {
+      "message": "Not Supported",
+      "basis": "Optional GL_ARB_texture_filter_minmax is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureFilterMinmaxTests.cpp:521"
+    },
+    "KHR-GL33.texture_filter_minmax_tests.TextureFilterMinmaxParameterQueries": {
+      "message": "Not Supported",
+      "basis": "Optional GL_ARB_texture_filter_minmax is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureFilterMinmaxTests.cpp:521"
+    },
+    "KHR-GL33.texture_filter_minmax_tests.TextureFilterMinmaxSupport": {
+      "message": "Not Supported",
+      "basis": "Optional GL_ARB_texture_filter_minmax is not advertised.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureFilterMinmaxTests.cpp:521"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_0_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_0_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_10_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_11_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_11_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_12_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_12_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_13_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_14_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_15_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_15_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_16_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_16_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_17_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_18_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_19_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_1_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_1_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_20_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_20_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_21_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_21_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_22_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_22_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_23_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_23_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_24_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_25_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_25_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_26_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_26_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_27_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_27_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_28_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_28_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_29_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_29_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_2_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_2_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_30_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_30_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_31_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_31_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_32_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_32_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_33_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_33_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_34_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_34_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_35_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_35_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_36_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_36_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_37_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_37_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_38_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_38_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_38_target_idx_7": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes RGB9_E5 with multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_38_target_idx_8": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes RGB9_E5 with multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_39_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_39_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_3_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_3_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_40_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_40_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_41_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_41_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_42_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_42_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_43_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_43_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_44_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_44_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_45_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_45_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_46_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_46_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_47_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_47_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_48_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_48_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_49_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_49_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_4_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_4_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_50_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_50_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_51_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_51_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_52_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_52_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_53_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_53_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_54_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_54_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_55_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_55_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_56_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_56_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_57_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_57_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_58_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_58_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_59_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_59_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_5_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_5_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_60_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_60_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_61_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_61_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_62_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_62_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_63_target_idx_2": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_63_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_63_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_63_target_idx_7": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_63_target_idx_8": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_64_target_idx_2": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_64_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_64_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_64_target_idx_7": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_64_target_idx_8": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_65_target_idx_2": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_65_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_65_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_65_target_idx_7": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_65_target_idx_8": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_66_target_idx_2": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_66_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_66_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_66_target_idx_7": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_66_target_idx_8": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_67_target_idx_2": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_67_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_67_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_67_target_idx_7": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_67_target_idx_8": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_68_target_idx_2": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_68_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_68_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_68_target_idx_7": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_68_target_idx_8": {
+      "message": "Target not supported",
+      "basis": "Upstream excludes the depth format with 3D or multisample targets.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3021"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_69_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_6_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_6_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_70_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_7_target_idx_5": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_7_target_idx_6": {
+      "message": "Target not supported",
+      "basis": "Fixed texelFetch access is incompatible with the rectangle explicit-LOD or cube integral-coordinate target.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_8_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_0": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_1": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_2": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_3": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_4": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_5": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_6": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_7": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.functional_format_idx_9_target_idx_8": {
+      "message": "Format not supported",
+      "basis": "Indexed format's upstream minimum context exceeds Core 3.3 (71-entry format table reviewed).",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:3778"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_12_channel_idx_0": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_12_channel_idx_1": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_12_channel_idx_2": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_12_channel_idx_3": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_13_channel_idx_0": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_13_channel_idx_1": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_13_channel_idx_2": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_13_channel_idx_3": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_1_channel_idx_0": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_1_channel_idx_1": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_1_channel_idx_2": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_1_channel_idx_3": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_6_channel_idx_0": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_6_channel_idx_1": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_6_channel_idx_2": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_6_channel_idx_3": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_8_channel_idx_0": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_8_channel_idx_1": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_8_channel_idx_2": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_8_channel_idx_3": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_9_channel_idx_0": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_9_channel_idx_1": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_9_channel_idx_2": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.texture_swizzle.smoke_access_idx_9_channel_idx_3": {
+      "message": "Target not supported",
+      "basis": "Fixed 2D_ARRAY target does not accept projected coordinates; one of access methods 1/6/8/9/12/13.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTextureSwizzleTests.cpp:2966"
+    },
+    "KHR-GL33.transform_feedback2.transform_feedback2_states": {
+      "message": "transform_feedback2 is not supported",
+      "basis": "Core 4.0 / optional ARB_transform_feedback2 absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/common/glcTransformFeedbackTests.cpp:160"
+    },
+    "KHR-GL33.transform_feedback3.multiple_streams": {
+      "message": "Test multiple_streams is not supported",
+      "basis": "Core 4.0 / optional ARB_transform_feedback3 absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedback3Tests.cpp:150"
+    },
+    "KHR-GL33.transform_feedback3.skip_components": {
+      "message": "Test skip_components is not supported",
+      "basis": "Core 4.0 / optional ARB_transform_feedback3 absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedback3Tests.cpp:150"
+    },
+    "KHR-GL33.transform_feedback3.skip_multiple_buffers": {
+      "message": "Test skip_multiple_buffers is not supported",
+      "basis": "Core 4.0 / optional ARB_transform_feedback3 absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedback3Tests.cpp:150"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.advanced-single-stream-interleaved-attribs": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.advanced-single-stream-separate-attribs": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.basic-single-stream-interleaved-attribs": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.basic-single-stream-separate-attribs": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.context-state-update": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.default-context-state": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.error-already-active": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.error-incompatible-target": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.error-invalid-index": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.error-no-active-query": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.implementation-dependent-state": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.multiple-streams-multiple-buffers-per-stream": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    },
+    "KHR-GL33.transform_feedback_overflow_query_ARB.multiple-streams-one-buffer-per-stream": {
+      "message": "Required transform_feedback_overflow_query extension is not supported",
+      "basis": "Core 4.6 / optional ARB_transform_feedback_overflow_query absent.",
+      "source": "third_party/VK-GL-CTS/external/openglcts/modules/gl/gl3cTransformFeedbackOverflowQueryTests.cpp:74"
+    }
+  }
+}

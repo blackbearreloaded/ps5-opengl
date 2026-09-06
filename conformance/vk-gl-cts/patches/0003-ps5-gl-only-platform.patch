@@ -1,0 +1,15 @@
+diff --git a/framework/platform/CMakeLists.txt b/framework/platform/CMakeLists.txt
+index be7264c9a..cb3fcf3bf 100644
+--- a/framework/platform/CMakeLists.txt
++++ b/framework/platform/CMakeLists.txt
+@@ -197,7 +197,9 @@ if (DEQP_USE_WAYLAND)
+ endif()
+ 
+ # Add vkutil to the deps before tcutil so that it picks up the c++11 dependencies
+-target_link_libraries(tcutil-platform vkutil)
++if (NOT DEQP_TARGET_NAME STREQUAL "PS5 OpenGL")
++    target_link_libraries(tcutil-platform vkutil)
++endif ()
+ 
+ target_link_libraries(tcutil-platform tcutil ${TCUTIL_PLATFORM_LIBS})
+ 

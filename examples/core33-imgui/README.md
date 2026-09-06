@@ -1,0 +1,88 @@
+# Installed-SDK Dear ImGui renderer check
+
+Uses unmodified [Dear ImGui](https://github.com/ocornut/imgui/tree/v1.91.9b)
+v1.91.9b, commit `f5befd2d29e66809cd1110a152e375a7f1981f06` (MIT), including
+its upstream OpenGL3 backend. Source stays in the ignored dependency checkout.
+
+```sh
+make source-fetch
+make sdk
+bash tools/build-native-test-app.sh egl_public_core33_imgui
+bash tools/test-imgui-host.sh
+python3 tests/ps5/test_imgui_egl_cleanup.py
+```
+
+The builder verifies the dependency commit/clean tree and installed SDK
+manifest, compiles with the native boilerplate's Clang 18 wrapper, and links
+only the installed GL package. The backend's supported custom-loader option
+uses exported public GL functions; no backend source patch or private GPU
+header is needed. Relocatable linking uses plain `ld.lld-18` because the SDK
+link wrapper injects a final-executable linker script even for `-r`.
+
+Run with `tools/Run-NativeOpenGLGate.ps1`, frozen hashes/commits,
+`-ExpectedGate egl_public_core33_imgui.o -Incremental -ObservationSeconds 60
+-ObservationStopText '[ps5-imgui] finished'`.
+
+Acceptance: six passing frames at 320x240 and 640x480, device-object
+recreation, 60 exact/toleranced color probes, font alpha coverage, and restored
+GL bindings/enables/blend/viewport/scissor/polygon state. Shapes, clipped
+geometry, a moving uploaded image, text, and standard widgets all use ImGui's
+draw lists and renderer. The validated image is also presented, but screenshots
+are not the oracle. Require completion status 0 and clean native teardown,
+post-health, and exact-token release. EGL cleanup failures also fail the app;
+the host regression injects each cleanup error and checks that all cleanup
+calls are still attempted and earlier rendering failures remain failures.
+
+The same six-frame oracle runs on host software Mesa (EGL pbuffer instead of
+the native window). The default bitmap font has binary coverage at 1x; only
+2x requires partial alpha. Frames 1 and 4 separate the two overlapping quads
+into distinct draw commands, while the other frames keep upstream batching.
+Frames 2 and 5 attach renderbuffers to compare direct tiled storage with the
+texture staging path. The first nongray text pixel is logged on failure.
+Pixel mismatches collect the rest of the bounded batch but preserve failure;
+GL/setup/presentation errors stop immediately.
+
+This is one renderer integration, not CTS coverage, a complete input backend,
+or a claim that every existing OpenGL application is compatible.
+
+## G10: visible TV demo
+
+```sh
+bash tools/test-imgui-host.sh --tv-demo
+bash tools/build-native-test-app.sh egl_public_core33_imgui_tv
+```
+
+The separate `imgui_tv` target preserves the six-frame validation oracle and
+uses the same installed SDK and unmodified upstream renderer. It draws directly
+to the 1920x1080 EGL window: large text, an animated circle, blended rectangles,
+a triangle, a speed slider, and palette buttons. D-pad navigates/adjusts, Cross
+selects, and Circle backs out of a widget. No controller is required to watch.
+The native controller ABI subset is based on the independently authored
+`ps5-input-investigation/include/ps5_pad.hpp`; only standard current-state
+input is used, with disconnected/intercepted input neutralized.
+
+Each launch runs for five minutes at a maximum requested 30 FPS, then releases
+GL/EGL and controller resources. Use the existing locked native-folder runner
+with `-ExpectedGate egl_public_core33_imgui_tv.o -Incremental
+-ObservationSeconds 330`, recording its usual commit/hash pins. It closes the
+title at the end of that bounded window. The installed folder is still
+`/data/homebrew/PPSA99005`; no application ELF is sent to elfldr.
+
+Host acceptance: 12 full-HD frames, two exact shape readbacks, two gamepad-driven
+checkbox changes, and successful EGL cleanup. Hardware acceptance: matching
+readbacks, sustained frame receipts, TV-visible animation, and clean teardown.
+Controller hardware interaction requires observing a widget change, not merely
+opening a pad handle. No CTS rerun is needed for this example-only change.
+The control is the previously validated six-frame ImGui app and frozen SDK;
+only the example is changed. The recorded run used firmware 6.02. Managed runs
+require an explicit `-Ps5Host` and the [testing prerequisites](../../docs/testing.md).
+Stop on any render/presentation error or uncertain console health.
+
+- 2026-09-06 | G10 | ca0dbf4 | 6.02 | pass: TV-confirmed animation, 2851 frames/300s (~9.5 FPS), clean teardown; controller connected, zero recorded widget changes.
+
+The [validation report](../../docs/validation.md) records the result; raw device
+receipts remain local. Both shape probes passed; runtime/SDK hashes stayed
+unchanged. Thirty FPS is a pacing ceiling, not the measured throughput. Hardware
+widget interaction is not independently verified by this receipt; the host
+navigation check passed. The user confirmed the TV demo worked. VideoOut again
+reported busy unregister followed by successful close and runtime-layer release.
