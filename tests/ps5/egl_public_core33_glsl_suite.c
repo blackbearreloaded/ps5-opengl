@@ -95,8 +95,9 @@ read_oracle(uint32_t expected, uint32_t expected_hash, uint32_t *pixels,
    hash = hash32(pixels, SIZE * SIZE * sizeof(*pixels));
    for (unsigned index = 0; index < SIZE * SIZE; ++index)
       matching += pixels[index] == expected;
-   printf("[ps5-egl-core33-glsl-suite] %s matching=%u hash=%08x error=0x%x\n",
-          name, matching, hash, error);
+   printf("[ps5-egl-core33-glsl-suite] %s matching=%u hash=%08x "
+          "pixel=%08x expected=%08x error=0x%x\n",
+          name, matching, hash, pixels[0], expected, error);
    return matching == SIZE * SIZE && hash == expected_hash &&
           error == GL_NO_ERROR;
 }
@@ -128,6 +129,83 @@ read_split_oracle(uint32_t *pixels)
           left, right, pixels[0], pixels[SIZE / 2], hash, error);
    return left == SIZE * SIZE / 2 && right == SIZE * SIZE / 2 &&
           hash == WHITE_HASH && error == GL_NO_ERROR;
+}
+
+static int
+check_primitive_ids(GLuint vbo, const float *vertices, uint32_t *pixels)
+{
+   /* OpenGL 3.3 core, section 3.9.2: IDs start at zero per draw. Keep user
+    * varyings live beside the built-in, including both smooth and flat inputs. */
+   static const char *vs_source =
+      "#version 330 core\n"
+      "layout(location=0) in vec2 a_position;\n"
+      "uniform int u_tag;\n"
+      "out vec2 uv; flat out int tag;\n"
+      "void main() { gl_Position=vec4(a_position,0,1);\n"
+      "  uv=a_position; tag=u_tag; }\n";
+   static const char *fs_source =
+      "#version 330 core\n"
+      "in vec2 uv; flat in int tag;\n"
+      "layout(location=0) out vec4 color;\n"
+      "void main() {\n"
+      "  vec2 expected=gl_FragCoord.xy/vec2(1920,1080)*2.0-1.0;\n"
+      "  bool interp=all(lessThan(abs(uv-expected),vec2(0.0001)));\n"
+      "  color=vec4(float(gl_PrimitiveID)/255.0,float(tag==7),float(interp),1);\n"
+      "}\n";
+   static const struct {
+      const char *name;
+      GLint first;
+      GLsizei count, instances;
+   } cases[] = {
+      {"primitive-id-first", 0, 3, 1},
+      {"primitive-id-second", 0, 6, 1},
+      {"primitive-id-reset", 3, 3, 1},
+      {"primitive-id-instanced", 0, 6, 2},
+   };
+   GLuint vs = 0, fs = 0;
+   GLuint program = link_program(vs_source, fs_source, &vs, &fs);
+   float repeated[12];
+   int passed = 0;
+   if (!program)
+      goto cleanup;
+   GLint tag = glGetUniformLocation(program, "u_tag");
+   if (tag < 0)
+      goto cleanup;
+   memcpy(repeated, vertices, 6 * sizeof(float));
+   memcpy(repeated + 6, vertices, 6 * sizeof(float));
+   glBindBuffer(GL_ARRAY_BUFFER, vbo);
+   glBufferData(GL_ARRAY_BUFFER, sizeof(repeated), repeated, GL_STATIC_DRAW);
+   glUseProgram(program);
+   glUniform1i(tag, 7);
+#ifdef PS5_GLSL_HOST_REFERENCE
+   printf("[ps5-egl-core33-glsl-suite] host-renderer=%s version=%s\n",
+          glGetString(GL_RENDERER), glGetString(GL_VERSION));
+#endif
+   for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+      /* The second overlapping triangle wins; distinguish IDs 0 and 1 so a
+       * missing/constant-zero built-in cannot pass this oracle. */
+      uint32_t expected = UINT32_C(0xffffff00) | (cases[i].count / 3 - 1);
+      for (unsigned p = 0; p < SIZE * SIZE; ++p)
+         pixels[p] = expected;
+      uint32_t expected_hash = hash32(pixels, SIZE * SIZE * sizeof(*pixels));
+      glClear(GL_COLOR_BUFFER_BIT);
+      if (cases[i].instances == 1)
+         glDrawArrays(GL_TRIANGLES, cases[i].first, cases[i].count);
+      else
+         glDrawArraysInstanced(GL_TRIANGLES, cases[i].first, cases[i].count,
+                              cases[i].instances);
+      if (!read_oracle(expected, expected_hash, pixels, cases[i].name))
+         goto cleanup;
+   }
+   passed = 1;
+cleanup:
+   if (program)
+      glDeleteProgram(program);
+   if (vs)
+      glDeleteShader(vs);
+   if (fs)
+      glDeleteShader(fs);
+   return passed;
 }
 
 int
@@ -200,7 +278,11 @@ main(void)
       0.0f, 0.0f, 1.0f,
    };
    const EGLint config_attributes[] = {
+#ifdef PS5_GLSL_HOST_REFERENCE
+      EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+#else
       EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+#endif
       EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
       EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
       EGL_NONE,
@@ -216,7 +298,8 @@ main(void)
    EGLConfig config = NULL;
    EGLSurface surface = EGL_NO_SURFACE;
    EGLContext context = EGL_NO_CONTEXT;
-   EGLint major = 0, minor = 0, count = 0, profile = 0;
+   EGLint major = 0, minor = 0, count = 0;
+   GLint profile = 0;
    GLuint vao = 0, vbo = 0, texture = 0;
    GLuint math_vs = 0, math_fs = 0, math_program = 0;
    GLuint texture_vs = 0, texture_fs = 0, texture_program = 0;
@@ -224,7 +307,7 @@ main(void)
    GLenum cleanup_gl_error = GL_NO_ERROR;
    EGLint cleanup_egl_error = EGL_SUCCESS;
    EGLBoolean cleanup_ok = EGL_TRUE;
-   int made_current = 0, math_ok = 0, texture_ok = 0, passed = 0;
+   int made_current = 0, math_ok = 0, texture_ok = 0, primitive_ok = 0, passed = 0;
 
    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
    if (display == EGL_NO_DISPLAY || !eglInitialize(display, &major, &minor) ||
@@ -232,17 +315,21 @@ main(void)
        !eglChooseConfig(display, config_attributes, &config, 1, &count) ||
        count != 1)
       goto cleanup;
+#ifdef PS5_GLSL_HOST_REFERENCE
+   const EGLint surface_attributes[] = {EGL_WIDTH, WIDTH, EGL_HEIGHT, HEIGHT, EGL_NONE};
+   surface = eglCreatePbufferSurface(display, config, surface_attributes);
+#else
    surface = eglCreateWindowSurface(display, config,
                                     (EGLNativeWindowType)0, NULL);
+#endif
    context = eglCreateContext(display, config, EGL_NO_CONTEXT,
                               context_attributes);
    if (surface == EGL_NO_SURFACE || context == EGL_NO_CONTEXT ||
        !eglMakeCurrent(display, surface, surface, context) ||
-       !eglSwapInterval(display, 0) ||
-       !eglQueryContext(display, context,
-                        EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, &profile))
+       !eglSwapInterval(display, 0))
       goto cleanup;
    made_current = 1;
+   glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profile);
 
    math_program = link_program(math_vertex_source, math_fragment_source,
                                &math_vs, &math_fs);
@@ -274,6 +361,8 @@ main(void)
    glClear(GL_COLOR_BUFFER_BIT);
    glDrawArrays(GL_TRIANGLES, 0, 3);
    math_ok = read_split_oracle(pixels);
+   if (!math_ok)
+      goto cleanup;
 
    glGenTextures(1, &texture);
    glActiveTexture(GL_TEXTURE0);
@@ -293,14 +382,24 @@ main(void)
    glDrawArrays(GL_TRIANGLES, 0, 3);
    texture_ok = read_oracle(GREEN_PIXEL, GREEN_HASH, pixels,
                             "texture-size-texel-fetch");
+   if (!texture_ok)
+      goto cleanup;
+
+   primitive_ok = check_primitive_ids(vbo, vertices, pixels);
+   if (!primitive_ok)
+      goto cleanup;
+   glUseProgram(math_program);
+   glClear(GL_COLOR_BUFFER_BIT);
+   glDrawArrays(GL_TRIANGLES, 0, 3);
+   math_ok = read_split_oracle(pixels);
 
    if (!eglSwapBuffers(display, surface))
       goto cleanup;
-   passed = major == 1 && minor == 4 &&
-            profile == EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR &&
+   passed = major == 1 && minor >= 4 &&
+            profile == GL_CONTEXT_CORE_PROFILE_BIT &&
             strncmp((const char *)glGetString(GL_VERSION), "3.3 ", 4) == 0 &&
             strncmp((const char *)glGetString(GL_SHADING_LANGUAGE_VERSION),
-                    "3.30", 4) == 0 && math_ok && texture_ok;
+                    "3.30", 4) == 0 && math_ok && texture_ok && primitive_ok;
 
 cleanup:
    if (texture)
@@ -335,8 +434,8 @@ cleanup:
    cleanup_egl_error = eglGetError();
    passed = passed && cleanup_ok && cleanup_gl_error == GL_NO_ERROR &&
             cleanup_egl_error == EGL_SUCCESS;
-   printf("[ps5-egl-core33-glsl-suite] math=%u texture=%u cleanup=%x/%x result=%d\n",
-          math_ok, texture_ok, cleanup_gl_error, cleanup_egl_error,
+   printf("[ps5-egl-core33-glsl-suite] math=%u texture=%u primitive=%u cleanup=%x/%x result=%d\n",
+          math_ok, texture_ok, primitive_ok, cleanup_gl_error, cleanup_egl_error,
           passed ? 0 : 1);
    return passed ? 0 : 1;
 }

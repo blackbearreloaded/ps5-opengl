@@ -3,7 +3,7 @@ PS5_NATIVE_APP_TEMPLATE ?= $(abspath ../ps5-native-app-boilerplate)
 PS5_PAYLOAD_SDK ?= $(PS5_NATIVE_APP_TEMPLATE)/.deps/native/ps5-payload-sdk
 export PS5_NATIVE_APP_TEMPLATE PS5_PAYLOAD_SDK
 
-.PHONY: help source-fetch cts-fetch sdk imgui-demo nanovg sokol cubes test test-imgui test-cubes test-compiler
+.PHONY: help source-fetch cts-fetch sdk imgui-demo nanovg sokol cubes test test-imgui test-cubes test-glsl test-compiler
 help:
 	@printf '%s\n' 'source-fetch: pinned graphics/example sources' \
 	  'sdk: build the compiler, Mesa and installed native OpenGL SDK' \
@@ -34,6 +34,8 @@ cubes:
 	bash tools/build-native-test-app.sh egl_public_core33_cubes
 test-cubes:
 	bash tools/test-cubes-host.sh
+test-glsl:
+	bash tools/test-glsl-host.sh
 test:
 	python3 -m unittest discover -s tools -p 'test_*.py'
 	python3 tests/ps5/test_gpu_clear_state.py

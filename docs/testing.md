@@ -22,6 +22,10 @@ vertex inputs and geometry descriptors, including invalid-input rejection.
 Performance-branch checks also cover implicit PrimitiveID export liveness,
 zero-stride constant inputs and byte-bounded buffer descriptors. These host checks
 do not replace the native draw/current-attribute/cube regressions or affected CTS.
+`make test-glsl` exercises math, texture fetch, live PrimitiveID/flat/smooth inputs
+and program restoration, including four deliberate fault checks. It needs the
+installed Zink and software Vulkan renderer; direct software GL failures for this
+case are recorded in [Performance](performance.md), not accepted as passing.
 The historical upstream `tests/verify_sb.py` still asserts metadata ABI 6; the frozen
 PS5 compiler uses ABI 7. That stale suite is retained in the pinned source for
 provenance, not silently patched or reported as passing. It is not invoked by

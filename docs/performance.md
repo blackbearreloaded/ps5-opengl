@@ -18,6 +18,24 @@ sessions, then freeze and complete the four-configuration release matrix. The
 installed SDK and historical validation export have not been replaced. Batching
 remains opt-in; per-draw completion waits remain the main scaling limitation.
 
+## Release sequence
+
+1. G5 correctness: PrimitiveID consumers/program switches, then affected CTS.
+2. G6 consumers: rebuild SDK; clean Make/CMake/pkg-config checks and native ImGui/NanoVG/Sokol.
+3. G7 practical use: an existing 3D application, longer sessions, repeated lifecycles and the VideoOut warning.
+4. G8 performance: measured synchronization/batching and fallback improvements, each with focused regressions.
+5. G9 acceptance: freeze the chosen runtime/SDK; one complete four-configuration CTS matrix and final consumer checks.
+
+G5 starts by extending the existing GLSL suite with four PrimitiveID cases plus
+live flat/smooth inputs and a return to the original math program. Reference:
+[OpenGL 3.3 core, section 3.9.2](https://registry.khronos.org/OpenGL/specs/gl/glspec33.core.pdf).
+`make test-glsl` checks the software-Mesa oracle and rejects deliberate ID, varying
+and omitted-draw faults. The native runtime is unchanged for this first case.
+The installed direct llvmpipe/softpipe paths fail this combined-input reference;
+unchanged GLSL and all four fault checks pass Zink over software Vulkan, which
+`test-glsl` selects by default. This does not count as PS5 evidence. The old
+suite's non-portable EGL profile query was replaced with the standard GL query.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
