@@ -7,8 +7,9 @@ vertex attributes. The performance branch fixes pass native UV/texture, combined
 draw and mixed float/integer current-attribute checks, but still need broader
 regressions and release-candidate revalidation. A corrected GPU PrimitiveID path
 passes ID 0/1, draw reset and instance reset with smooth and genuinely flat inputs
-in both provoking-vertex modes. The explicit geometry-shader ID/user-varying
-case currently fails with black readback; broader acceptance is blocked. See
+in both provoking-vertex modes. Explicit geometry-shader IDs/user varyings and
+returning to the implicit program now also pass after supplying the missing
+NGG LDS-layout argument. Focused CTS and release acceptance are still pending. See
 [the current candidate and failure history](performance.md).
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,

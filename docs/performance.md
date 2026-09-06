@@ -99,6 +99,16 @@ metadata v8 and supplies it for every NGG draw, with bounds checks. A real merge
 NIR/ACO regression reproduces the unaccounted argument before the fix. Native
 acceptance of the corrected transport is pending; GLSL and submission are unchanged.
 
+- 2026-09-06 | G5 | 59334cc / c0529b0 | pass: 24 implicit/explicit GS ID, flat first/last, instance/reset and restored-program cases; 110,592 exact pixels; clean teardown/services/unlock | results/glsl-geometry-lds-layout/184021
+
+Supplying the LDS-layout argument fixes the black GS readback with unchanged
+GS machine code (`bf6bc6f4`, first-provoking variant). Compiler/runtime bounds
+regressions, the current capability audit and GLSL host fault checks pass.
+The optional legacy public-triangle text audit still names the removed
+`ps5_tiled_rgba8_offset` helper; its failure is not a native rendering result.
+Next: the focused CTS smoke batch, including geometry/transform-feedback routes.
+The installed SDK and historical acceptance remain unchanged.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
