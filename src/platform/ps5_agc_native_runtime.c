@@ -14,6 +14,13 @@
 
 #include <ps5/kernel.h>
 
+#if defined(PS5_DRAW_PROFILE) && (!defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT))
+#error "Draw profiling requires the submitting runtime backend"
+#endif
+#ifndef PS5_DRAW_PROFILE
+#define PS5_PROFILE_MARK(i) ((void)0)
+#endif
+
 static uint32_t runtime_ngg_ge_pc_alloc;
 static uint32_t runtime_ngg_ge_pc_alloc_valid;
 
@@ -727,6 +734,47 @@ static uint64_t runtime_render_marker = (uint64_t)RENDER_MARKER;
 static unsigned runtime_present_count;
 static int runtime_agc_initialized;
 
+#ifdef PS5_DRAW_PROFILE
+#include "util/os_time.h"
+static uint64_t runtime_profile_ns[7];
+static unsigned runtime_profile_calls, runtime_profile_failures;
+
+static void runtime_profile_record(const int64_t ticks[8], int result)
+{
+    for (unsigned i = 0; i < 8; ++i) {
+        if (result || ticks[i] <= 0 || (i && ticks[i] < ticks[i - 1])) {
+            ++runtime_profile_failures;
+            return;
+        }
+    }
+    for (unsigned i = 0; i < 7; ++i)
+        runtime_profile_ns[i] += ticks[i + 1] - ticks[i];
+    ++runtime_profile_calls;
+}
+
+static void runtime_profile_report(void)
+{
+    if (runtime_profile_calls || runtime_profile_failures) {
+        const double scale = runtime_profile_calls ? 1e-6 / runtime_profile_calls : 0;
+        uint64_t total = 0;
+        for (unsigned i = 0; i < 7; ++i)
+            total += runtime_profile_ns[i];
+        printf("[ps5-submit-perf] calls=%u failures=%u warmup_frames=30 "
+               "setup_ms=%.6f scanout_flush_ms=%.6f video_ms=%.6f "
+               "command_ms=%.6f command_flush_ms=%.6f submit_wait_ms=%.6f "
+               "cleanup_ms=%.6f total_ms=%.6f\n",
+               runtime_profile_calls, runtime_profile_failures,
+               runtime_profile_ns[0] * scale, runtime_profile_ns[1] * scale,
+               runtime_profile_ns[2] * scale, runtime_profile_ns[3] * scale,
+               runtime_profile_ns[4] * scale, runtime_profile_ns[5] * scale,
+               runtime_profile_ns[6] * scale, total * scale);
+    }
+    memset(runtime_profile_ns, 0, sizeof(runtime_profile_ns));
+    runtime_profile_calls = runtime_profile_failures = 0;
+}
+#define PS5_PROFILE_MARK(i) profile_ticks[i] = os_time_get_nano()
+#endif
+
 static int64_t runtime_next_render_marker(void)
 {
     uint64_t marker = runtime_render_marker;
@@ -742,6 +790,9 @@ int ps5_agc_gate2_shutdown_present(void)
     int unregister_rc = 0;
     int close_rc = 0;
 
+#ifdef PS5_DRAW_PROFILE
+    runtime_profile_report();
+#endif
     if (runtime_video_registered)
         unregister_rc = runtime_video_api.unregister_buffers(
             runtime_video_handle, 0);
@@ -1774,6 +1825,11 @@ static int run_frame_slot_test(const agc_api_t *agc, const video_api_t *video,
 
 int main(void)
 {
+#ifdef PS5_DRAW_PROFILE
+    int64_t profile_ticks[8] = {0};
+    const int profile_this_draw = runtime_present_count >= 30;
+    PS5_PROFILE_MARK(0);
+#endif
     const uint8_t *vs_header, *vs_code, *ps_header, *ps_code;
     size_t vs_header_size = 0, vs_code_size = 0;
     size_t ps_header_size = 0, ps_code_size = 0;
@@ -2283,7 +2339,9 @@ int main(void)
 #ifndef AGC_RUNTIME_PACKAGES
     memset(framebuffer, 0, FRAMEBUFFER_POOL_BYTES);
 #endif
+    PS5_PROFILE_MARK(1);
     flush_gpu_data(framebuffer, framebuffer_pool_bytes);
+    PS5_PROFILE_MARK(2);
 #ifdef AGC_RUNTIME_PACKAGES
     if (runtime_video_acquire(&video, framebuffer, framebuffer_pool_bytes,
                               &video_open_attempts) != 0)
@@ -2293,6 +2351,7 @@ int main(void)
     if (runtime_video_prepare_draw() != 0)
         goto receipt;
     render_marker = runtime_next_render_marker();
+    PS5_PROFILE_MARK(3);
 #else
     for (int attempt = 1; attempt <= 3; ++attempt) {
         video_open_attempts = attempt;
@@ -2841,7 +2900,9 @@ int main(void)
 #endif
 
 #ifdef AGC_TRIANGLE_SUBMIT
+    PS5_PROFILE_MARK(4);
     flush_gpu_data(memory, work_bytes);
+    PS5_PROFILE_MARK(5);
     {
         uint64_t status[16] = {0};
         unsigned waits;
@@ -2859,6 +2920,7 @@ int main(void)
             }
         }
         status[3] = *completion_marker;
+        PS5_PROFILE_MARK(6);
 #else
         waits = submit_rc == 0
                     ? wait_for_flip_marker(&video, video_handle,
@@ -3290,6 +3352,11 @@ cleanup:
         dlclose(driver_module);
     if (agc_module)
         dlclose(agc_module);
+#endif
+#ifdef PS5_DRAW_PROFILE
+    PS5_PROFILE_MARK(7);
+    if (profile_this_draw)
+        runtime_profile_record(profile_ticks, result || work_unmap_rc || work_release_rc);
 #endif
     return result;
 }

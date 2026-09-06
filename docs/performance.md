@@ -98,6 +98,13 @@ Raw receipts remain local under `results/`; IDs below identify
 
 ## Console boundary
 
+Current G3 case: instrument submission setup, display-pool flush, video setup,
+command construction/flush, submit+wait, and cleanup. Opt-in `PS5_DRAW_PROFILE=1`
+uses the same 30-frame warm-up as the ImGui profile and leaves submission/cache
+operations unchanged. Force-rebuild the native runtime when toggling this build
+flag. Require `summarize-imgui-profile.py --submit-profile` plus the usual pixel,
+cleanup, lifecycle and health checks; compare against the frozen G2 timing app.
+
 Use the owner-designated console and lock in ignored `.local/ENVIRONMENT.md`.
 Title: `PPSA99005`, deployed as a folder. Required owner-started services: FTP,
 klog and approved title control. Observe for at most 60 seconds per profile run.
