@@ -13,15 +13,16 @@ NGG LDS-layout argument. The initial CTS smoke was 46/51 passing; the corrected
 runtime passes all 24 geometry cases, including the five prior zero-input GS
 transform-feedback failures. These separate binaries do not constitute a new
 full-campaign acceptance. A separate rebuilt SDK passes Make/CMake/pkg-config and
-native ImGui/NanoVG/Sokol checks; longer sessions and release acceptance remain
-pending. See
+native ImGui/NanoVG/Sokol checks and a five-minute TV session with periodic
+readbacks. Broader stress/lifecycle work and release acceptance remain pending. See
 [the current candidate and failure history](performance.md).
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
   desktop installation model or compatibility-profile guarantee.
 - **Performance:** some transfers/format paths use CPU fallbacks. The accepted
   1080p TV demo measured about 9.5 FPS for five minutes; a newer GPU-clear
-  candidate measured about 15 FPS in a short profile. Ordinary draws still incur
+  candidate measured about 15 FPS in a short profile; the G6 SDK sustains about
+  15 FPS for five minutes with periodic shape checks. Ordinary draws still incur
   substantial per-call synchronization cost. A short 1080p textured-cube test
   measured about 20 FPS with 1/8/32 instanced cubes. Thirty FPS is only the demo's cap;
   these measurements do not predict full-game FPS. See [Performance](performance.md).

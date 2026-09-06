@@ -138,6 +138,15 @@ promotion. All three renderers still report busy VideoOut unregister followed by
 successful close. G7 starts with periodic readbacks throughout the five-minute TV
 demo; practical 3D application coverage and lifecycle hardening remain open.
 
+- 2026-09-06 | G7 | f339a4b | pass: 4,497 frames/300s (~14.99 FPS), 11 periodic shape probes; clean teardown/health/unlock | results/g7-imgui-periodic/194106
+
+The G6 SDK sustains the TV workload for five minutes; all ten progress intervals
+through 270 seconds have matching readbacks. No fresh screen/input observation
+was requested; zero widget changes were recorded. This is demo throughput, not
+3D game performance. Busy unregister remains, followed by successful close.
+Host failure injection separately exposes ignored presenter-close failures;
+retain ownership and propagate failure before further lifecycle testing.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
