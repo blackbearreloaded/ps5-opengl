@@ -105,7 +105,7 @@ operations unchanged. Force-rebuild the native runtime when toggling this build
 flag. Require `summarize-imgui-profile.py --submit-profile` plus the usual pixel,
 cleanup, lifecycle and health checks; compare against the frozen G2 timing app.
 
-Next diagnostic: `PS5_DRAW_BATCH_PROBE=1` is restricted to the
+Batching diagnostic: `PS5_DRAW_BATCH_PROBE=1` is restricted to the
 `egl_public_core33_submit_batch` gate. It reuses the RGBA8 clear oracle for 36
 interleaved command buffers containing 1, 2 or 8 identical opaque GPU draws.
 Each submission retains both release operations, the completion marker, suspend
@@ -114,6 +114,39 @@ GL path**. Audit with `python3 tests/ps5/test_submit_batch_probe.py RECEIPT`;
 discard three warm-up cycles and compare nine samples per size. Require 73,728
 exact pixel checks and clean title teardown/health. Force-rebuild without the
 diagnostic flag afterward; do not install its runtime into the distributable SDK.
+
+### Batching feasibility result — 2026-09-06
+
+The frozen probe passed all 36 submissions and 73,728 exact pixel comparisons.
+After discarding three warm-up cycles, nine samples per batch size gave:
+
+| Identical opaque draws per command buffer | Median submit/suspend/completion wait |
+| ---: | ---: |
+| 1 | 15.399 ms |
+| 2 | 15.432 ms |
+| 8 | 15.458 ms |
+
+For this small workload, additional draws barely changed the per-submission
+wait. This supports amortizing that cost through batching, **not an eightfold
+application-speedup claim**. These are CPU-observed waits, not GPU timestamps.
+The probe deliberately repeats identical draw state; batching different shaders,
+textures and geometry remains unvalidated. Production rendering is unchanged.
+
+App source: `75c0e196af33d0491d3d8ae055a3934aaac0c1a1`; eboot SHA-256:
+`a3359acefbb839febb616f808ebdffabc66014fbd4ad2803cbb5c6021522fe48`.
+Receipt and matching lifecycle records:
+`results/submit-batch-probe/PPSA99005-20260906-112328-opengl.log`.
+Runner: `8015523c5d3b677dd5c30ad81cdcb63c76ffab73`; exact-title teardown,
+post-health and exact-token release passed. Normal runtime/SDK remain free of
+diagnostic instrumentation. No full CTS campaign was rerun.
+
+Next implementation boundary: a bounded batch must own each draw's command and
+descriptor storage, retain referenced resources until the final fence completes,
+and drain before CPU read/write fallbacks, synchronization, presentation or
+teardown. Uploaded-index release currently follows each synchronous draw;
+descriptor storage is reused by subsequent draws. Simply deleting the wait is
+not safe. Validate distinct-state draw ordering and resource reuse first, then
+rerun the same ImGui profile and affected query/sync/resource tests.
 
 Use the owner-designated console and lock in ignored `.local/ENVIRONMENT.md`.
 Title: `PPSA99005`, deployed as a folder. Required owner-started services: FTP,
@@ -137,3 +170,4 @@ submission. Release the exact token before offline analysis/building.
 - 2026-09-06 | G3 | 8a3caa7 | no-run: owner confirmed idle, but log has PPSA02121 start without stop; no upload/launch, healthy services, exact lock released | results/draw-wait-owner-confirmed
 - 2026-09-06 | G3 | 6e36f33 app / 5ad81b4 runner | pass: 1,260 draws, poll 15.433 ms/call, ~14 sleeps/call; submit 0.007 ms, suspend 0.006 ms; clean teardown/health | results/draw-wait-owner-confirmed/105943
 - 2026-09-06 | G3 | 75c0e19 | batching probe built/host-tested; no-run: PPSA02121 restarted at 11:17:54; no upload/launch, healthy services, lock released | results/submit-batch-probe
+- 2026-09-06 | G3 | 75c0e19 | pass: 73,728 pixels; 1/2/8 draws wait 15.399/15.432/15.458 ms median; clean teardown/health, lock released | results/submit-batch-probe/112328
