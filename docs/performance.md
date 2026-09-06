@@ -75,6 +75,14 @@ after it; compiler, host and GLSL checks pass. Hardware acceptance remains pendi
 The owner reports a restart and an idle, ready console; run a frozen known-good
 control before the changed candidate.
 
+- 2026-09-06 | G5 | 87502d0 | pass: restarted control + ID 0/1/reset/instances, 28,672 pixels; clean teardown/services/unlock | results/glsl-primitive-id-unit-stride/175934
+
+The unit-stride candidate completes without the earlier timeout; all four ID
+cases and surrounding math/texture checks pass. VideoOut unregister still reports
+the known busy warning (`80290009`), followed by successful close and layer release.
+Next: genuinely varying-dependent flat inputs, both provoking-vertex modes and
+explicit geometry-shader IDs, then the focused CTS batch. No SDK promotion yet.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

@@ -5,9 +5,10 @@ not a proof of universal compatibility or production-grade stability. Later
 real-workload testing exposed an instanced-varying bug and rejection of constant
 vertex attributes. The performance branch fixes pass native UV/texture, combined
 draw and mixed float/integer current-attribute checks, but still need broader
-regressions and release-candidate revalidation. Fragment shaders that consume
-PrimitiveID retain the conservative compiler path; the new instancing results
-do not validate that path.
+regressions and release-candidate revalidation. A corrected GPU PrimitiveID path
+passes ID 0/1, draw reset and instance reset with smooth inputs, but broader
+flat-input/provoking-vertex and geometry-shader coverage is still pending. See
+[the current candidate and failure history](performance.md).
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
   desktop installation model or compatibility-profile guarantee.
