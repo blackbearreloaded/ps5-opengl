@@ -7366,6 +7366,9 @@ ps5_multidraw_eligible(const struct ps5_context *context,
 {
    const struct pipe_surface *surface = &context->framebuffer.cbufs[0];
    const struct ps5_resource *target = (const struct ps5_resource *)surface->texture;
+   const struct ps5_resource *depth =
+      (const struct ps5_resource *)context->framebuffer.zsbuf.texture;
+   const struct pipe_depth_stencil_alpha_state *dsa = context->depth_stencil_alpha;
 
    if (!info || !draws || num_draws < 2 || indirect ||
        info->mode != MESA_PRIM_TRIANGLES || !info->instance_count ||
@@ -7377,7 +7380,9 @@ ps5_multidraw_eligible(const struct ps5_context *context,
        context->stream_output_target_count || context->render_condition_query ||
        context->active_occlusion_query || context->active_primitives_generated_query ||
        context->active_primitives_emitted_query || !context->framebuffer_valid ||
-       context->framebuffer.nr_cbufs != 1 || context->framebuffer.zsbuf.texture ||
+       context->framebuffer.nr_cbufs != 1 ||
+       (depth && (depth->depth_staging_size || !dsa || dsa->depth_enabled ||
+                  dsa->stencil[0].enabled || dsa->stencil[1].enabled)) ||
        !target || target->base.target != PIPE_TEXTURE_2D ||
        target->base.format != PIPE_FORMAT_R8G8B8A8_UNORM ||
        surface->format != PIPE_FORMAT_R8G8B8A8_UNORM ||
@@ -7405,7 +7410,7 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
       context->descriptor_storage[0], context->descriptor_storage[1]};
    struct pipe_resource *storage[PS5_MULTIDRAW_BATCH_CAPACITY][3] = {{0}};
    struct pipe_resource *retained[PIPE_MAX_ATTRIBS +
-      2 * PS5_MAX_CONSTANT_BUFFERS + 4] = {0};
+      2 * PS5_MAX_CONSTANT_BUFFERS + 5] = {0};
    unsigned retained_count = 0;
    unsigned slots = MIN2(num_draws, PS5_MULTIDRAW_BATCH_CAPACITY);
    bool handled = false, retired = true;
@@ -7428,6 +7433,7 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
       }
    }
    pipe_resource_reference(&retained[retained_count++], context->framebuffer.cbufs[0].texture);
+   pipe_resource_reference(&retained[retained_count++], context->framebuffer.zsbuf.texture);
    pipe_resource_reference(&retained[retained_count++], screen->render_pool);
    pipe_resource_reference(&retained[retained_count++], context->border_color_storage);
    if (info->index_size)

@@ -167,10 +167,12 @@ unchanged. This uses multiple existing submissions followed by one suspend,
 which is distinct from the earlier repeated-command-buffer diagnostic.
 
 Initial eligibility is direct triangle draws with native indices or no indices,
-no shader texture use, a single non-staged RGBA8 2D level-zero target, no depth,
+no shader texture use, a single non-staged RGBA8 2D level-zero target, no enabled depth/stencil,
 geometry shader, query, conditional rendering or stream output. Other paths
 stay synchronous. Submission/retirement failures poison this process's queue
 and quarantine bounded resources until teardown; no speculative reset or replay.
+An unused, non-staged depth/stencil attachment is allowed and retained, since
+the EGL surface always supplies one. Staged depth remains excluded even when disabled.
 The default build and installed SDK remain unchanged. Force-rebuild when
 toggling this flag.
 
@@ -186,10 +188,12 @@ draw calls or transfer the historical CTS results to this candidate.
 
 The first native gate used the default EGL pbuffer, which supplies an unused
 depth/stencil attachment and correctly excludes batching. Its 27,648 pixels
-passed but no batch ran. The successor uses an explicit color-only RGBA8 FBO;
-audit with `python3 tests/ps5/test_multidraw_lifetime.py RECEIPT` to require native
-chunks as well as pixel success. Keep the original frozen app as the exclusion
-control; the driver/runtime is unchanged between these two app builds.
+passed but no batch ran. A color-only renderbuffer FBO also passed pixels but
+remained serial: Mesa marks it sampleable, requiring this driver's staging path.
+The successor instead allows and retains an inactive non-staged EGL depth/stencil
+attachment, with enabled depth/stencil still excluded. Audit with
+`python3 tests/ps5/test_multidraw_lifetime.py RECEIPT` to require native chunks as
+well as pixel success. Both earlier frozen apps remain exclusion controls.
 
 ## Milestones
 
@@ -208,3 +212,4 @@ control; the driver/runtime is unchanged between these two app builds.
 - 2026-09-06 | G3 | 75c0e19 | batching probe built/host-tested; no-run: PPSA02121 restarted at 11:17:54; no upload/launch, healthy services, lock released | results/submit-batch-probe
 - 2026-09-06 | G3 | 75c0e19 | pass: 73,728 pixels; 1/2/8 draws wait 15.399/15.432/15.458 ms median; clean teardown/health, lock released | results/submit-batch-probe/112328
 - 2026-09-06 | G3 | 9fd90a5 | partial-pass: 27,648 pixels, clean teardown/health; EGL depth attachment excluded batching | results/multidraw-batch/120153 | use color-only FBO
+- 2026-09-06 | G3 | 82df5ab | partial-pass: FBO pixels pass, staged renderbuffer excluded batching; healthy teardown/unlock | results/multidraw-batch-fbo/120752 | retain inactive EGL depth

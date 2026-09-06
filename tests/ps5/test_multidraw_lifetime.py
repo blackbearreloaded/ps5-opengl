@@ -170,7 +170,7 @@ code = r'''
 enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PIPE_BUFFER=1,
        PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4 };
 struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs; };
-struct ps5_resource { struct pipe_resource base; unsigned render_staging_size; uint8_t *data; size_t size; };
+struct ps5_resource { struct pipe_resource base; unsigned render_staging_size, depth_staging_size; uint8_t *data; size_t size; };
 struct pipe_screen { struct pipe_resource *(*resource_create)(struct pipe_screen *, const struct pipe_resource *); };
 struct ps5_screen { struct pipe_screen base; struct pipe_resource *render_pool; };
 struct pipe_context { struct pipe_screen *screen; };
@@ -179,6 +179,7 @@ struct pipe_draw_info { unsigned mode, instance_count, index_size; bool primitiv
     increment_draw_id; struct { struct pipe_resource *resource; } index; };
 struct pipe_draw_indirect_info { int unused; };
 struct pipe_draw_start_count_bias { unsigned start, count; int index_bias; };
+struct pipe_depth_stencil_alpha_state { bool depth_enabled; struct { bool enabled; } stencil[2]; };
 struct ps5_context {
     struct pipe_context base;
     struct { struct pipe_surface cbufs[1], zsbuf; unsigned nr_cbufs; } framebuffer;
@@ -188,6 +189,7 @@ struct ps5_context {
     struct { bool is_user_buffer; struct { struct pipe_resource *resource; } buffer; } vertex_buffers[PIPE_MAX_ATTRIBS];
     struct { struct pipe_resource *buffer; } constants[2][PS5_MAX_CONSTANT_BUFFERS];
     struct pipe_resource *vertex_descriptor_table, *descriptor_storage[2], *border_color_storage;
+    const struct pipe_depth_stencil_alpha_state *depth_stencil_alpha;
     int last_draw_status;
 };
 static struct ps5_resource original[3], copies[24], borrowed;
@@ -229,7 +231,8 @@ static int end(void) {
                 assert(pending[i][stage]->data[byte] == 0xa0+stage);
         }
     }
-    assert(borrowed.base.refs == 1+4+PIPE_MAX_ATTRIBS+2*PS5_MAX_CONSTANT_BUFFERS);
+    assert(borrowed.base.refs == 1+4+PIPE_MAX_ATTRIBS+2*PS5_MAX_CONSTANT_BUFFERS+
+        !!context.framebuffer.zsbuf.texture);
     if (fail_end) return -1;
     staged=0;
     return 0;
@@ -308,6 +311,18 @@ int main(void) {
     REJECT(framebuffer.nr_cbufs,2); REJECT(framebuffer_valid,false);
     REJECT(vertex_buffers[0].is_user_buffer,true); REJECT(vertex_buffer_count,PIPE_MAX_ATTRIBS+1);
     shader_textures=1; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+    reset();
+    struct pipe_depth_stencil_alpha_state dsa={0};
+    context.depth_stencil_alpha=&dsa; context.framebuffer.zsbuf.texture=&borrowed.base;
+    assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,19));
+    assert(borrowed.base.refs==1 && freed==24 && !context.last_draw_status);
+    dsa.depth_enabled=true; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+    dsa.depth_enabled=false;
+    for (unsigned face=0; face<2; ++face) {
+        dsa.stencil[face].enabled=true; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+        dsa.stencil[face].enabled=false;
+    }
+    borrowed.depth_staging_size=1; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:
