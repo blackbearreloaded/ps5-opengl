@@ -20,6 +20,19 @@
 #ifndef PS5_DRAW_PROFILE
 #define PS5_PROFILE_MARK(i) ((void)0)
 #endif
+#ifdef PS5_DRAW_BATCH_PROBE
+#if !defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT)
+#error "Batch probe requires the native submitting runtime"
+#endif
+#include "util/os_time.h"
+/* Diagnostic only: repeated opaque draws, never a general GL optimization. */
+static unsigned runtime_batch_probe_sequence;
+static unsigned runtime_batch_probe_repeats(void)
+{
+    static const unsigned counts[] = {1, 2, 8};
+    return counts[runtime_batch_probe_sequence++ % 3];
+}
+#endif
 
 static uint32_t runtime_ngg_ge_pc_alloc;
 static uint32_t runtime_ngg_ge_pc_alloc_valid;
@@ -1828,6 +1841,10 @@ static int run_frame_slot_test(const agc_api_t *agc, const video_api_t *video,
 
 int main(void)
 {
+#ifdef PS5_DRAW_BATCH_PROBE
+    const unsigned batch_repeats = runtime_batch_probe_repeats();
+    int64_t batch_wait_ns = 0;
+#endif
 #ifdef PS5_DRAW_PROFILE
     int64_t profile_ticks[10] = {0};
     unsigned profile_sleeps = 0;
@@ -2691,6 +2708,10 @@ int main(void)
     agc.set_index_count(&command, 3);
     agc.draw_index(&command, 3, memory + 0x4200, 0);
 #elif defined(AGC_RUNTIME_PACKAGES)
+#ifdef PS5_DRAW_BATCH_PROBE
+    for (unsigned repetition = 0; repetition < batch_repeats; ++repetition)
+#endif
+    {
     if (runtime_index_buffer) {
         uint8_t agc_index_size = runtime_index_size == sizeof(uint32_t) ?
                                      AGC_INDEX_SIZE_32 : AGC_INDEX_SIZE_16;
@@ -2702,6 +2723,7 @@ int main(void)
                        (void *)runtime_index_buffer, 0);
     } else {
         agc.draw_auto(&command, runtime_draw_count, 2);
+    }
     }
 #else
     agc.draw_auto(&command, 3, 2);
@@ -2910,6 +2932,9 @@ int main(void)
     {
         uint64_t status[16] = {0};
         unsigned waits;
+#ifdef PS5_DRAW_BATCH_PROBE
+        const int64_t batch_start = os_time_get_nano();
+#endif
         int submit_rc = agc.submit(&submit);
         PS5_PROFILE_MARK(6);
         int suspend_rc = submit_rc == 0 ? agc.suspend_point() : -1;
@@ -2926,6 +2951,9 @@ int main(void)
             }
         }
         status[3] = *completion_marker;
+#ifdef PS5_DRAW_BATCH_PROBE
+        batch_wait_ns = os_time_get_nano() - batch_start;
+#endif
         PS5_PROFILE_MARK(8);
 #ifdef PS5_DRAW_PROFILE
         profile_sleeps = waits;
@@ -3367,6 +3395,11 @@ cleanup:
     if (profile_this_draw)
         runtime_profile_record(profile_ticks, profile_sleeps,
                                result || work_unmap_rc || work_release_rc);
+#endif
+#ifdef PS5_DRAW_BATCH_PROBE
+    printf("[ps5-batch-probe] repeats=%u wait_ns=%" PRId64 " result=%d\n",
+           batch_repeats, batch_wait_ns,
+           result || work_unmap_rc || work_release_rc || batch_wait_ns <= 0);
 #endif
     return result;
 }

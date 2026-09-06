@@ -105,6 +105,16 @@ operations unchanged. Force-rebuild the native runtime when toggling this build
 flag. Require `summarize-imgui-profile.py --submit-profile` plus the usual pixel,
 cleanup, lifecycle and health checks; compare against the frozen G2 timing app.
 
+Next diagnostic: `PS5_DRAW_BATCH_PROBE=1` is restricted to the
+`egl_public_core33_submit_batch` gate. It reuses the RGBA8 clear oracle for 36
+interleaved command buffers containing 1, 2 or 8 identical opaque GPU draws.
+Each submission retains both release operations, the completion marker, suspend
+point and bounded polling. This deliberately repeated work is **not a production
+GL path**. Audit with `python3 tests/ps5/test_submit_batch_probe.py RECEIPT`;
+discard three warm-up cycles and compare nine samples per size. Require 73,728
+exact pixel checks and clean title teardown/health. Force-rebuild without the
+diagnostic flag afterward; do not install its runtime into the distributable SDK.
+
 Use the owner-designated console and lock in ignored `.local/ENVIRONMENT.md`.
 Title: `PPSA99005`, deployed as a folder. Required owner-started services: FTP,
 klog and approved title control. Observe for at most 60 seconds per profile run.

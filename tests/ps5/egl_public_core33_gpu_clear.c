@@ -62,7 +62,13 @@ int main(void)
       goto cleanup;
    current = 1;
 
-   for (unsigned value = 0; value < 256; ++value) {
+   for (unsigned value = 0; value <
+#ifdef PS5_SUBMIT_BATCH_TEST
+        36 /* Twelve interleaved samples each of 1, 2 and 8 GPU draws. */
+#else
+        256
+#endif
+        ; ++value) {
       uint8_t expected[] = {value, 255 - value, (value * 37) & 255, (value * 11) & 255};
       glClearColor(expected[0] / 255.0f, expected[1] / 255.0f,
                    expected[2] / 255.0f, expected[3] / 255.0f);
@@ -78,6 +84,10 @@ int main(void)
       ++completed;
    }
    printf("[ps5-gpu-clear] rgba8-sweep=%u pixels=%u PASS\n", completed, completed * WIDTH * HEIGHT);
+#ifdef PS5_SUBMIT_BATCH_TEST
+   passed = 1;
+   goto cleanup; /* The diagnostic repeats opaque clears only, never queries. */
+#endif
 
    vs = shader(GL_VERTEX_SHADER, "#version 330 core\n"
       "void main(){vec2 p[3]=vec2[](vec2(-1,-1),vec2(3,-1),vec2(-1,3));"

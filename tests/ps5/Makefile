@@ -1813,6 +1813,9 @@ egl_public_core33_scissored_clear.o: egl_public_core33_scissored_clear.c
 egl_public_core33_gpu_clear.o: egl_public_core33_gpu_clear.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_submit_batch.o: egl_public_core33_gpu_clear.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_SUBMIT_BATCH_TEST=1 -c -o $@ $<
+
 egl_public_core33_limits.o: egl_public_core33_limits.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 

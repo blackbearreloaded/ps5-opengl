@@ -43,6 +43,12 @@ esac
     exit 2
 }
 test_name=${gate_object%.o}
+if [[ $test_name == egl_public_core33_submit_batch ]]; then
+    [[ ${PS5_DRAW_BATCH_PROBE:-0} == 1 ]] || { echo 'Batch gate requires PS5_DRAW_BATCH_PROBE=1' >&2; exit 2; }
+elif [[ ${PS5_DRAW_BATCH_PROBE:-0} == 1 ]]; then
+    echo 'Batch probe is restricted to the opaque submit-batch gate' >&2
+    exit 2
+fi
 
 [[ -f "$template/Makefile" && -d "$template/.deps/native" ]] || {
     printf 'native-app boilerplate or its dependencies are missing: %s\n' "$template" >&2
