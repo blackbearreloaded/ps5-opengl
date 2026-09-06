@@ -107,6 +107,15 @@ PS5_OPENGL_LDFLAGS := -Wl,--gc-sections -Wl,--build-id=sha1
 $(PS5_OPENGL_BUILD):
 	mkdir -p $@
 
+# Track command-line configuration, including returning from a diagnostic build.
+.PHONY: ps5-opengl-config-force
+$(PS5_OPENGL_BUILD)/runtime-config.txt: ps5-opengl-config-force | $(PS5_OPENGL_BUILD)
+	@printf '%s\n' '$(CC)' '$(PS5_OPENGL_COMMON_CFLAGS)' '$(PS5_OPENGL_PSBC_CFLAGS)' '$(PS5_OPENGL_CORE33_DEFINES)' '$(PS5_OPENGL_RUNTIME_DEFINES)' > $@.tmp
+	@cmp -s $@.tmp $@ || cp $@.tmp $@
+	@rm -f $@.tmp
+
+$(PS5_OPENGL_RUNTIME_OBJECTS): $(PS5_OPENGL_BUILD)/runtime-config.txt $(ps5_opengl_mk_self)
+
 $(PS5_OPENGL_BUILD)/ps5_egl.o: $(PS5_OPENGL_ROOT)/src/egl/ps5_egl.c \
 	$(PS5_OPENGL_DRIVER)/ps5_screen.h | $(PS5_OPENGL_BUILD)
 	$(CC) $(PS5_OPENGL_COMMON_CFLAGS) -DHAVE_PTHREAD=1 \

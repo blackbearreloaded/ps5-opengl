@@ -3,11 +3,12 @@ PS5_NATIVE_APP_TEMPLATE ?= $(abspath ../ps5-native-app-boilerplate)
 PS5_PAYLOAD_SDK ?= $(PS5_NATIVE_APP_TEMPLATE)/.deps/native/ps5-payload-sdk
 export PS5_NATIVE_APP_TEMPLATE PS5_PAYLOAD_SDK
 
-.PHONY: help source-fetch cts-fetch sdk imgui-demo nanovg sokol test test-imgui test-compiler
+.PHONY: help source-fetch cts-fetch sdk imgui-demo nanovg sokol cubes test test-imgui test-cubes test-compiler
 help:
 	@printf '%s\n' 'source-fetch: pinned graphics/example sources' \
 	  'sdk: build the compiler, Mesa and installed native OpenGL SDK' \
 	  'imgui-demo / nanovg / sokol: package one example using the installed SDK' \
+	  'cubes: package the 3D frame benchmark using the current source runtime' \
 	  'test: dependency-free host tests and published validation audit' \
 	  'test-imgui: software-Mesa renderer and TV-demo input checks' \
 	  'cts-fetch: also fetch pinned optional CTS sources; see docs/testing.md'
@@ -29,6 +30,10 @@ nanovg:
 	bash tools/build-native-test-app.sh egl_public_core33_nanovg
 sokol:
 	bash tools/build-native-test-app.sh egl_public_core33_sokol
+cubes:
+	bash tools/build-native-test-app.sh egl_public_core33_cubes
+test-cubes:
+	bash tools/test-cubes-host.sh
 test:
 	python3 -m unittest discover -s tools -p 'test_*.py'
 	python3 tests/ps5/test_gpu_clear_state.py
@@ -36,6 +41,7 @@ test:
 	python3 tests/ps5/test_submit_batch_probe.py
 	python3 tests/ps5/test_multidraw_lifetime.py
 	python3 tools/summarize-imgui-profile.py --self-test
+	python3 tools/summarize-cubes.py --self-test
 	python3 tools/verify-cts-candidate.py --self-test
 	python3 tools/verify-published-validation.py
 test-imgui:

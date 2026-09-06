@@ -1819,6 +1819,9 @@ egl_public_core33_submit_batch.o: egl_public_core33_gpu_clear.c
 egl_public_core33_multidraw_batch.o: egl_public_core33_multidraw_batch.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_NATIVE_MULTIDRAW_TEST=1 -c -o $@ $<
 
+egl_public_core33_cubes.o: ../../examples/core33-cubes/main.c
+	$(CC) $(CFLAGS) -DPS5_NATIVE_CUBES_TEST=1 -c -o $@ $<
+
 egl_public_core33_limits.o: egl_public_core33_limits.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 

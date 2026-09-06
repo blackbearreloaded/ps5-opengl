@@ -232,6 +232,18 @@ batching or diagnostic flags after freezing these apps.
 
 ## Milestones
 
+G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
+with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
+baseline; require six numerical oracles (334 probes), 24 measured frames and
+clean lifecycle/health. One 60-second headless PPSA99005 cycle, with the endpoint
+and lock from `.local/ENVIRONMENT.md`. Audit with `tools/summarize-cubes.py`.
+Optimize measured costs next, then affected CTS and longer real-app tests before
+promotion. No public release or repository visibility change is part of this case.
+
+Runtime configuration changes now invalidate local objects automatically,
+including switching experimental flags off; identical settings remain cached.
+This removes the manual force-rebuild requirement described by earlier cases.
+
 - 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
 - 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
 - G2 scope: full single-target RGBA8 GPU clears via Mesa u_blitter; driver synchronization unchanged. Other cases retain CPU fallbacks.
