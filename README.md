@@ -10,6 +10,12 @@ The project completed its defined Core 3.3 validation campaign on a PS5. It is
 **not a Khronos-certified implementation**, a stock-console installation method,
 or a guarantee that every desktop application will run unchanged.
 
+**Performance-branch status:** the validation totals below describe the frozen
+publication baseline, not the newer runtime in this branch. GPU-clear changes
+have focused hardware validation; experimental multi-draw batching is opt-in.
+The updated runtime still needs release-candidate validation before promotion.
+See [Performance](docs/performance.md) for measurements and remaining work.
+
 ## What is included
 
 - **OpenGL 3.3 Core / GLSL 3.30:** Mesa state tracking, GLSL/NIR compilation,
@@ -17,7 +23,7 @@ or a guarantee that every desktop application will run unchanged.
 - **Native EGL:** fullscreen surfaces and the tested context/resource lifecycle.
 - **Developer SDK:** headers, static archives, import stubs, and Make,
   pkg-config and CMake integration. Build artifacts are generated locally.
-- **Examples:** a triangle, Dear ImGui, NanoVG, and Sokol using public APIs.
+- **Examples:** a triangle, Dear ImGui, NanoVG, Sokol and a 3D cube benchmark using public APIs.
 - **Validation:** 39,544 individual results, exclusion reviews, provenance
   hashes, and an offline evidence verifier.
 - **Pinned sources:** upstream revisions and complete local compiler/platform
@@ -32,10 +38,12 @@ or a guarantee that every desktop application will run unchanged.
 | [ImGui TV demo](examples/core33-imgui/README.md#g10-visible-tv-demo) | Readable 1080p UI, animated shapes, gamepad navigation | TV-confirmed; 2,851 frames over five minutes |
 | [NanoVG](examples/core33-nanovg/README.md) | Its upstream GL3 vector renderer | 45 pixel probes; zero dirty stencil pixels |
 | [Sokol](examples/core33-sokol/README.md) | Its GL backend through public OpenGL | 1,843,200 component comparisons; zero mismatches |
-| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, 1/8/32 ordinary draws | Native probes/timings passed; see performance report |
+| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, ordinary versus instanced draws | Ordinary baseline passed; paired native test pending |
 
-The TV demo currently measures approximately **9.5 FPS**. Its 30 FPS setting is
-a pacing ceiling, not achieved performance. Controller connection was recorded;
+The accepted baseline TV demo measured approximately **9.5 FPS**; the GPU-clear
+candidate measured approximately **15 FPS** in a separate short profile, not the
+five-minute baseline run. Its 30 FPS setting is a pacing ceiling, not achieved
+performance. Controller connection was recorded;
 hardware widget changes were not captured. Host navigation tests pass.
 
 ## Validation status

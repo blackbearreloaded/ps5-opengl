@@ -21,8 +21,8 @@ Different object counts also change coverage; it is not a fixed-fill-rate test.
 
 Frame timings include color/depth clear, draws, one `glFinish`, and EGL swap.
 Numerical depth/texture checks run before and after each workload, outside the
-timed interval: 668 probes in total. Host tests deliberately disable depth or
-upload the wrong texture and require these checks to fail. Do not use host timings
+timed interval: 668 probes in total. Host tests deliberately disable depth,
+upload the wrong texture or omit instances and require these checks to fail. Do not use host timings
 as PS5 results. CPU wall-time throughput is not a TV refresh-rate measurement.
 
 Audit a saved native receipt:

@@ -6,8 +6,11 @@ prove universal compatibility or production-grade stability.
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
   desktop installation model or compatibility-profile guarantee.
-- **Performance:** some transfers/format paths use CPU fallbacks. The 1080p TV
-  demo measured about 9.5 FPS for five minutes. Thirty FPS is only its cap.
+- **Performance:** some transfers/format paths use CPU fallbacks. The accepted
+  1080p TV demo measured about 9.5 FPS for five minutes; a newer GPU-clear
+  candidate measured about 15 FPS in a short profile. Ordinary draws still incur
+  substantial per-call synchronization cost. Thirty FPS is only the demo's cap;
+  these measurements do not predict full-game FPS. See [Performance](performance.md).
 - **Input:** the demo has a minimal current-state pad adapter. Hardware logs show
   connection but no widget changes; host navigation checks passed.
 - **Lifecycle:** renderer runs report VideoOut unregister `80290009` (busy), then

@@ -51,8 +51,12 @@ one patch over public commit `a92a1228`; the resulting Git tree must be
 The local research commit `a11c1925` is provenance, not a remote prerequisite.
 
 The Mesa patch is checked before application. `make sdk` builds host and PS5
-compiler libraries, Mesa, the native backend and the installed SDK. Example
-targets consume that package without rebuilding the graphics stack each time.
+compiler libraries, Mesa, the native backend and the installed SDK. ImGui,
+NanoVG and Sokol consume that package without rebuilding the graphics stack.
+Rebuild the SDK after runtime changes before testing those consumers.
+`make cubes` instead links the current source runtime for performance comparisons;
+it does not update the installed SDK. `make test-cubes` runs its software-Mesa
+reference and deliberate fault checks locally, without console access.
 
 | Output | Purpose |
 | --- | --- |
