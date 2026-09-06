@@ -12,6 +12,8 @@ def summarize(text, host=False):
         if not ok:
             raise ValueError(message)
 
+    require(not re.search(r"^\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))",
+                          text, re.M), "driver reported a failed operation")
     lines = re.findall(r"^\[ps5-imgui-perf\] (.+)$", text, re.M)
     require(len(lines) == 1, "expected exactly one profile")
     pairs = [token.split("=", 1) for token in lines[0].split()]
@@ -50,7 +52,8 @@ def self_test():
 """
     assert summarize(text)["cpu_wall_ms"] == 10
     assert summarize(text.replace("\n", "\r\n"))["frames"] == 100
-    for bad in (text + text, text.replace("PASS", "FAIL", 1),
+    for bad in (text + text, text + "[ps5-gallium] clear-gpu-color status=-3 draws=1\n",
+                text.replace("PASS", "FAIL", 1),
                 text.replace("frames=130", "frames=129"), text.replace("warmup=30", "warmup=2"),
                 text.replace("clear_ms=2", "clear_ms=nan"), text.replace("clear_ms=2", "clear_ms=-1"),
                 text.replace("cpu_wall_ms=10", "cpu_wall_ms=11"),
