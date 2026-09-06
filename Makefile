@@ -42,6 +42,7 @@ test:
 	python3 tests/ps5/test_draw_profile.py
 	python3 tests/ps5/test_submit_batch_probe.py
 	python3 tests/ps5/test_multidraw_lifetime.py
+	python3 tests/ps5/test_present_shutdown.py
 	python3 tools/summarize-imgui-profile.py --self-test
 	python3 tools/summarize-cubes.py --self-test
 	python3 tools/verify-cts-candidate.py --self-test

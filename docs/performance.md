@@ -147,6 +147,13 @@ was requested; zero widget changes were recorded. This is demo throughput, not
 Host failure injection separately exposes ignored presenter-close failures;
 retain ownership and propagate failure before further lifecycle testing.
 
+The shutdown successor preserves the VideoOut handle/allocation when close fails
+and makes both EGL destruction paths stop before releasing ownership. Its real
+runtime/EGL host regression is red before the fix and green afterward, including
+active/faulted/pending batch guards and simulated retry/idempotence. No hardware
+fault injection, blank flip, shader or submission change; busy unregister is not
+claimed fixed. Normal native lifecycle regression is pending on a separate SDK.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

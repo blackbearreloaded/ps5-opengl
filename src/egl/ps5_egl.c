@@ -427,8 +427,12 @@ eglTerminate(EGLDisplay display)
    }
    if (ps5_agc_gate2_shutdown_present) {
       ps5_screen_submit_lock(ps5_display.screen);
-      ps5_agc_gate2_shutdown_present();
+      const int status = ps5_agc_gate2_shutdown_present();
       ps5_screen_submit_unlock(ps5_display.screen);
+      if (status != 0) {
+         ps5_set_error(EGL_BAD_ACCESS);
+         return EGL_FALSE;
+      }
    }
    pipe_resource_reference(&ps5_display.scanout[1], NULL);
    pipe_resource_reference(&ps5_display.scanout[0], NULL);
@@ -985,12 +989,16 @@ eglDestroySurface(EGLDisplay display, EGLSurface surface_handle)
       ps5_set_error(EGL_BAD_ACCESS);
       return EGL_FALSE;
    }
-   surface->magic = 0;
    if (surface->window && ps5_agc_gate2_shutdown_present) {
       ps5_screen_submit_lock(ps5_display.screen);
-      ps5_agc_gate2_shutdown_present();
+      const int status = ps5_agc_gate2_shutdown_present();
       ps5_screen_submit_unlock(ps5_display.screen);
+      if (status != 0) {
+         ps5_set_error(EGL_BAD_ACCESS);
+         return EGL_FALSE;
+      }
    }
+   surface->magic = 0;
    if (surface->used)
       st_api_destroy_drawable(&surface->drawable);
    pipe_resource_reference(&surface->depth_stencil, NULL);

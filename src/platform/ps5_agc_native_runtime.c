@@ -911,9 +911,12 @@ int ps5_agc_gate2_shutdown_present(void)
 #ifdef PS5_DRAW_PROFILE
     runtime_profile_report();
 #endif
-    if (runtime_video_registered)
+    if (runtime_video_registered) {
         unregister_rc = runtime_video_api.unregister_buffers(
             runtime_video_handle, 0);
+        if (unregister_rc == 0)
+            runtime_video_registered = 0;
+    }
     if (runtime_video_handle >= 0)
         close_rc = runtime_video_api.close(runtime_video_handle);
     if (runtime_video_handle >= 0)
@@ -921,6 +924,9 @@ int ps5_agc_gate2_shutdown_present(void)
                " close=%08" PRIx32 " frames=%u\n",
                (uint32_t)unregister_rc, (uint32_t)close_rc,
                runtime_present_count);
+    /* A failed close does not release ownership of the scanout allocation. */
+    if (close_rc != 0)
+        return close_rc;
     memset(&runtime_video_api, 0, sizeof(runtime_video_api));
     runtime_video_handle = -1;
     runtime_video_framebuffer = NULL;
