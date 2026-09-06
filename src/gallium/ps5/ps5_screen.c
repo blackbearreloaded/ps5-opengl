@@ -38,6 +38,7 @@ ps5_runtime_printf(const char *format, ...)
 #include "util/u_sample_positions.h"
 #include "util/simple_mtx.h"
 #include "util/u_draw.h"
+#include "util/u_blitter.h"
 #include "util/u_framebuffer.h"
 #include "util/u_helpers.h"
 #include "util/u_inlines.h"
@@ -140,6 +141,7 @@ struct ps5_constant_state {
 
 struct ps5_context {
    struct pipe_context base;
+   struct blitter_context *blitter;
    int last_draw_status;
    unsigned draw_calls;
    struct ps5_shader *vs;
@@ -7616,6 +7618,95 @@ ps5_clear_msaa4_color(struct ps5_context *context, unsigned buffers,
    return true;
 }
 
+static bool
+ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
+                    uint32_t color_clear_mask,
+                    const struct pipe_scissor_state *scissor_state,
+                    const union pipe_color_union *color)
+{
+   /* ponytail: accelerate only full, single-layer RGBA8 clears. Extend after
+    * affected format/mask/query tests; every other case keeps the CPU path. */
+   if (!PS5_ENABLE_MRT_CANDIDATE || !PS5_ENABLE_UBO_CANDIDATE || !context ||
+       !context->framebuffer_valid || !color || scissor_state ||
+       (buffers & PIPE_CLEAR_COLOR) != PIPE_CLEAR_COLOR0 ||
+       (color_clear_mask & PIPE_MASK_RGBA) != PIPE_MASK_RGBA ||
+       context->framebuffer.nr_cbufs != 1 || context->render_condition_query ||
+       context->stream_output_target_count || context->active_occlusion_query ||
+       context->active_primitives_generated_query || context->active_primitives_emitted_query)
+      return false;
+
+   const struct pipe_surface *surface = &context->framebuffer.cbufs[0];
+   const struct ps5_resource *target = (const struct ps5_resource *)surface->texture;
+   if (!target || target->base.target != PIPE_TEXTURE_2D ||
+       target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
+       target->render_staging_size || surface->level || surface->first_layer ||
+       surface->last_layer || surface->format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+       target->base.format != surface->format ||
+       context->framebuffer.width != ps5_surface_width(surface) ||
+       context->framebuffer.height != ps5_surface_height(surface))
+      return false;
+
+   /* Slot zero may be an inline uniform copy, not a resource. Preserve its
+    * bytes before u_blitter temporarily replaces it with the clear color. */
+   const struct ps5_constant_state *state = &context->constants[1][0];
+   uint8_t copied_constants[PS5_MAX_CONSTANT_BUFFER_SIZE];
+   struct pipe_constant_buffer cb = {0};
+   if (state->valid) {
+      cb.buffer = state->buffer;
+      cb.buffer_offset = state->offset;
+      cb.buffer_size = state->size;
+      if (state->copied) {
+         const struct ps5_resource *storage =
+            (const struct ps5_resource *)context->descriptor_storage[1];
+         size_t offset = ps5_copied_constant_offset(1);
+         if (!storage || offset > storage->size ||
+             state->size > sizeof(copied_constants) || state->size > storage->size - offset)
+            return false;
+         memcpy(copied_constants, storage->data + offset, state->size);
+         cb.user_buffer = copied_constants;
+      }
+   }
+   if (!context->blitter)
+      context->blitter = util_blitter_create(&context->base);
+   struct blitter_context *blitter = context->blitter;
+   if (!blitter || blitter->running)
+      return false;
+
+   bool viewport_valid = context->viewport_valid;
+   bool queries_enabled = context->queries_enabled;
+   unsigned draws_before = context->draw_calls;
+   util_blitter_save_vertex_buffers(blitter, context->vertex_buffers, context->vertex_buffer_count);
+   util_blitter_save_vertex_elements(blitter, context->vertex_elements);
+   util_blitter_save_vertex_shader(blitter, context->vs);
+   util_blitter_save_geometry_shader(blitter, context->gs);
+   util_blitter_save_so_targets(blitter, 0, NULL, context->stream_output_primitive);
+   util_blitter_save_rasterizer(blitter, context->rasterizer);
+   util_blitter_save_fragment_shader(blitter, context->fs);
+   util_blitter_save_depth_stencil_alpha(blitter, context->depth_stencil_alpha);
+   util_blitter_save_blend(blitter, context->blend);
+   util_blitter_save_stencil_ref(blitter, &context->stencil_ref);
+   util_blitter_save_viewport(blitter, &context->viewport);
+   util_blitter_save_sample_mask(blitter, context->sample_mask, 1);
+   util_blitter_save_fragment_constant_buffer_slot(blitter, &cb);
+
+   /* Match the CPU fallback's RGBA8 quantization exactly. */
+   uint8_t packed[4];
+   union pipe_color_union quantized;
+   util_format_pack_rgba(surface->format, packed, color->ui, 1);
+   util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
+   util_blitter_clear(blitter, context->framebuffer.width, context->framebuffer.height,
+                      1, PIPE_CLEAR_COLOR0, &quantized, 0, 0, false);
+   context->viewport_valid = viewport_valid;
+   context->queries_enabled = queries_enabled;
+   if (context->draw_calls == draws_before)
+      context->last_draw_status = -30; /* Blitter upload failed before drawing. */
+   if (context->last_draw_status != 0 || draws_before < 3)
+      printf("[ps5-gallium] clear-gpu-color status=%d draws=%u\n",
+             context->last_draw_status, context->draw_calls - draws_before);
+   /* Never hide an attempted GPU failure by retrying it on the CPU. */
+   return true;
+}
+
 static void
 ps5_clear(struct pipe_context *base, unsigned buffers,
           uint32_t color_clear_mask, uint8_t stencil_clear_mask,
@@ -7649,6 +7740,11 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
    }
    if (context && !ps5_render_condition_passes(context))
       return;
+   if (ps5_clear_gpu_color(context, buffers, color_clear_mask, scissor_state, color)) {
+      buffers &= ~PIPE_CLEAR_COLOR;
+      if (!buffers || context->last_draw_status != 0)
+         return;
+   }
    if (PS5_ENABLE_MSAA4_CANDIDATE && context &&
        context->framebuffer_valid &&
        ps5_clear_msaa4_color(context, buffers, color_clear_mask,
@@ -9628,6 +9724,8 @@ ps5_context_destroy(struct pipe_context *base)
    struct ps5_context *context = (struct ps5_context *)base;
    unsigned index;
 
+   if (context->blitter)
+      util_blitter_destroy(context->blitter);
    ps5_release_geometry_pipeline(context);
    util_unreference_framebuffer_state(&context->framebuffer);
    for (index = 0; index < context->vertex_buffer_count; ++index)
