@@ -74,6 +74,8 @@ int main(void)
    EGLConfig config;
    EGLint count = 0;
    GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, ebo = 0;
+   GLuint query = 0;
+   GLsync fence = NULL;
    int current = 0, passed = 0, clean = 1;
    unsigned completed = 0;
    GLint first[DRAWS], base[DRAWS];
@@ -157,9 +159,31 @@ int main(void)
              mode, (long long)elapsed[0], (long long)elapsed[1], 3 * WIDTH * HEIGHT);
       ++completed;
    }
+   /* Active queries must keep the synchronous fallback, even after batching. */
+   glUniform4f(tint, 1, 1, 1, 1);
+   glClear(GL_COLOR_BUFFER_BIT);
+   glGenQueries(1, &query);
+   glBeginQuery(GL_SAMPLES_PASSED, query);
+   glMultiDrawArrays(GL_TRIANGLES, first, counts, DRAWS);
+   glEndQuery(GL_SAMPLES_PASSED);
+   GLuint samples = 0;
+   glGetQueryObjectuiv(query, GL_QUERY_RESULT, &samples);
+   if (samples != (WIDTH + 8) * HEIGHT || !check_pixels(1, 0)) goto cleanup;
+   fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+   if (!fence) goto cleanup;
+   GLenum waited = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
+   if (waited != GL_ALREADY_SIGNALED && waited != GL_CONDITION_SATISFIED) goto cleanup;
+   /* Orphan the original VBO immediately; no queued draw may still need it. */
+   for (unsigned i = 0; i < 6; ++i) memset(vertices[i].color, 0, 3 * sizeof(float));
+   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+   glDrawArrays(GL_TRIANGLES, 0, 6);
+   if (!check_pixels(1, 1)) goto cleanup;
+   printf("[ps5-multidraw] query_samples=%u fence=1 orphan=1 pixels=%u PASS\n", samples, 2 * WIDTH * HEIGHT);
    passed = 1;
 cleanup:
    if (current) {
+      if (fence) glDeleteSync(fence);
+      if (query) glDeleteQueries(1, &query);
       glUseProgram(0);
       if (ebo) glDeleteBuffers(1, &ebo);
       if (vbo) glDeleteBuffers(1, &vbo);

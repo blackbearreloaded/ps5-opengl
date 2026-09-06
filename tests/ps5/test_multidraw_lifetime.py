@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 
-def audit(text):
+def audit(text, require_postchecks=False):
     """Pixel success alone cannot prove that the optimized path ran."""
     matches = list(re.finditer(r"\[ps5-multidraw\] mode=(\d+) serial_ns=(\d+) batch_ns=(\d+) pixels=6912 PASS", text))
     assert len(matches) == text.count("[ps5-multidraw] mode=") == 4, "Missing/duplicate mode results"
@@ -28,14 +28,19 @@ def audit(text):
                        "single_sample_ratio": serial / batch})
         start = match.end()
     assert text.count("[ps5-multidraw-batch]") == 8 and text.count("multi-draw-batched") == 4
+    # The original four-mode receipt is retained; the successor adds postchecks.
+    if require_postchecks or "[ps5-multidraw] query_samples=" in text:
+        assert text.count("[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS") == 1
+        assert text.count("[ps5-multidraw] query_samples=") == 1
     for marker in ("[ps5-multidraw] completed=4 cleanup=1 result=0",
                    "[pss-opengl-native] gate completed status=0"):
         assert text.count(marker) == 1, "Missing/duplicate completion"
     return result
 
 
-if len(sys.argv) == 2:
-    print(json.dumps(audit(Path(sys.argv[1]).read_text()), indent=2))
+if len(sys.argv) > 1:
+    assert len(sys.argv) == 2 or (len(sys.argv) == 3 and sys.argv[2] == "--postchecks")
+    print(json.dumps(audit(Path(sys.argv[1]).read_text(), len(sys.argv) == 3), indent=2))
     raise SystemExit
 assert len(sys.argv) == 1
 sample = "".join(
@@ -46,9 +51,17 @@ sample = "".join(
     for mode in range(4))
 sample += "[ps5-multidraw] completed=4 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
 assert len(audit(sample)) == 4
+assert len(audit(sample + "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS\n", True)) == 4
+try:
+    audit(sample, True)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Missing required postchecks accepted")
 for bad in (sample.replace("[ps5-multidraw-batch]", "[unused]"), sample.replace("attempted=7", "attempted=6", 1),
             sample.replace("waits=1", "waits=2000", 1), sample.replace("result=0", "result=1", 1),
-            sample.replace("cleanup=1", "cleanup=0"), sample + "[ps5-multidraw-batch] malformed"):
+            sample.replace("cleanup=1", "cleanup=0"), sample + "[ps5-multidraw-batch] malformed",
+            sample + "[ps5-multidraw] query_samples=2559 fence=1 orphan=1 pixels=4608 PASS"):
     try:
         audit(bad)
     except AssertionError:
