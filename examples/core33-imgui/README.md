@@ -68,9 +68,11 @@ with `-ExpectedGate egl_public_core33_imgui_tv.o -Incremental
 title at the end of that bounded window. The installed folder is still
 `/data/homebrew/PPSA99005`; no application ELF is sent to elfldr.
 
-Host acceptance: 12 full-HD frames, two exact shape readbacks, two gamepad-driven
-checkbox changes, and successful EGL cleanup. Hardware acceptance: matching
-readbacks, sustained frame receipts, TV-visible animation, and clean teardown.
+Host acceptance: 12 full-HD frames across simulated elapsed times 0..275 seconds,
+ten exact shape readbacks, two gamepad-driven checkbox changes, and successful
+EGL cleanup. Hardware acceptance: shape readbacks at frames 0/10 and every
+30-second progress interval, sustained frame receipts, TV-visible animation,
+and clean teardown. The separate 30-second profiling mode retains two probes.
 Controller hardware interaction requires observing a widget change, not merely
 opening a pad handle. No CTS rerun is needed for this example-only change.
 The control is the previously validated six-frame ImGui app and frozen SDK;

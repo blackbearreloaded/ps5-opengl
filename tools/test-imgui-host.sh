@@ -25,4 +25,15 @@ clang++-18 -std=c++11 -O2 -Wall -Wextra -Werror \
     -l:libEGL.so.1 -l:libGL.so.1 -o "$root/build/imgui-host/check"
 EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 \
     MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330 \
-    "$root/build/imgui-host/check"
+    "$root/build/imgui-host/check" | tee "$root/build/imgui-host/check.log"
+if [[ ${1:-} == --tv-demo ]]; then
+    python3 - "$root/build/imgui-host/check.log" <<'PY'
+import re
+import sys
+from pathlib import Path
+probes = re.findall(r"\[ps5-imgui-tv\] readback frame=(\d+) rgba=[0-9,]+ (\w+)",
+                    Path(sys.argv[1]).read_text())
+assert probes == [(str(frame), "PASS") for frame in (0, 2, 3, 4, 5, 6, 8, 9, 10, 11)], probes
+print("imgui-tv: periodic readbacks PASS (simulated elapsed 0..275 seconds)")
+PY
+fi

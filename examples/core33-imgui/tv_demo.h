@@ -97,7 +97,12 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         if (!check(now >= previous, "monotonic frame clock")) { ok = false; break; }
 #ifdef PS5_IMGUI_HOST_REFERENCE
         if (frame == 12) break;
+#ifdef PS5_IMGUI_PROFILE
         const double elapsed = frame / 30.0;
+#else
+        // Exercise every long-session probe interval without waiting five minutes.
+        const double elapsed = frame * 25.0;
+#endif
         io.DeltaTime = 1.0f / 30.0f;
         const bool connected = true;
         // Exercise the real ImGui navigation path: toggle the focused checkbox.
@@ -185,7 +190,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         stages[3] = demo_seconds();
 #endif
         if (!check(glGetError() == GL_NO_ERROR, "TV draw")) { ok = false; break; }
-        if (frame == 0 || frame == 10) {
+        if (frame == 0 || frame == 10 || elapsed >= next_log) {
             unsigned char p[4] = {};
             glReadPixels(static_cast<int>(x), height - 1 - static_cast<int>(origin.y + 135),
                          1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p);
