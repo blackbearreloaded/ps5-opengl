@@ -48,8 +48,14 @@ def summarize(text, host=False, submit_profile=False):
         fields = dict(pairs)
         phases = ["setup_ms", "scanout_flush_ms", "video_ms", "command_ms",
                   "command_flush_ms", "submit_wait_ms", "cleanup_ms"]
+        metadata = ["calls", "failures", "warmup_frames", "total_ms"]
+        if "sleeps" in fields:
+            phases[5:6] = ["submit_ms", "suspend_ms", "poll_ms"]
+            metadata.append("sleeps")
+            require(0 <= int(fields["sleeps"]) <= int(fields["calls"]) * 2000,
+                    "invalid completion sleep count")
         require(len(fields) == len(pairs) and set(fields) ==
-                set(phases + ["calls", "failures", "warmup_frames", "total_ms"]),
+                set(phases + metadata),
                 "unexpected submission fields")
         calls = int(fields["calls"])
         require(calls >= frames and fields["failures"] == "0" and
@@ -57,9 +63,11 @@ def summarize(text, host=False, submit_profile=False):
         timings = {name: float(fields[name]) for name in phases + ["total_ms"]}
         require(all(math.isfinite(v) and v >= 0 for v in timings.values()) and
                 timings["total_ms"] > 0 and
-                abs(sum(timings[p] for p in phases) - timings["total_ms"]) <= 0.000005,
+                abs(sum(timings[p] for p in phases) - timings["total_ms"]) <= 0.000006,
                 "invalid submission phase accounting")
         report["submission_per_call"] = dict(calls=calls, **timings)
+        if "sleeps" in fields:
+            report["submission_per_call"]["sleeps"] = int(fields["sleeps"])
     return report
 
 
@@ -77,6 +85,9 @@ def self_test():
               "setup_ms=1 scanout_flush_ms=2 video_ms=0 command_ms=1 "
               "command_flush_ms=0 submit_wait_ms=1 cleanup_ms=1 total_ms=6\n")
     assert summarize(text + submit, submit_profile=True)["submission_per_call"]["calls"] == 300
+    split_submit = submit.replace("warmup_frames=30", "warmup_frames=30 sleeps=300").replace(
+        "submit_wait_ms=1", "submit_ms=0 suspend_ms=0 poll_ms=1")
+    assert summarize(text + split_submit)["submission_per_call"]["sleeps"] == 300
     for bad in (text + text, text + "[ps5-gallium] clear-gpu-color status=-3 draws=1\n",
                 text.replace("PASS", "FAIL", 1),
                 text.replace("frames=130", "frames=129"), text.replace("warmup=30", "warmup=2"),
@@ -88,6 +99,8 @@ def self_test():
                 text + submit.replace("failures=0", "failures=1"),
                 text + submit.replace("warmup_frames=30", "warmup_frames=0"),
                 text + submit.replace("total_ms=6", "total_ms=5"),
+                text + split_submit.replace("sleeps=300", "sleeps=-1"),
+                text + split_submit.replace("sleeps=300", "sleeps=600001"),
                 text + submit.replace("setup_ms=1", "setup_ms=nan")):
         try:
             summarize(bad)

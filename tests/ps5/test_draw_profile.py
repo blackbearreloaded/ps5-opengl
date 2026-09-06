@@ -8,23 +8,24 @@ root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
 start = source.index("static uint64_t runtime_profile_ns")
 body = source[start:source.index("#define PS5_PROFILE_MARK", start)]
-code = "#include <stdint.h>\n#include <stdio.h>\n#include <string.h>\n#include <assert.h>\n" + body + r'''
+code = "#include <inttypes.h>\n#include <stdio.h>\n#include <string.h>\n#include <assert.h>\n" + body + r'''
 int main(void) {
-    int64_t ticks[8] = {1, 1000001, 3000001, 3000001, 4000001, 4000001, 5000001, 6000001};
+    int64_t ticks[10] = {1, 1000001, 3000001, 3000001, 4000001, 4000001, 4000001, 4000001, 5000001, 6000001};
     runtime_profile_report(); /* empty reports stay quiet */
-    runtime_profile_record(ticks, 0);
-    runtime_profile_record(ticks, 0);
+    runtime_profile_record(ticks, 1, 0);
+    runtime_profile_record(ticks, 2, 0);
     assert(runtime_profile_calls == 2 && !runtime_profile_failures);
     assert(runtime_profile_ns[0] == 2000000 && runtime_profile_ns[1] == 4000000);
-    runtime_profile_record(ticks, 1);
-    ticks[7] = ticks[6] - 1;
-    runtime_profile_record(ticks, 0);
-    ticks[7] = 0;
-    runtime_profile_record(ticks, 0);
+    runtime_profile_record(ticks, 9, 1);
+    ticks[9] = ticks[8] - 1;
+    runtime_profile_record(ticks, 9, 0);
+    ticks[9] = 0;
+    runtime_profile_record(ticks, 9, 0);
     assert(runtime_profile_calls == 2 && runtime_profile_failures == 3);
+    assert(runtime_profile_sleeps == 3);
     runtime_profile_report();
-    assert(!runtime_profile_calls && !runtime_profile_failures);
-    for (unsigned i = 0; i < 7; ++i) assert(!runtime_profile_ns[i]);
+    assert(!runtime_profile_calls && !runtime_profile_failures && !runtime_profile_sleeps);
+    for (unsigned i = 0; i < 9; ++i) assert(!runtime_profile_ns[i]);
     runtime_profile_report();
 }
 '''

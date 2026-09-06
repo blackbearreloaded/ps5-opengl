@@ -121,3 +121,4 @@ submission. Release the exact token before offline analysis/building.
 - 2026-09-06 | G2 | 791574e | failed pixel check: helper IO lacked explicit color output; healthy teardown | results/gpu-clear-tgsi | normalize helper IO
 - 2026-09-06 | G2 | 73949bc | pass: 256 RGBA8 clears / 524,288 pixels, uniform+viewport restoration, query exclusion; clean teardown/health | results/gpu-clear-io
 - 2026-09-06 | G2 | 58d4cb7 | 1.56x demo throughput; six-frame ImGui and masked-clear regressions pass; all titles closed, healthy services, locks released | results/gpu-clear-profile, gpu-clear-imgui, gpu-clear-masked
+- 2026-09-06 | G3 | 0810d38 | 1,263 submissions: pool flush 0.360 ms, submit+wait 15.416 ms/call; clean pass | results/draw-profile-control | split wait timing; leave cache policy unchanged
