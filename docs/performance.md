@@ -46,6 +46,8 @@ keys the fragment variant by producer type; no submission path is changed.
 Host tests cover 18 producer and 20 consumer compilations, including mixed
 interpolation and first/last provoking vertices. Native acceptance is pending.
 
+- 2026-09-06 | G5 | 33b7f86 | failed: math/texture pass, first ID case 1,920/4,096 pixels; clean teardown/health/unlock | results/glsl-primitive-id-linkage-recovery/170047 | channel/linkage trace
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

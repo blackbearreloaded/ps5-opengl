@@ -85,7 +85,7 @@ static int
 read_oracle(uint32_t expected, uint32_t expected_hash, uint32_t *pixels,
             const char *name)
 {
-   unsigned matching = 0;
+   unsigned matching = 0, different[4] = {0}, first_bad = SIZE * SIZE;
    GLenum error;
    uint32_t hash;
 
@@ -94,11 +94,21 @@ read_oracle(uint32_t expected, uint32_t expected_hash, uint32_t *pixels,
                 SIZE, SIZE, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
    error = glGetError();
    hash = hash32(pixels, SIZE * SIZE * sizeof(*pixels));
-   for (unsigned index = 0; index < SIZE * SIZE; ++index)
+   for (unsigned index = 0; index < SIZE * SIZE; ++index) {
       matching += pixels[index] == expected;
+      if (pixels[index] != expected && first_bad == SIZE * SIZE)
+         first_bad = index;
+      for (unsigned channel = 0; channel < 4; ++channel)
+         different[channel] += !!(((pixels[index] ^ expected) >> (channel * 8)) & 255u);
+   }
    printf("[ps5-egl-core33-glsl-suite] %s matching=%u hash=%08x "
           "pixel=%08x expected=%08x error=0x%x\n",
           name, matching, hash, pixels[0], expected, error);
+   if (first_bad != SIZE * SIZE)
+      printf("[ps5-egl-core33-glsl-suite] %s different-rgba=%u/%u/%u/%u "
+             "first-bad=%u,%u pixel=%08x\n", name,
+             different[0], different[1], different[2], different[3],
+             first_bad % SIZE, first_bad / SIZE, pixels[first_bad]);
    return matching == SIZE * SIZE && hash == expected_hash &&
           error == GL_NO_ERROR;
 }

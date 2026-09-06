@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 
@@ -2598,6 +2599,14 @@ int main(void)
         runtime_depth_buffer_size >= DEPTH_BYTES)
         append_depth_target_state(cx, &cx_count, runtime_depth_buffer,
                                   runtime_stencil_buffer);
+    if (getenv("PSBC_DEBUG_IO"))
+        printf("[ps5-linkage] vs-out=%08x ps-in=%08x inputs=%08x/%08x/%08x/%08x\n",
+               last_register_value(cx, cx_count, 0x1b1),
+               last_register_value(cx, cx_count, 0x1b6),
+               last_register_value(cx, cx_count, 0x191),
+               last_register_value(cx, cx_count, 0x192),
+               last_register_value(cx, cx_count, 0x193),
+               last_register_value(cx, cx_count, 0x194));
 #endif
 
     command.bottom = words;
