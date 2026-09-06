@@ -92,6 +92,7 @@ integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
 | [Testing](docs/testing.md) | Host checks, bounded hardware cases and acceptance |
 | [Validation report](docs/validation.md) | Exact results, identity and exceptions |
 | [Limitations](docs/limitations.md) | Compatibility, performance and hardware scope |
+| [Performance](docs/performance.md) | Measured bottlenecks, GPU acceleration candidates and validation boundaries |
 | [Contributing](CONTRIBUTING.md) | Changes, regression selection and reporting |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Upstream projects, licenses and source pins |
 

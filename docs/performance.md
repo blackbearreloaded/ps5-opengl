@@ -33,6 +33,69 @@ Profile the successor. Extend format/operation coverage in bounded batches;
 run affected CTS families after driver changes, then the full frozen release
 matrix when accepting a new release candidate. Keep uncommon-case fallbacks.
 
+## First GPU-clear result — 2026-09-06
+
+Full, unmasked, single-target/layer RGBA8 color clears now use Mesa's existing
+GPU blitter when eligible. Other formats, scissored/masked clears, multisampling,
+staging resources, active queries and stream output retain the existing path.
+The blitter's internal TGSI shaders use Mesa's TGSI-to-NIR conversion and IO
+lowering before the existing PS5 compiler. Application NIR handling is unchanged.
+No GPU synchronization was removed.
+
+One 30-second 1080p ImGui profile per build, excluding 30 warm-up frames:
+
+| Mean CPU wall time per frame | CPU-clear control | GPU-clear candidate |
+| --- | ---: | ---: |
+| UI generation | 0.069 ms | 0.034 ms |
+| Clear | 63.189 ms | 17.751 ms |
+| Draw | 24.818 ms | 32.802 ms |
+| Readback/error check | 0.001 ms | 0.001 ms |
+| Swap | 15.981 ms | 16.144 ms |
+| **Total** | **104.059 ms** | **66.732 ms** |
+| Measured frames | 257 | 421 |
+
+Clear time decreased **71.9%** (3.56x); total frame time decreased **35.9%**
+(1.56x equivalent throughput, approximately 9.61 to 14.99 frames/s). These are
+CPU-observed phase timings including waits, not GPU timestamps or measured TV
+refresh rates. This is one before/after sample of the same animated scene, not
+a multi-workload benchmark or confidence interval. Draw time increased, so the
+clear-only ratio must not be presented as the overall speedup.
+
+Focused native checks passed: 256 clear colors / 524,288 exact pixel comparisons;
+live uniform, program and viewport restoration; active-query clear exclusion;
+all six ImGui oracle frames; and 4,096 scissored/masked color, depth and stencil
+pixel checks. Both timed builds passed their readback and cleanup checks. Every
+accepted cycle reached exact-title teardown, healthy service checks and
+exact-token lock release. No routine screenshots or UI-input checks were used.
+Host state/IO/compiler regressions, ImGui checks and installed SDK consumers also
+passed.
+
+This remains a performance candidate: the earlier **39,544-result CTS campaign
+was not rerun on this runtime**, and its results do not transfer to this change.
+The next measured bottleneck is drawing (32.802 ms/frame). Profile submission,
+resource preparation and waits before changing them; then run affected CTS
+families and freeze the complete release matrix before promotion.
+
+### Reproducibility
+
+Control checkout: `71e048384aef1841fcde23079104e6d65973366f` (original runtime).
+Candidate runtime: `73949bc271bf8a6c7a03e179c5eb37c09b5cc7f6`; final app packages
+built at `58d4cb77b3f326184183ac7278103935a17ad8bd` (documentation/parser changes
+only after the runtime commit). Native boilerplate:
+`4e1d1277dd0531a9a9df8c780e446b9cc26534dd`; headless protocol:
+`7195c969e60735f158d46b5034cd53ae62ef0ebc`.
+
+Raw receipts remain local under `results/`; IDs below identify
+`PPSA99005-20260906-ID-opengl.log` and matching lifecycle/runner records.
+
+| Build/check | Receipt directory / ID | eboot.bin SHA-256 |
+| --- | --- | --- |
+| CPU-clear profile | perf-baseline / 082420 | `230665b6906b0d42460170533abd2e1abe80e90e53e6d41ba27b26f724b52ae8` |
+| GPU clear sweep/state/query | gpu-clear-io / 090704 | `6c165f422d68b5ffc18345a3d736182332ee0e3746e82c6192fb2b5e27085c81` |
+| GPU-clear profile | gpu-clear-profile / 092128 | `d2b0e424707f90eddc44861b253175800fad29df0d3a4fb0d46df204bd3a8c30` |
+| ImGui oracle | gpu-clear-imgui / 092403 | `27611ee14ff1c6429ac156d9569ae15ea231c82bf624a0f59eb939184450e1f0` |
+| Masked clear regression | gpu-clear-masked / 092542 | `3e07d941b2704000bbad534f9f3823e333f280710d1f1378ac18f6d67f5bc71b` |
+
 ## Console boundary
 
 Use the owner-designated console and lock in ignored `.local/ENVIRONMENT.md`.
@@ -50,3 +113,4 @@ submission. Release the exact token before offline analysis/building.
 - 2026-09-06 | G2 | d0c55ef | failed before GPU submission: helper TGSI rejected; clean teardown/health | results/gpu-clear | add Mesa TGSI-to-NIR adapter
 - 2026-09-06 | G2 | 791574e | failed pixel check: helper IO lacked explicit color output; healthy teardown | results/gpu-clear-tgsi | normalize helper IO
 - 2026-09-06 | G2 | 73949bc | pass: 256 RGBA8 clears / 524,288 pixels, uniform+viewport restoration, query exclusion; clean teardown/health | results/gpu-clear-io
+- 2026-09-06 | G2 | 58d4cb7 | 1.56x demo throughput; six-frame ImGui and masked-clear regressions pass; all titles closed, healthy services, locks released | results/gpu-clear-profile, gpu-clear-imgui, gpu-clear-masked
