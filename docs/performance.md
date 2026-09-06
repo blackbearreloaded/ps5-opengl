@@ -125,3 +125,4 @@ submission. Release the exact token before offline analysis/building.
 - 2026-09-06 | G3 | 6e36f33 | no-run: WSL preflight found 2121/3232/9021 closed; no upload/launch; exact lock released | build/frozen/draw-wait-control | owner service recovery required
 - 2026-09-06 | G3 | 9732033 | no-run: services recovered, fresh log lacks title lifecycle; home screen observed, background idle unconfirmed; locks released | results/draw-wait-control-recovery
 - 2026-09-06 | G3 | 8a3caa7 | no-run: owner confirmed idle, but log has PPSA02121 start without stop; no upload/launch, healthy services, exact lock released | results/draw-wait-owner-confirmed
+- 2026-09-06 | G3 | 6e36f33 app / 5ad81b4 runner | pass: 1,260 draws, poll 15.433 ms/call, ~14 sleeps/call; submit 0.007 ms, suspend 0.006 ms; clean teardown/health | results/draw-wait-owner-confirmed/105943
