@@ -589,6 +589,17 @@ ImGui checks, then one complete four-configuration campaign and final consumers.
 Only selectors/observation budgets change between campaign runs. Historical
 timings schedule cases; they never fill acceptance coverage for the new binary.
 
+- 2026-09-07 | G9 | 333aa4e SDK | pass: Sokol full-image heap cube 180 frames/2596 probes; ImGui 300s/5996 frames, 11 probes and 5996 two-draw chunks; healthy teardown/unlock | results/g9-{sokol-cube-heap,imgui-long}
+
+G9 freeze: CTS eboot `f09d39d1f64e9af619bce0119c9069c6e947594ccf80f591fb2d50c0fdf4fdc1`,
+SDK manifest `e4f207bc2ab620f68cb62b3008b6b4ed6bf0331a7e51208aeb38610a1f68dc71`,
+implementation `333aa4e`, with native/multidraw/deferred enabled. Full matrix
+acceptance is still pending. Use measured 900-second case budgets, complete
+original test bodies and the managed runner's bounded observation/teardown;
+the initial prefix contains 5,630 cases. Preserve the frozen executable/SDK;
+change only selectors and time budgets. Final ImGui/NanoVG/Sokol apps are built
+against the same SDK for post-matrix checks. The original release remains intact.
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and
