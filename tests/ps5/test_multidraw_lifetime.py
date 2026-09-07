@@ -81,7 +81,7 @@ capacity = int(re.search(r"#define PS5_MULTIDRAW_BATCH_CAPACITY (\d+)u",
                         (root / "src/gallium/ps5/ps5_screen.h").read_text())[1])
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("receipt", nargs="?")
-parser.add_argument("--capacity", type=int, choices=sorted({8, capacity}), default=8,
+parser.add_argument("--capacity", type=int, choices=sorted({8, 32, capacity}), default=8,
                     help="Frozen runtime capacity; default preserves historical receipts")
 modes = parser.add_mutually_exclusive_group()
 for mode in ("postchecks", "textures", "deferred", "deferred-control", "deferred-uploads"):
@@ -400,8 +400,10 @@ static int end(void) {
     for (unsigned i=0; i<staged; ++i) {
         for (unsigned stage=0; stage<3; ++stage) {
             assert(pending[i][stage]->base.refs == 1);
-            assert(pending[i][stage]->data[0] == expected_start[i]);
-            assert(pending[i][stage]->data[1] == expected_id[i]);
+            unsigned start, id;
+            memcpy(&start, pending[i][stage]->data, sizeof(start));
+            memcpy(&id, pending[i][stage]->data + sizeof(start), sizeof(id));
+            assert(start == expected_start[i] && id == expected_id[i]);
             for (unsigned byte=16; byte<64; ++byte)
                 assert(pending[i][stage]->data[byte] == expected_uniform[i][stage]);
         }
@@ -433,8 +435,8 @@ static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_i
     pending[staged][2]=(struct ps5_resource *)drawing->descriptor_storage[1];
     for (unsigned stage=0; stage<3; ++stage) {
         assert(pending[staged][stage] != &original[stage]);
-        pending[staged][stage]->data[0]=draw->start;
-        pending[staged][stage]->data[1]=id;
+        memcpy(pending[staged][stage]->data, &draw->start, sizeof(draw->start));
+        memcpy(pending[staged][stage]->data + sizeof(draw->start), &id, sizeof(id));
         expected_uniform[staged][stage]=pending[staged][stage]->data[16];
         for (unsigned i=0; i<staged; ++i) assert(pending[i][stage] != pending[staged][stage]);
     }
