@@ -8,11 +8,12 @@ flags=(-std=c11 -O2 -Wall -Wextra -Werror -DGL_GLEXT_PROTOTYPES=1
 export EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1
 export MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330
 source="$root/tests/ps5/egl_public_core33_multidraw_batch.c"
-for variant in plain textured deferred rgba8; do
+for variant in plain textured deferred rgba8 depth; do
     defines=()
     [[ $variant == plain ]] || defines=(-DPS5_MULTIDRAW_TEXTURE_TEST=1)
-    [[ $variant != deferred && $variant != rgba8 ]] || defines+=(-DPS5_DEFERRED_DRAW_TEST=1)
+    [[ $variant != deferred && $variant != rgba8 && $variant != depth ]] || defines+=(-DPS5_DEFERRED_DRAW_TEST=1)
     [[ $variant != rgba8 ]] || defines+=(-DPS5_RGBA8_VERTEX_TEST=1)
+    [[ $variant != depth ]] || defines+=(-DPS5_DEPTH_BATCH_TEST=1)
     clang-18 "${flags[@]}" "${defines[@]}" "$source" -l:libEGL.so.1 -l:libGL.so.1 -o "$out/$variant"
     "$out/$variant" > "$out/$variant.log"
     grep -F '[ps5-multidraw] completed=4 cleanup=1 result=0' "$out/$variant.log"
@@ -65,4 +66,20 @@ for fault in bgra unnormalized; do
     grep -F '[ps5-multidraw] pixel mismatch' "$out/fault-$fault.log" >/dev/null
 done
 
-echo 'Draw host PASS: float/RGBA8 pixels, upload hazards and sampler/upload/uniform/scissor/pending-texture/BGRA/normalization fault rejection'
+for fault in depth-test depth-write; do
+    if [[ $fault == depth-test ]]; then
+        change='s/glEnable(GL_DEPTH_TEST)/glDisable(GL_DEPTH_TEST)/'
+    else
+        # Keep the first depth clear valid; disable writes only before drawing.
+        change='s/int64_t start = now_ns()/glDepthMask(GL_FALSE); int64_t start = now_ns()/'
+    fi
+    sed "$change" "$source" |
+        clang-18 "${flags[@]}" -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 -DPS5_DEPTH_BATCH_TEST=1 \
+            -x c - -l:libEGL.so.1 -l:libGL.so.1 -o "$out/fault-$fault"
+    if "$out/fault-$fault" > "$out/fault-$fault.log"; then
+        echo "Oracle missed $fault fault" >&2; exit 1
+    fi
+    grep -F '[ps5-multidraw] pixel mismatch' "$out/fault-$fault.log" >/dev/null
+done
+
+echo 'Draw host PASS: float/RGBA8/depth pixels, upload hazards and sampler/upload/uniform/scissor/pending-texture/BGRA/normalization/depth fault rejection'

@@ -271,7 +271,8 @@ code = r'''
 #include "ps5_screen.h"
 #define MIN2(a,b) ((a)<(b)?(a):(b))
 enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=16, PIPE_BUFFER=1,
-       PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4, PIPE_BIND_DISPLAY_TARGET=1 };
+       PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4, PIPE_BIND_DISPLAY_TARGET=1,
+       PIPE_FORMAT_Z32_FLOAT=77, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT=78 };
 struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind; };
 struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
     union { struct { unsigned first_level, last_level, first_layer, last_layer; } tex; } u; };
@@ -299,7 +300,7 @@ struct ps5_context {
     const struct pipe_depth_stencil_alpha_state *depth_stencil_alpha;
     int last_draw_status;
 };
-static struct ps5_resource original[3], copies[128], borrowed;
+static struct ps5_resource original[3], copies[128], borrowed, depth_buffer;
 static uint8_t original_bytes[3][64], copy_bytes[128][64];
 static struct ps5_context context;
 static struct ps5_screen screen;
@@ -351,7 +352,9 @@ static int end(void) {
     }
     unsigned factor = deferred_mode ? retained_draws : 1;
     assert(borrowed.base.refs == 1+factor*(4+PIPE_MAX_ATTRIBS+2*PS5_MAX_CONSTANT_BUFFERS+
-        !!context.framebuffer.zsbuf.texture));
+        (context.framebuffer.zsbuf.texture == &borrowed.base)));
+    if (context.framebuffer.zsbuf.texture == &depth_buffer.base)
+        assert(depth_buffer.base.refs == 1+factor);
     for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit)
         if (fragment_textures & (1u << unit)) assert(textures[unit].base.refs == 1+factor);
     if (fail_end) return -1;
@@ -385,6 +388,7 @@ static void reset(void) {
     allocated=freed=begun=ended=staged=calls=locked=shader_textures=fragment_textures=retained_draws=0;
     fail_alloc=fail_draw=-1; fail_begin=fail_end=0;
     borrowed=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=1, .refs=1}};
+    depth_buffer=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=PIPE_FORMAT_Z32_FLOAT, .refs=1}};
     screen=(struct ps5_screen){.base={create}, .render_pool=&borrowed.base};
     context=(struct ps5_context){.base={&screen.base}, .framebuffer={.cbufs={{.texture=&borrowed.base, .format=1}},
         .nr_cbufs=1}, .framebuffer_valid=true, .vs=&shader_textures, .fs=&shader_textures,
@@ -442,16 +446,24 @@ int main(void) {
     shader_textures=1; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
     reset();
     struct pipe_depth_stencil_alpha_state dsa={0};
-    context.depth_stencil_alpha=&dsa; context.framebuffer.zsbuf.texture=&borrowed.base;
-    assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,19));
-    assert(borrowed.base.refs==1 && freed==24 && !context.last_draw_status);
-    dsa.depth_enabled=true; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
-    dsa.depth_enabled=false;
+    for (unsigned format=77; format<=78; ++format) for (unsigned enabled=0; enabled<2; ++enabled) {
+        reset(); dsa.depth_enabled=enabled;
+        context.depth_stencil_alpha=&dsa;
+        depth_buffer.base.format=format;
+        context.framebuffer.zsbuf=(struct pipe_surface){.texture=&depth_buffer.base, .format=format};
+        assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,19));
+        assert(borrowed.base.refs==1 && depth_buffer.base.refs==1 && freed==24 && !context.last_draw_status);
+    }
     for (unsigned face=0; face<2; ++face) {
         dsa.stencil[face].enabled=true; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
         dsa.stencil[face].enabled=false;
     }
-    borrowed.depth_staging_size=1; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+#define REJECT_DEPTH(field,value) do { struct ps5_resource saved=depth_buffer; depth_buffer.field=value; \
+    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19)); depth_buffer=saved; } while(0)
+    REJECT_DEPTH(depth_staging_size,1); REJECT_DEPTH(base.target,PIPE_BUFFER);
+    REJECT_DEPTH(base.format,1); REJECT_DEPTH(base.nr_samples,4); REJECT_DEPTH(base.nr_storage_samples,4);
+    REJECT(framebuffer.zsbuf.format,1); REJECT(framebuffer.zsbuf.level,1);
+    REJECT(framebuffer.zsbuf.first_layer,1); REJECT(framebuffer.zsbuf.last_layer,1);
     for (unsigned failure=0; failure<2; ++failure) {
         reset(); fragment_textures=0xffff; context.fs=&fragment_textures; fail_end=failure;
         for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) context.sampler_views[1][unit]=&views[unit];
@@ -488,6 +500,8 @@ with tempfile.TemporaryDirectory() as tmp:
          "ps5_shader_texture_count(context->vs) || ps5_shader_texture_count(context->fs) ||"),
         ("pipe_resource_reference(&retained[retained_count++], context->sampler_views[1][unit]->texture);",
          "(void)0;"),
+        ("pipe_resource_reference(&retained[retained_count++], context->framebuffer.zsbuf.texture);",
+         "(void)0;"),
     )
     for before, after in mutations:
         assert code.count(before) == 1
@@ -520,14 +534,19 @@ static void drain(void) {
 }
 static void idle(void) {
     assert(!locked && !staged && !ps5_deferred.owner && !ps5_deferred.count);
-    assert(allocated == freed && borrowed.base.refs == 1);
+    assert(allocated == freed && borrowed.base.refs == 1 && depth_buffer.base.refs == 1);
 }
 int main(void) {
     struct pipe_draw_info info={.mode=4,.instance_count=1,.index_size=2,.index={&borrowed.base}};
     struct pipe_draw_start_count_bias draw={0,6,0};
     deferred_mode=true;
-    for (unsigned n=1;n<=8;++n) {
+    for (unsigned depth=0; depth<2; ++depth) for (unsigned n=1;n<=8;++n) {
         reset();
+        struct pipe_depth_stencil_alpha_state dsa={.depth_enabled=true};
+        if (depth) {
+            context.depth_stencil_alpha=&dsa;
+            context.framebuffer.zsbuf=(struct pipe_surface){.texture=&depth_buffer.base, .format=77};
+        }
         for (unsigned i=0;i<n;++i) {
             for (unsigned s=0;s<3;++s) memset(original_bytes[s],0x40+i+s,64);
             draw.start=i;

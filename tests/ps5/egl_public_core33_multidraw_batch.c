@@ -11,7 +11,11 @@
 
 enum { BANDS = 9, WIDTH = BANDS * 8, HEIGHT = 32, DRAWS = BANDS + 2 };
 struct vertex {
+#ifdef PS5_DEPTH_BATCH_TEST
+   float position[3];
+#else
    float position[2];
+#endif
 #ifdef PS5_RGBA8_VERTEX_TEST
    uint8_t color[4];
 #else
@@ -20,6 +24,9 @@ struct vertex {
 };
 static struct vertex vertices[(BANDS + 1) * 6];
 static uint8_t pixels[WIDTH * HEIGHT * 4];
+#ifdef PS5_DEPTH_BATCH_TEST
+static int depth_test_active = 1;
+#endif
 #ifdef PS5_DEFERRED_DRAW_TEST
 static int varying_draw_state = 1;
 #endif
@@ -71,6 +78,9 @@ static int check_pixels(unsigned green, int band0_black)
          uint8_t expected[4];
          memcpy(expected, colors[(x / 8) % 7], 4);
          if (x < 8) memcpy(expected, colors[2], 4); /* Last subdraw overlaps band zero. */
+#ifdef PS5_DEPTH_BATCH_TEST
+         if (depth_test_active && x < 8) memcpy(expected, colors[0], 4); /* Far last draw must fail. */
+#endif
          expected[1] *= green;
 #ifdef PS5_DEFERRED_DRAW_TEST
          if (varying_draw_state) {
@@ -98,7 +108,11 @@ static int check_pixels(unsigned green, int band0_black)
 int main(void)
 {
    const EGLint ca[] = {EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-      EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE};
+      EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
+#ifdef PS5_DEPTH_BATCH_TEST
+      EGL_DEPTH_SIZE, 24,
+#endif
+      EGL_NONE};
    const EGLint ctx[] = {EGL_CONTEXT_MAJOR_VERSION_KHR, 3, EGL_CONTEXT_MINOR_VERSION_KHR, 3,
       EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR, EGL_NONE};
    const EGLint sa[] = {EGL_WIDTH, WIDTH, EGL_HEIGHT, HEIGHT, EGL_NONE};
@@ -120,6 +134,10 @@ int main(void)
    const void *offsets[DRAWS];
    uint16_t indices16[(BANDS + 1) * 6];
    uint32_t indices32[(BANDS + 1) * 6];
+   GLbitfield clear_mask = GL_COLOR_BUFFER_BIT;
+#ifdef PS5_DEPTH_BATCH_TEST
+   clear_mask |= GL_DEPTH_BUFFER_BIT;
+#endif
    if (display == EGL_NO_DISPLAY || !eglInitialize(display, NULL, NULL) || !eglBindAPI(EGL_OPENGL_API) ||
        !eglChooseConfig(display, ca, &config, 1, &count) || count != 1) goto cleanup;
    context = eglCreateContext(display, config, EGL_NO_CONTEXT, ctx);
@@ -130,8 +148,14 @@ int main(void)
 #ifdef PS5_MULTIDRAW_HOST_REFERENCE
    glDrawBuffer(GL_FRONT); glReadBuffer(GL_FRONT);
 #endif
-   vs = shader(GL_VERTEX_SHADER, "#version 330 core\nlayout(location=0) in vec2 p;"
-      "layout(location=1) in vec4 c; out vec4 color; void main(){gl_Position=vec4(p,0,1); color=c;}");
+   vs = shader(GL_VERTEX_SHADER, "#version 330 core\n"
+#ifdef PS5_DEPTH_BATCH_TEST
+      "layout(location=0) in vec3 p; layout(location=1) in vec4 c;"
+      "out vec4 color; void main(){gl_Position=vec4(p,1); color=c;}");
+#else
+      "layout(location=0) in vec2 p; layout(location=1) in vec4 c;"
+      "out vec4 color; void main(){gl_Position=vec4(p,0,1); color=c;}");
+#endif
    fs = shader(GL_FRAGMENT_SHADER, "#version 330 core\nin vec4 color; uniform vec4 tint;"
 #ifdef PS5_MULTIDRAW_TEXTURE_TEST
       "uniform sampler2D image0; uniform sampler2D image1; out vec4 result;"
@@ -169,6 +193,9 @@ int main(void)
       const float p[6][2] = {{x0,-1},{x1,-1},{x0,1},{x0,1},{x1,-1},{x1,1}};
       for (unsigned v = 0; v < 6; ++v) {
          memcpy(vertices[band * 6 + v].position, p[v], sizeof(p[v]));
+#ifdef PS5_DEPTH_BATCH_TEST
+         vertices[band * 6 + v].position[2] = band == BANDS ? 0.5f : 0.0f;
+#endif
          for (unsigned c = 0; c < 4; ++c)
             vertices[band * 6 + v].color[c] = colors[band == BANDS ? 2 : band % 7][c]
 #ifndef PS5_RGBA8_VERTEX_TEST
@@ -185,7 +212,8 @@ int main(void)
    glGenVertexArrays(1, &vao); glBindVertexArray(vao);
    glGenBuffers(1, &vbo); glBindBuffer(GL_ARRAY_BUFFER, vbo);
    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(struct vertex), (void *)offsetof(struct vertex, position));
+   glVertexAttribPointer(0, sizeof(vertices[0].position) / sizeof(float), GL_FLOAT, GL_FALSE,
+                         sizeof(struct vertex), (void *)offsetof(struct vertex, position));
 #ifdef PS5_RGBA8_VERTEX_TEST
    glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(struct vertex), (void *)offsetof(struct vertex, color));
    printf("[ps5-rgba8-vertex] normalized=1 channels=RGBA intermediate-values=1\n");
@@ -195,6 +223,10 @@ int main(void)
    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1);
    glGenBuffers(1, &ebo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
    glViewport(0, 0, WIDTH, HEIGHT);
+#ifdef PS5_DEPTH_BATCH_TEST
+   glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LEQUAL); glDepthMask(GL_TRUE);
+   printf("[ps5-depth-batch] test=lequal write=1 occluded-tail=1\n");
+#endif
    for (unsigned mode = 0; mode < 4; ++mode) {
 #ifdef PS5_MULTIDRAW_TEXTURE_TEST
       if (mode == 2) {
@@ -215,7 +247,7 @@ int main(void)
       glDrawArrays(GL_TRIANGLES, 0, 6); /* Warm the program before timing. */
       int64_t elapsed[2];
       for (unsigned batched = 0; batched < 2; ++batched) {
-         glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+         glClearColor(0, 0, 0, 1); glClear(clear_mask);
          int64_t start = now_ns();
 #ifndef PS5_DEFERRED_DRAW_TEST
          if (batched) {
@@ -256,8 +288,11 @@ int main(void)
    }
 #ifdef PS5_DEFERRED_DRAW_TEST
    varying_draw_state = 0;
+#ifdef PS5_DEPTH_BATCH_TEST
+   glDisable(GL_DEPTH_TEST); depth_test_active = 0;
+#endif
    glUniform4f(tint, 1, 1, 1, 1);
-   glClear(GL_COLOR_BUFFER_BIT);
+   glClear(clear_mask);
    /* Update a sampled texture before readback. The old draws must see old data. */
    for (unsigned i = 0; i < DRAWS; ++i) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
    const uint8_t replacement[4] = {255, 255, 0, 255}; /* Must change the final blue draw. */
@@ -294,7 +329,7 @@ int main(void)
 #endif
    /* Active queries must keep the synchronous fallback, even after batching. */
    glUniform4f(tint, 1, 1, 1, 1);
-   glClear(GL_COLOR_BUFFER_BIT);
+   glClear(clear_mask);
    glGenQueries(1, &query);
    glBeginQuery(GL_SAMPLES_PASSED, query);
    glMultiDrawArrays(GL_TRIANGLES, first, counts, DRAWS);

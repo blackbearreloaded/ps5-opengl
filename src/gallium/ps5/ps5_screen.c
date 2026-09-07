@@ -7500,8 +7500,16 @@ ps5_multidraw_eligible(const struct ps5_context *context,
        context->active_occlusion_query || context->active_primitives_generated_query ||
        context->active_primitives_emitted_query || !context->framebuffer_valid ||
        context->framebuffer.nr_cbufs != 1 ||
-       (depth && (depth->depth_staging_size || !dsa || dsa->depth_enabled ||
-                  dsa->stencil[0].enabled || dsa->stencil[1].enabled)) ||
+       (depth && (depth->depth_staging_size || !dsa ||
+                  dsa->stencil[0].enabled || dsa->stencil[1].enabled ||
+                  depth->base.target != PIPE_TEXTURE_2D ||
+                  depth->base.nr_samples > 1 || depth->base.nr_storage_samples > 1 ||
+                  (depth->base.format != PIPE_FORMAT_Z32_FLOAT &&
+                   depth->base.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) ||
+                  context->framebuffer.zsbuf.format != depth->base.format ||
+                  context->framebuffer.zsbuf.level ||
+                  context->framebuffer.zsbuf.first_layer ||
+                  context->framebuffer.zsbuf.last_layer)) ||
        !target || target->base.target != PIPE_TEXTURE_2D ||
        target->base.format != PIPE_FORMAT_R8G8B8A8_UNORM ||
        surface->format != PIPE_FORMAT_R8G8B8A8_UNORM ||
