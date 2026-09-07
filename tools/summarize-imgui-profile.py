@@ -8,11 +8,13 @@ import re
 
 
 def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False,
-              clear_batches=False, soak=False):
+              clear_batches=False, soak=False, window_target=None):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
 
+    if window_target is not None and not host:
+        present_profile = clear_batches = True
     require(not re.search(r"^\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))",
                           text, re.M), "driver reported a failed operation")
     lines = re.findall(r"^\[ps5-imgui-perf\] (.+)$", text, re.M)
@@ -151,6 +153,57 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
         require(int(gpu_present[0]) == frames + warmup - len(probes),
                 "missing GPU-present frames or readback fallback")
         report["gpu_present_frames"] = int(gpu_present[0])
+    if window_target is not None:
+        require(not soak and window_target in (30, 60), "unsupported window benchmark target")
+        begins = re.findall(r"^\[ps5-imgui-window\] begin (.+)$", text, re.M)
+        results = re.findall(r"^\[ps5-imgui-window\] result (.+)$", text, re.M)
+        require(begins == [f"width=1920 height=1080 target={window_target} mode=window-presented"] and
+                len(results) == 1 and text.count("[ps5-imgui-window]") == 2, "missing/wrong window benchmark")
+        pairs = [token.split("=", 1) for token in results[0].split()]
+        require(all(len(p) == 2 for p in pairs), "malformed window fields")
+        fields = dict(pairs)
+        timings = ["active_mean_ms", "active_p50_ms", "active_p95_ms", "active_p99_ms",
+                   "frame_p50_ms", "frame_p95_ms", "frame_p99_ms"]
+        require(len(pairs) == len(fields) and set(fields) ==
+                set(timings + ["frames", "seconds", "fps", "active_misses", "frame_misses", "status"]),
+                "unexpected window fields")
+        require(fields["frames"] == str(frames) and fields["status"] == "0" and frames <= 8192,
+                "window frame count/status mismatch")
+        seconds, fps = float(fields["seconds"]), float(fields["fps"])
+        require(math.isfinite(seconds) and math.isfinite(fps) and seconds > 0 and fps > 0 and
+                abs(fps * seconds - frames) <= (fps + seconds) * 0.00000051 + 0.000001,
+                "window FPS accounting mismatch")
+        require(frames == 10 if host else 30 <= seconds <= 31 and fps <= window_target * 1.01,
+                "wrong window measurement interval/pacing")
+        timing = {key: float(fields[key]) for key in timings}
+        require(all(math.isfinite(v) and v > 0 for v in timing.values()) and
+                abs(timing["active_mean_ms"] - report["cpu_wall_ms"]) <= 0.000004 and
+                timing["active_mean_ms"] <= seconds * 1000 / frames + 0.001,
+                "window phase accounting mismatch")
+        for prefix in ("active", "frame"):
+            require(timing[f"{prefix}_p50_ms"] <= timing[f"{prefix}_p95_ms"] <= timing[f"{prefix}_p99_ms"],
+                    "unordered window percentiles")
+        for p in (50, 95, 99):
+            require(timing[f"active_p{p}_ms"] <= timing[f"frame_p{p}_ms"] + 0.001,
+                    "active percentile exceeds completed frame interval")
+        misses = {key: int(fields[key]) for key in ("active_misses", "frame_misses")}
+        require(all(0 <= n <= frames for n in misses.values()), "invalid window missed-budget count")
+        require(not re.search(r"^\[ps5-imgui\] FAIL", text, re.M), "window operation failed")
+        if not host:
+            require(re.findall(r"\[ps5-imgui-tv\] finished frames=\d+ changes=(\d+) status=0", text) == ["0"],
+                    "window benchmark contaminated by control changes")
+            require(report.get("gpu_present_frames") == frames + warmup - 2 and
+                    "batch_per_call" in report and
+                    report["deferred_batches"]["clear_two_draw_chunks"] == frames + warmup and
+                    report["deferred_batches"]["chunks"] == frames + warmup,
+                    "window GPU flip/clear/draw coverage missing")
+            shutdown = re.findall(r"\[ps5-agc\] present-shutdown unregister=([0-9a-f]+) close=([0-9a-f]+) frames=(\d+)", text)
+            require(shutdown in [[(code, "00000000", str(frames + warmup))]
+                                 for code in ("00000000", "80290009")], "window presenter cleanup failed")
+        report["window_benchmark"] = dict(width=1920, height=1080, target_fps=window_target,
+            achieved_fps=fps, seconds=seconds, target_met=fps >= window_target * 0.99,
+            frame_mean_ms=seconds * 1000 / frames, frame_budget_tolerance_ms=0.25,
+            output_mode_verified=False, **timing, **misses)
     return report
 
 
@@ -289,6 +342,7 @@ if __name__ == "__main__":
     parser.add_argument("--present-profile", action="store_true")
     parser.add_argument("--clear-batches", action="store_true")
     parser.add_argument("--soak", action="store_true")
+    parser.add_argument("--window-target", type=int, choices=(30, 60))
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -297,4 +351,5 @@ if __name__ == "__main__":
         if not args.receipt:
             parser.error("receipt required")
         print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
-                                   args.deferred_batches, args.present_profile, args.clear_batches, args.soak), indent=2))
+                                   args.deferred_batches, args.present_profile, args.clear_batches, args.soak,
+                                   args.window_target), indent=2))

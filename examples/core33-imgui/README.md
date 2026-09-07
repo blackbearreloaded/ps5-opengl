@@ -107,6 +107,34 @@ used numeric rendering/lifecycle checks and recorded no widget changes. Host
 navigation checks passed. VideoOut still reports busy unregister followed by
 successful close and runtime-layer release.
 
+## Matched windowed benchmark
+
+`PS5_IMGUI_WINDOW_BENCHMARK=1` extends the original TV demo, not the offscreen
+scene below. Keep the separate frozen GPU-presentation SDK selected; the native
+builder always rebuilds the example when changing its benchmark flags:
+
+```sh
+bash tools/test-imgui-host.sh --window-benchmark
+PS5_IMGUI_PROFILE=1 PS5_IMGUI_WINDOW_BENCHMARK=1 PS5_IMGUI_WINDOW_TARGET=60 \
+  bash tools/build-native-test-app.sh egl_public_core33_imgui_tv
+python3 tools/summarize-imgui-profile.py RECEIPT --window-target 60
+```
+
+The native run excludes 30 warm-up frames and measures the next 30 seconds.
+It preserves the two warm-up pixel probes and the original clear/draw/swap
+ordering, with no added timed readback or `glFinish`. Active time includes swap;
+completed frame intervals additionally include pacing and loop overhead. Both
+have nearest-rank percentiles and missed-budget counts (0.25 ms tolerance for
+frame pacing). The 60 FPS target uses the original swap pacing; target 30 adds
+bounded deadline pacing. Controller changes invalidate a native benchmark.
+Host checks run ten measured frames without pacing and retain simulated input.
+
+Use the usual frozen, locked `imgui_tv` cycle with a 60-second observation cap.
+Require the new harness to reproduce 59–60.5 FPS at 1080p before extending it.
+Higher resolutions and 90/120 FPS are currently rejected, pending coordinated
+presenter support. No physical output-mode or GPU-timer claim follows from the
+application timing. The accepted release SDK remains unchanged.
+
 ## Bounded offscreen performance matrix
 
 ```sh

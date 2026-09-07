@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 summarize = runpy.run_path(str(ROOT / "tools/summarize-imgui-benchmark.py"))["summarize"]
+profile = runpy.run_path(str(ROOT / "tools/summarize-imgui-profile.py"))["summarize"]
 
 
 def receipt():
@@ -51,7 +52,8 @@ class BenchmarkTest(unittest.TestCase):
 
     def test_actual_pacing_and_statistics(self):
         source = (ROOT / "examples/core33-imgui/benchmark.h").read_text()
-        helpers = source[source.index("static bool bench_wait"):source.index("static bool bench_draw")]
+        helpers = (ROOT / "examples/core33-imgui/benchmark_timing.h").read_text()
+        helpers = helpers[helpers.index("static bool bench_wait"):]
         warmup = source[source.index("    const double warmup_start"):source.index("    const unsigned warmup = frame")]
         code = r'''
 #include <cassert>
@@ -110,3 +112,36 @@ int main() {
             subprocess.run(["clang++-18", "-std=c++11", "-Wall", "-Wextra", "-Werror", "-x", "c++", "-",
                             "-o", executable], input=code, text=True, check=True)
             subprocess.run([executable], check=True)
+
+    def test_window_audit(self):
+        text = """[ps5-imgui-tv] readback frame=0 rgba=45,215,245,255 PASS
+[ps5-imgui-tv] readback frame=10 rgba=45,215,245,255 PASS
+[ps5-imgui-perf] frames=1800 warmup=30 ui_ms=1 clear_ms=2 draw_ms=3 readback_ms=0 swap_ms=10 cpu_wall_ms=16 status=0
+[ps5-imgui-tv] finished frames=1830 changes=0 status=0
+[ps5-imgui] finished status=0
+[pss-opengl-native] gate completed status=0
+[ps5-present-perf] calls=1800 failures=0 warmup_frames=30 idle_ms=0 flip_ms=0 vblank_ms=0 total_ms=0
+[ps5-batch-perf] calls=1800 failures=0 warmup_frames=30 sleeps=1800 submit_ms=0.1 suspend_ms=0.2 poll_ms=2.4 cleanup_ms=0.3 total_ms=3
+[ps5-gpu-present] frames=1828
+[ps5-agc] present-shutdown unregister=80290009 close=00000000 frames=1830
+[ps5-imgui-window] begin width=1920 height=1080 target=60 mode=window-presented
+[ps5-imgui-window] result frames=1800 seconds=30.000000 fps=60.000000 active_mean_ms=16 active_p50_ms=16 active_p95_ms=16.5 active_p99_ms=16.6 frame_p50_ms=16.666667 frame_p95_ms=17 frame_p99_ms=18 active_misses=0 frame_misses=3 status=0
+""" + ("[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0\n"
+       "[ps5-deferred-batch] draws=3 result=0\n") * 1830
+        self.assertTrue(profile(text, window_target=60)["window_benchmark"]["target_met"])
+        for old, new in (("seconds=30.000000", "seconds=29.900000"),
+                         ("fps=60.000000", "fps=600"), ("target=60", "target=120"),
+                         ("width=1920", "width=2560"), ("active_mean_ms=16", "active_mean_ms=15"),
+                         ("active_p95_ms=16.5", "active_p95_ms=nan"),
+                         ("frame_p95_ms=17", "frame_p95_ms=15"),
+                         ("frame_misses=3", "frame_misses=1801"), ("changes=0", "changes=1"),
+                         ("close=00000000", "close=ffffffff"),
+                         ("[ps5-gpu-present] frames=1828", ""),
+                         ("[ps5-batch-perf]", "[missing-batch-perf]")):
+            with self.subTest(old=old), self.assertRaises(ValueError):
+                profile(text.replace(old, new), window_target=60)
+        with self.assertRaises(ValueError):
+            profile(text + "\n[ps5-imgui-window] result malformed", window_target=60)
+        # A missed performance target remains a valid measurement, not a pass claim.
+        slow = text.replace("seconds=30.000000 fps=60.000000", "seconds=31.000000 fps=58.064516")
+        self.assertFalse(profile(slow, window_target=60)["window_benchmark"]["target_met"])

@@ -273,6 +273,17 @@ matches. Resolve supported output modes and presentation cadence before testing
 higher-resolution/high-refresh presentation. Use 30-second cases, freeze each
 candidate, and label unsupported modes and render-only throughput explicitly.
 
+G5a adds `PS5_IMGUI_WINDOW_BENCHMARK=1` to the existing profiled TV demo,
+using the frozen GPU-presentation SDK without rebuilding it. The scene, window,
+clear/draw/swap path and two warm-up probes remain unchanged. Measure 30 seconds
+after 30 warm-up frames; report completed frame intervals and active work
+(including swap), nearest-rank p50/p95/p99, and missed budgets. The initial
+1080p60 case adds no pacing sleep; the 30 FPS case uses the existing bounded
+deadline helper. Audit with `summarize-imgui-profile.py RECEIPT --window-target 60`
+(or `30`), including exact group/flip coverage and cleanup. Accept the revised
+1080p60 harness only at 59–60.5 FPS before extending modes. This measures app
+presentation completion, not independently verified physical output timing.
+
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
 and retirement. Start with a focused matched 1080p FBO case and affected

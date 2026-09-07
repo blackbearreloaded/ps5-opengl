@@ -27,13 +27,13 @@ lifecycle.o: lifecycle.cpp main.cpp
 egl_public_core33_imgui_lifecycle.o: lifecycle.o $(filter-out main.o,$(objects))
 	ld.lld-18 -r -o $@ $^
 
-tv_main.o: main.cpp tv_demo.h
-	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO $(if $(filter 1,$(PS5_IMGUI_PROFILE)),-DPS5_IMGUI_PROFILE) $(if $(filter 1,$(PS5_IMGUI_PROFILE_SOAK)),-DPS5_IMGUI_PROFILE_SOAK) -c -o $@ $<
+tv_main.o: main.cpp tv_demo.h benchmark_timing.h
+	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO $(if $(filter 1,$(PS5_IMGUI_PROFILE)),-DPS5_IMGUI_PROFILE) $(if $(filter 1,$(PS5_IMGUI_PROFILE_SOAK)),-DPS5_IMGUI_PROFILE_SOAK) $(if $(filter 1,$(PS5_IMGUI_WINDOW_BENCHMARK)),-DPS5_IMGUI_WINDOW_BENCHMARK -DPS5_IMGUI_WINDOW_TARGET=$(or $(PS5_IMGUI_WINDOW_TARGET),60)) -c -o $@ $<
 
 egl_public_core33_imgui_tv.o: tv_main.o $(filter-out main.o,$(objects))
 	ld.lld-18 -r -o $@ $^
 
-benchmark.o: main.cpp benchmark.h
+benchmark.o: main.cpp benchmark.h benchmark_timing.h
 	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_BENCHMARK -c -o $@ $<
 
 egl_public_core33_imgui_benchmark.o: benchmark.o $(filter-out main.o,$(objects))

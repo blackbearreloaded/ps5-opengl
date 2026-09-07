@@ -6,6 +6,19 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifdef PS5_IMGUI_WINDOW_BENCHMARK
+#include "benchmark_timing.h"
+#if !defined(PS5_IMGUI_PROFILE) || defined(PS5_IMGUI_PROFILE_SOAK)
+#error Window benchmark requires the 30-second profiling mode
+#endif
+#ifndef PS5_IMGUI_WINDOW_TARGET
+#define PS5_IMGUI_WINDOW_TARGET 60
+#endif
+// Higher-rate output needs its own presenter integration and validation first.
+static_assert(PS5_IMGUI_WINDOW_TARGET == 30 || PS5_IMGUI_WINDOW_TARGET == 60,
+              "window benchmark currently supports only 1080p30/60 targets");
+#endif
+
 #ifndef PS5_IMGUI_HOST_REFERENCE
 // Minimal independently authored ABI subset from ps5-input-investigation's
 // include/ps5_pad.hpp: 120-byte current-state record, no motion/touch access.
@@ -56,6 +69,19 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
                width == 1920 && height == 1080, "TV surface 1920x1080"))
         return false;
 
+#ifdef PS5_IMGUI_WINDOW_BENCHMARK
+    const unsigned capacity = 8192;
+    double* samples = static_cast<double*>(calloc(2 * capacity, sizeof(double)));
+    if (!check(samples != nullptr, "window benchmark samples allocation")) return false;
+    double* active_ms = samples;
+    double* frame_ms = samples + capacity;
+    double sample_start = -1, sample_end = -1, active_sum = 0;
+    unsigned active_misses = 0, frame_misses = 0;
+    const double budget_ms = 1000.0 / PS5_IMGUI_WINDOW_TARGET;
+    printf("[ps5-imgui-window] begin width=%d height=%d target=%d mode=window-presented\n",
+           width, height, PS5_IMGUI_WINDOW_TARGET);
+#endif
+
     int pad = -1;
     bool owns_user_service = false;
 #ifndef PS5_IMGUI_HOST_REFERENCE
@@ -99,6 +125,11 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     while (ok) {
         double now = demo_seconds();
         if (!check(now >= previous, "monotonic frame clock")) { ok = false; break; }
+#ifdef PS5_IMGUI_WINDOW_BENCHMARK
+        if (frame == warmup) sample_start = sample_end = now;
+        if (measured && sample_end - sample_start >= duration) break;
+        if (!check(measured < capacity, "window benchmark sample capacity")) { ok = false; break; }
+#endif
 #ifdef PS5_IMGUI_HOST_REFERENCE
         if (frame == 12) break;
 #ifdef PS5_IMGUI_PROFILE
@@ -113,7 +144,9 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         demo_buttons(frame == 4 || frame == 8 ? 0x4000 : 0);
 #else
         const double elapsed = now - start;
+#ifndef PS5_IMGUI_WINDOW_BENCHMARK
         if (elapsed >= duration) break;
+#endif
         io.DeltaTime = static_cast<float>(now - previous);
         if (io.DeltaTime < 0.001f) io.DeltaTime = 0.001f;
         if (io.DeltaTime > 0.1f) io.DeltaTime = 0.1f;
@@ -194,7 +227,11 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         stages[3] = demo_seconds();
 #endif
         if (!check(glGetError() == GL_NO_ERROR, "TV draw")) { ok = false; break; }
-        if (frame == 0 || frame == 10 || elapsed >= next_log) {
+        if (frame == 0 || frame == 10
+#ifndef PS5_IMGUI_WINDOW_BENCHMARK
+            || elapsed >= next_log
+#endif
+        ) {
             unsigned char p[4] = {};
             glReadPixels(static_cast<int>(x), height - 1 - static_cast<int>(origin.y + 135),
                          1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p);
@@ -216,6 +253,28 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
             ok = check(stages[i + 1] >= stages[i], "profile monotonic clock") && ok;
             if (frame >= warmup) totals[i] += stages[i + 1] - stages[i];
         }
+#ifdef PS5_IMGUI_WINDOW_BENCHMARK
+        if (frame >= warmup && ok) {
+            // Swap retains the same GPU-completion/flip checks as the control.
+            // Do not insert glFinish or readbacks into the measured render path.
+#ifndef PS5_IMGUI_HOST_REFERENCE
+            if (PS5_IMGUI_WINDOW_TARGET == 30)
+                ok = check(bench_wait(sample_start + (measured + 1.0) / PS5_IMGUI_WINDOW_TARGET),
+                           "window benchmark pacing");
+#else
+            (void)bench_wait;
+#endif
+            const double end = bench_seconds();
+            ok = check(end >= stages[5] && now >= sample_end, "window benchmark clock") && ok;
+            if (!ok) break;
+            active_ms[measured] = (stages[5] - now) * 1000;
+            frame_ms[measured] = (end - sample_end) * 1000;
+            active_sum += active_ms[measured];
+            active_misses += active_ms[measured] > budget_ms;
+            frame_misses += frame_ms[measured] > budget_ms + 0.25;
+            sample_end = end;
+        }
+#endif
         if (frame >= warmup) ++measured;
 #endif
         if (elapsed >= next_log) {
@@ -230,6 +289,9 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         if (spent < 1.0 / 30.0) usleep(static_cast<unsigned>((1.0 / 30.0 - spent) * 1e6));
 #endif
     }
+#if defined(PS5_IMGUI_WINDOW_BENCHMARK) && !defined(PS5_IMGUI_HOST_REFERENCE)
+    ok = check(changes == 0, "window benchmark unchanged controls") && ok;
+#endif
 #ifdef PS5_IMGUI_PROFILE
     ok = check(measured >= 2 * warmup, "profile post-warm-up frames") && ok;
     if (measured) {
@@ -239,6 +301,22 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
                totals[2] * scale, totals[3] * scale, totals[4] * scale,
                (totals[0] + totals[1] + totals[2] + totals[3] + totals[4]) * scale, ok ? 0 : 1);
     }
+#endif
+#ifdef PS5_IMGUI_WINDOW_BENCHMARK
+    ok = check(measured >= 2 && sample_end > sample_start, "window benchmark measured interval") && ok;
+    if (ok) {
+        qsort(active_ms, measured, sizeof(double), bench_compare);
+        qsort(frame_ms, measured, sizeof(double), bench_compare);
+        printf("[ps5-imgui-window] result frames=%u seconds=%.6f fps=%.6f active_mean_ms=%.6f "
+               "active_p50_ms=%.6f active_p95_ms=%.6f active_p99_ms=%.6f "
+               "frame_p50_ms=%.6f frame_p95_ms=%.6f frame_p99_ms=%.6f active_misses=%u frame_misses=%u status=0\n",
+               measured, sample_end - sample_start, measured / (sample_end - sample_start), active_sum / measured,
+               bench_percentile(active_ms, measured, 50), bench_percentile(active_ms, measured, 95),
+               bench_percentile(active_ms, measured, 99), bench_percentile(frame_ms, measured, 50),
+               bench_percentile(frame_ms, measured, 95), bench_percentile(frame_ms, measured, 99),
+               active_misses, frame_misses);
+    }
+    free(samples);
 #endif
 #ifdef PS5_IMGUI_HOST_REFERENCE
     ok = check(frame == 12 && changes == 2 && animate, "TV gamepad toggles / bounded loop") && ok;
