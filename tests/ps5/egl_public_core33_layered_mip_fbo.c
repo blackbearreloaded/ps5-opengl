@@ -15,7 +15,19 @@
 #define GREEN UINT32_C(0xff00ff00)
 #define WHITE UINT32_C(0xffffffff)
 
+#ifdef PS5_LAYERED_MIP_HOST_REFERENCE
+/* Host validates pixels; only the native build checks retired driver draws. */
+static int ps5_egl_current_draw_status(unsigned *draw_calls)
+{
+   static unsigned calls;
+   *draw_calls = ++calls;
+   return 0;
+}
+#define SURFACE_TYPE EGL_PBUFFER_BIT
+#else
 int ps5_egl_current_draw_status(unsigned *draw_calls);
+#define SURFACE_TYPE EGL_WINDOW_BIT
+#endif
 
 static int
 compile_shader(GLenum type, const char *source, GLuint *result)
@@ -107,8 +119,9 @@ main(void)
       -1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f,
    };
    static uint32_t pixels[READ_SIZE * READ_SIZE];
+   static const uint32_t zeroes[BASE_SIZE * BASE_SIZE * 4];
    const EGLint config_attributes[] = {
-      EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+      EGL_SURFACE_TYPE, SURFACE_TYPE,
       EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
       EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8,
       EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
@@ -144,8 +157,13 @@ main(void)
        !eglChooseConfig(display, config_attributes, &config, 1, &count) ||
        count != 1)
       goto cleanup;
+#ifdef PS5_LAYERED_MIP_HOST_REFERENCE
+   const EGLint surface_attributes[] = {EGL_WIDTH, WIDTH, EGL_HEIGHT, HEIGHT, EGL_NONE};
+   surface = eglCreatePbufferSurface(display, config, surface_attributes);
+#else
    surface = eglCreateWindowSurface(display, config,
                                     (EGLNativeWindowType)0, NULL);
+#endif
    context = eglCreateContext(display, config, EGL_NO_CONTEXT,
                               context_attributes);
    if (surface == EGL_NO_SURFACE || context == EGL_NO_CONTEXT ||
@@ -173,7 +191,8 @@ main(void)
 
    glGenTextures(1, &cube);
    glBindTexture(GL_TEXTURE_CUBE_MAP, cube);
-   glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+   /* textureLod still obeys the minification filter: select mip level 1. */
+   glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BASE_LEVEL, 0);
    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, 1);
@@ -181,21 +200,21 @@ main(void)
       GLenum target = GL_TEXTURE_CUBE_MAP_POSITIVE_X + face;
 
       glTexImage2D(target, 0, GL_RGBA8, BASE_SIZE, BASE_SIZE, 0,
-                   GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+                   GL_RGBA, GL_UNSIGNED_BYTE, zeroes);
       glTexImage2D(target, 1, GL_RGBA8, MIP_SIZE, MIP_SIZE, 0,
-                   GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+                   GL_RGBA, GL_UNSIGNED_BYTE, zeroes);
    }
 
    glGenTextures(1, &volume);
    glBindTexture(GL_TEXTURE_3D, volume);
-   glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+   glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_BASE_LEVEL, 0);
    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAX_LEVEL, 1);
    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, BASE_SIZE, BASE_SIZE, 4, 0,
-                GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+                GL_RGBA, GL_UNSIGNED_BYTE, zeroes);
    glTexImage3D(GL_TEXTURE_3D, 1, GL_RGBA8, MIP_SIZE, MIP_SIZE, 2, 0,
-                GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+                GL_RGBA, GL_UNSIGNED_BYTE, zeroes);
 
    glGenFramebuffers(1, &fbo);
    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -254,7 +273,7 @@ main(void)
    sample_matches = read_center(pixels, WIDTH, HEIGHT, WHITE);
    error = glGetError();
 
-   passed = major == 1 && minor == 4 &&
+   passed = major == 1 && minor >= 4 &&
             cube_status == GL_FRAMEBUFFER_COMPLETE &&
             volume_status == GL_FRAMEBUFFER_COMPLETE &&
             cube_face == GL_TEXTURE_CUBE_MAP_POSITIVE_Y &&

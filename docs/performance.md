@@ -559,6 +559,26 @@ directions against the original offset calculation on the host. Then measure
 the same native scene/pixels/completion/teardown. This remains CPU staging, not
 a claim of GPU-resident sampleable FBOs or predictable game performance.
 
+- 2026-09-07 | G7 | ee9a5b9 | pass: matched1080p FBO3.54→14.98FPS, pixels/retirement/close/health; below60FPS | results/g7-fbo-*-20260907
+
+The unchanged offscreen scene measured 3.538062FPS with the G6 runtime,
+11.842834FPS after reusing CPU address terms (`6a841a1`), and 14.977898FPS after
+inlining four-byte copies (`ee9a5b9`). Mean completed render time fell from
+282.636110 to66.760823ms. Each case retained its30-second sample, both pixel
+probes, two retired draws/frame and checked preview/teardown. No full matrix,
+GPU-resident FBO or new CTS qualification is implied. Frozen identities and
+receipt hashes: `build/frozen/g7-fbo-{baseline,staging,inline}-20260907/manifest.md`.
+
+The following legacy layered-mip gate failed its final sampling oracle while
+both FBO readbacks and cleanup passed (`results/g7-layered-20260907`). Console
+testing stopped. Host Mesa reproduced the exact1024/1024/0 mismatch: the test
+requested mip1 with non-mipmapped `GL_NEAREST`, which selects the base image
+under [OpenGL3.3 §3.8.11](https://registry.khronos.org/OpenGL/specs/gl/glspec33.core.pdf#page=188).
+The test now initializes all images and selects `GL_NEAREST_MIPMAP_NEAREST`.
+`make test-layered-mip` passes the unchanged pixel oracle and rejects the
+original filter mistake. This is a test correction, not a driver workaround;
+the corrected native receipt remains required before that gate is accepted.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Investigate busy unregister independently; validate repeated creation/close,
