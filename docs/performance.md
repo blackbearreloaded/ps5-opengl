@@ -529,6 +529,19 @@ Only after those pass extend endurance and move to the focused FBO/3D workload;
 notify the owner before starting an existing-game integration. No hardware fault
 injection, unproven blank flip, full CTS rerun or SDK promotion at this stage.
 
+- 2026-09-07 | G6 | ec9ac2c | pass: close-only teardown, 3 EGL sessions/18 frames; 4K120 119.880374 FPS, restored/healthy | results/g6-close*-20260907
+
+The three-session native oracle recorded three successful drains and closes,
+all pixels/state/font checks and EGL recreation. The matched 4K run retained
+3,597 measured frames, exact batch/flip coverage and checked 59.94 Hz restoration.
+Both cycles released runtime layers and their exact tokens with healthy services.
+This resolves the redundant unregister warning for full-port teardown, not the
+separate `UnregisterBuffers` API while keeping a port open. Close errors still
+retain resources in host fault injection. Next reuse the existing five-minute
+1080p60 profile/periodic-readback soak with this frozen runtime; exhaustive OOM,
+suspend/resume, device-loss recovery and physical UI verification remain unproven.
+Frozen artifacts and receipt hashes: `build/frozen/g6-close-candidates-20260907.md`.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Investigate busy unregister independently; validate repeated creation/close,

@@ -19,7 +19,7 @@ distinct when reporting compatibility.
   optimization remain. These measurements do not predict full-game FPS.
   See [Performance](performance.md).
   The opt-in performance candidate averages ~119.88 FPS at 1080p, 1440p and 4K
-  in 30-second windowed ImGui runs. Frame-time variation and busy unregister remain;
+  in 30-second windowed ImGui runs. Frame-time variation remains;
   this is not a long-session or full-game result. In contrast,
   sampleable offscreen render targets still copy linear/tiled surfaces on the
   CPU around each draw. Initial high-resolution ImGui FBO measurements are much
@@ -32,6 +32,10 @@ distinct when reporting compatibility.
   successful close, EGL cleanup and runtime-layer release. A targeted development
   check passed three full EGL/ImGui sessions in one process; final renderer and
   five-minute demo teardown also passed. The warning remains.
+  The later G6 candidate closes the whole port without the redundant unregister:
+  three native EGL sessions and the 4K120 check pass with no busy warning and
+  successful close/restoration. This is bounded full-port teardown evidence,
+  not unregister-while-open support or device-loss recovery.
 - **Stress:** maximum-axis framebuffers were tested, not an 8192x8192 allocation
   or deliberate hardware OOM exhaustion. Five-minute runs and bounded recreation
   are tested, not exhaustive long sessions, suspend/resume or device-loss recovery.
