@@ -55,8 +55,13 @@ the new GPU clear's ~16 ms submission cost explains the increase. The successor
 keeps full RGBA8 clears below 16,384 pixels on the existing CPU path, preserving
 all ordering and fallback checks. This is a conservative tunable floor, not an
 optimal crossover claim. The GPU-clear oracle now uses 128x128 so it still tests
-the accelerated path. Host boundary checks pass; native confirmation and a new
-freeze are required before restarting G9. No incomplete cases become acceptance.
+the accelerated path. It passes 256 clears / 4,194,304 pixels, shader-state reuse
+and query exclusion. Twelve affected CTS cases pass on each of 64x64 and 113x47,
+taking 1.02 / 1.05 seconds; the same 64x64 set took 8.65 seconds before the cutoff.
+The successor SDK passes Make/CMake/pkg-config and 344 exports. G9 restarts with
+frozen CTS `7cad3274`, implementation `0a15d8f`; no incomplete or old-binary
+results become acceptance. Final renderers, cube and long-session apps have
+been rebuilt from that SDK, but are not yet new hardware acceptance.
 
 - 2026-09-06 | G7 | e678bbb | pass: presenter-error SDK, three EGL/ImGui sessions, 18 frames/180 probes; clean teardown/health/unlock | results/g7-present-errors-lifecycle/220742
 - 2026-09-06 | G7 | f7daf54 | pass: fail-stop host checks + native lifecycle and 32256-pixel multi-draw controls; clean teardown/health/unlock | results/g7-retirement-{lifecycle,multidraw}
