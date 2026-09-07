@@ -123,6 +123,9 @@ int main(void)
    EGLint count = 0;
    GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, ebo = 0;
    GLuint query = 0;
+#ifdef PS5_DEFERRED_DRAW_TEST
+   GLuint unrelated_buffer = 0;
+#endif
 #ifdef PS5_MULTIDRAW_TEXTURE_TEST
    GLuint textures[2] = {0};
 #endif
@@ -222,6 +225,11 @@ int main(void)
 #endif
    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1);
    glGenBuffers(1, &ebo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+#ifdef PS5_DEFERRED_DRAW_TEST
+   glGenBuffers(1, &unrelated_buffer);
+   glBindBuffer(GL_COPY_WRITE_BUFFER, unrelated_buffer);
+   glBufferData(GL_COPY_WRITE_BUFFER, sizeof(uint32_t), NULL, GL_DYNAMIC_DRAW);
+#endif
    glViewport(0, 0, WIDTH, HEIGHT);
 #ifdef PS5_DEPTH_BATCH_TEST
    glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LEQUAL); glDepthMask(GL_TRUE);
@@ -270,10 +278,30 @@ int main(void)
                else glDrawElements(GL_TRIANGLES, counts[i], type, offsets[i]);
 #ifdef PS5_DEFERRED_DRAW_TEST
                if (!batched) glFinish(); /* Same candidate, forced serial control. */
+               else {
+                  /* This buffer is not referenced by any draw. Access must not
+                   * split the native batch; the receipt auditor checks grouping. */
+                  uint32_t value = i;
+                  if (i % 2) {
+                     void *mapped = glMapBufferRange(GL_COPY_WRITE_BUFFER, 0, sizeof(value),
+                        GL_MAP_WRITE_BIT | GL_MAP_FLUSH_EXPLICIT_BIT);
+                     if (!mapped) goto cleanup;
+                     memcpy(mapped, &value, sizeof(value));
+                     glFlushMappedBufferRange(GL_COPY_WRITE_BUFFER, 0, sizeof(value));
+                     if (!glUnmapBuffer(GL_COPY_WRITE_BUFFER)) goto cleanup;
+                  } else {
+                     glBufferSubData(GL_COPY_WRITE_BUFFER, 0, sizeof(value), &value);
+                  }
+               }
 #endif
             }
 #ifdef PS5_DEFERRED_DRAW_TEST
             glDisable(GL_SCISSOR_TEST);
+            if (batched) {
+               uint32_t value = UINT32_MAX;
+               glGetBufferSubData(GL_COPY_WRITE_BUFFER, 0, sizeof(value), &value);
+               if (value != DRAWS - 1 || glGetError() != GL_NO_ERROR) goto cleanup;
+            }
             glFinish(); /* Include retirement, not just command staging, in timings. */
 #endif
          }
@@ -287,6 +315,7 @@ int main(void)
       ++completed;
    }
 #ifdef PS5_DEFERRED_DRAW_TEST
+   printf("[ps5-deferred] unrelated-buffer subdata=1 map=1 explicit-flush=1 unmap=1 read=1 PASS\n");
    varying_draw_state = 0;
 #ifdef PS5_DEPTH_BATCH_TEST
    glDisable(GL_DEPTH_TEST); depth_test_active = 0;
@@ -355,6 +384,9 @@ int main(void)
    passed = 1;
 cleanup:
    if (current) {
+#ifdef PS5_DEFERRED_DRAW_TEST
+      if (unrelated_buffer) glDeleteBuffers(1, &unrelated_buffer);
+#endif
       if (fence) glDeleteSync(fence);
       if (query) glDeleteQueries(1, &query);
 #ifdef PS5_MULTIDRAW_TEXTURE_TEST

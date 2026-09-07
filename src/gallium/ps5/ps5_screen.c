@@ -100,6 +100,9 @@ struct ps5_screen {
 /* Runtime setters/queue are process-global, including across pipe_screens. */
 static simple_mtx_t ps5_deferred_mutex = SIMPLE_MTX_INITIALIZER;
 static void ps5_draw_batch_flush_locked(void);
+static void ps5_draw_batch_drain_buffer(struct pipe_resource *resource);
+#else
+#define ps5_draw_batch_drain_buffer(resource) ((void)(resource))
 #endif
 
 void
@@ -4426,7 +4429,7 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
    unsigned format_size;
 
    (void)context;
-   ps5_draw_batch_drain();
+   ps5_draw_batch_drain_buffer(base);
    if (!out_transfer)
       return NULL;
    *out_transfer = NULL;
@@ -4613,7 +4616,7 @@ ps5_transfer_flush_region(struct pipe_context *context,
                           struct pipe_transfer *transfer,
                           const struct pipe_box *box)
 {
-   ps5_draw_batch_drain();
+   ps5_draw_batch_drain_buffer(transfer ? transfer->resource : NULL);
    (void)context;
    (void)transfer;
    (void)box;
@@ -4628,7 +4631,7 @@ ps5_transfer_unmap(struct pipe_context *context,
       (struct ps5_resource *)transfer->resource;
 
    (void)context;
-   ps5_draw_batch_drain();
+   ps5_draw_batch_drain_buffer(transfer->resource);
    if (ps5->staging && (transfer->usage & PIPE_MAP_WRITE) &&
        (transfer->resource->bind & PIPE_BIND_DEPTH_STENCIL) &&
        !resource->depth_staging_size &&
@@ -7684,6 +7687,60 @@ ps5_draw_batch_flush_locked(void)
 }
 
 static bool
+ps5_memory_overlaps(const void *a, size_t a_size, const void *b, size_t b_size)
+{
+   uintptr_t first = (uintptr_t)a, second = (uintptr_t)b;
+   /* Unknown or invalid backing must not bypass synchronization. */
+   if (!a || !b || !a_size || !b_size ||
+       a_size > UINTPTR_MAX - first || b_size > UINTPTR_MAX - second)
+      return true;
+   return first <= second ? second - first < a_size : first - second < b_size;
+}
+
+static bool
+ps5_buffer_overlaps_resource(const struct ps5_resource *buffer,
+                             const struct pipe_resource *base)
+{
+   const struct ps5_resource *resource = (const struct ps5_resource *)base;
+   if (!resource)
+      return false;
+   /* The display pool also owns the allocator's arena. GPU scanout uses only
+    * its two front slots; every accessed arena suballocation is retained
+    * separately. Treating the whole parent as accessed would drain all uploads. */
+   size_t bytes = resource->allocation_size;
+   if (base->target == PIPE_TEXTURE_2D && (base->bind & PIPE_BIND_DISPLAY_TARGET))
+      bytes = MIN2(bytes, PS5_RENDER_ARENA_OFFSET);
+   if (&buffer->base == base ||
+       ps5_memory_overlaps(buffer->data, buffer->allocation_size,
+                            resource->data, bytes))
+      return true;
+   return (resource->stencil_data || resource->stencil_allocation_size) &&
+      ps5_memory_overlaps(buffer->data, buffer->allocation_size,
+                           resource->stencil_data, resource->stencil_allocation_size);
+}
+
+static void
+ps5_draw_batch_drain_buffer(struct pipe_resource *base)
+{
+   const struct ps5_resource *buffer = (const struct ps5_resource *)base;
+   simple_mtx_lock(&ps5_deferred_mutex);
+   if (ps5_deferred.owner) {
+      /* ponytail: whole allocations, at most eight slots. Range tracking only
+       * if conservative alias/arena overlap becomes a measured bottleneck. */
+      bool hazard = !base || base->target != PIPE_BUFFER;
+      for (unsigned slot = 0; !hazard && slot < ps5_deferred.count; ++slot) {
+         for (unsigned stage = 0; stage < 3; ++stage)
+            hazard |= ps5_buffer_overlaps_resource(buffer, ps5_deferred.slots[slot].storage[stage]);
+         for (unsigned i = 0; i < ps5_deferred.slots[slot].retained_count; ++i)
+            hazard |= ps5_buffer_overlaps_resource(buffer, ps5_deferred.slots[slot].retained[i]);
+      }
+      if (hazard)
+         ps5_draw_batch_flush_locked();
+   }
+   simple_mtx_unlock(&ps5_deferred_mutex);
+}
+
+static bool
 ps5_try_deferred_draw(struct pipe_context *base,
                       const struct pipe_draw_info *info, unsigned drawid_offset,
                       const struct pipe_draw_indirect_info *indirect,
@@ -10083,7 +10140,7 @@ ps5_buffer_subdata(struct pipe_context *base, struct pipe_resource *resource,
 
    (void)base;
    (void)usage;
-   ps5_draw_batch_drain();
+   ps5_draw_batch_drain_buffer(resource);
    if (!buffer || buffer->base.target != PIPE_BUFFER || !data ||
        offset > buffer->size || size > buffer->size - offset)
       return;

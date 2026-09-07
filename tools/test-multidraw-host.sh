@@ -19,6 +19,7 @@ for variant in plain textured deferred rgba8 depth; do
     grep -F '[ps5-multidraw] completed=4 cleanup=1 result=0' "$out/$variant.log"
 done
 grep -F '[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=9216 PASS' "$out/deferred.log"
+grep -F '[ps5-deferred] unrelated-buffer subdata=1 map=1 explicit-flush=1 unmap=1 read=1 PASS' "$out/deferred.log"
 grep -F '[ps5-multidraw-texture] sampled=2 uploads=1 pixels=32256 PASS' "$out/textured.log"
 for fault in sampler upload; do
     if [[ $fault == sampler ]]; then

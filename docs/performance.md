@@ -81,11 +81,20 @@ close succeeded. This is a diagnostic result, not an optimization or new CTS cam
 Next target: coalesce eligible clear/draw work without losing resource ownership
 or CPU/GPU ordering. Internal blitter draws are deliberately excluded from the
 queue today; the clear also uses triangle-fan topology, outside ordinary batch
-eligibility. CPU buffer uploads/maps/unmaps unconditionally drain queued work.
+eligibility. In the accepted SDK, CPU buffer uploads/maps/unmaps unconditionally drain queued work.
 Simply allowing the clear would move its wait to the next upload. Any successor
 needs alias-aware resource-hazard checks, retained clear vertices/uniforms,
 CPU-fallback/readback ordering and mixed clear/draw regression evidence first.
 No presentation wait was removed on the basis of these timings.
+
+The first successor changes buffer synchronization only: unrelated buffer
+subdata/map/flush/unmap access can leave the batch queued; overlapping allocations,
+textures and global lifecycle boundaries still retire it. Shared display-pool
+ownership is distinguished from accesses to its separately retained arena slices.
+The updated ordinary-draw oracle interleaves unrelated uploads while still requiring
+8+2 draw groups, pixels and related-buffer/texture hazards to pass. Audit new receipts
+with `tests/ps5/test_multidraw_lifetime.py RECEIPT --deferred-uploads`.
+Clear batching and the accepted SDK are unchanged at this stage.
 
 - 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
 

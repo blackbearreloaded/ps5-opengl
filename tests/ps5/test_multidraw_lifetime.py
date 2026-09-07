@@ -42,7 +42,7 @@ def audit(text, require_postchecks=False, require_textures=False):
     return result
 
 
-def audit_deferred(text, control=False):
+def audit_deferred(text, control=False, require_uploads=False):
     """Require real coalescing, complete pixels/hazards and inclusive wait timing."""
     matches = list(re.finditer(r"\[ps5-multidraw\] mode=(\d+) serial_ns=(\d+) batch_ns=(\d+) pixels=6912 PASS", text))
     assert len(matches) == text.count("[ps5-multidraw] mode=") == 4
@@ -69,14 +69,17 @@ def audit_deferred(text, control=False):
         "[ps5-multidraw] completed=4 cleanup=1 result=0", "[pss-opengl-native] gate completed status=0",
     ):
         assert text.count(marker) == 1, marker
+    if require_uploads or "[ps5-deferred] unrelated-buffer" in text:
+        assert text.count("[ps5-deferred] unrelated-buffer subdata=1 map=1 explicit-flush=1 unmap=1 read=1 PASS") == 1
+        assert text.count("[ps5-deferred] unrelated-buffer") == 1
     return result
 
 
 if len(sys.argv) > 1:
     assert len(sys.argv) == 2 or (len(sys.argv) == 3 and sys.argv[2] in
-        ("--postchecks", "--textures", "--deferred", "--deferred-control"))
+        ("--postchecks", "--textures", "--deferred", "--deferred-control", "--deferred-uploads"))
     receipt = Path(sys.argv[1]).read_text()
-    result = audit_deferred(receipt, sys.argv[2] == "--deferred-control") \
+    result = audit_deferred(receipt, sys.argv[2] == "--deferred-control", sys.argv[2] == "--deferred-uploads") \
         if len(sys.argv) == 3 and sys.argv[2].startswith("--deferred") else \
         audit(receipt, len(sys.argv) == 3, "--textures" in sys.argv)
     print(json.dumps(result, indent=2))
@@ -129,6 +132,15 @@ for control in (False, True):
         "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS\n" \
         "[ps5-multidraw] completed=4 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
     assert len(audit_deferred(deferred_sample, control)) == 4
+    upload_marker = "[ps5-deferred] unrelated-buffer subdata=1 map=1 explicit-flush=1 unmap=1 read=1 PASS\n"
+    assert len(audit_deferred(deferred_sample + upload_marker, control, True)) == 4
+    for bad in (deferred_sample, deferred_sample + upload_marker * 2,
+                deferred_sample + upload_marker.replace("unmap=1", "unmap=0")):
+        try:
+            audit_deferred(bad, control, True)
+        except AssertionError:
+            continue
+        raise AssertionError("Missing or failed unrelated-upload oracle accepted")
     for bad in (deferred_sample.replace("map-write=1", "map-write=0"),
                 deferred_sample.replace("cleanup=1", "cleanup=0"),
                 deferred_sample + batch_receipt(1)):
@@ -270,13 +282,15 @@ code = r'''
 #include <setjmp.h>
 #include "ps5_screen.h"
 #define MIN2(a,b) ((a)<(b)?(a):(b))
+#define PS5_RENDER_ARENA_OFFSET (2u * 0xa00000u)
 enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=16, PIPE_BUFFER=1,
        PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4, PIPE_BIND_DISPLAY_TARGET=1,
        PIPE_FORMAT_Z32_FLOAT=77, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT=78 };
 struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind; };
 struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
     union { struct { unsigned first_level, last_level, first_layer, last_layer; } tex; } u; };
-struct ps5_resource { struct pipe_resource base; unsigned render_staging_size, depth_staging_size; uint8_t *data; size_t size; };
+struct ps5_resource { struct pipe_resource base; unsigned render_staging_size, depth_staging_size;
+    uint8_t *data, *stencil_data; size_t size, allocation_size, stencil_allocation_size; };
 struct pipe_screen { struct pipe_resource *(*resource_create)(struct pipe_screen *, const struct pipe_resource *); };
 struct ps5_screen { struct pipe_screen base; struct pipe_resource *render_pool; };
 struct pipe_context { struct pipe_screen *screen; };
@@ -302,6 +316,7 @@ struct ps5_context {
 };
 static struct ps5_resource original[3], copies[128], borrowed, depth_buffer;
 static uint8_t original_bytes[3][64], copy_bytes[128][64];
+static uint8_t borrowed_bytes[64], depth_bytes[64];
 static struct ps5_context context;
 static struct ps5_screen screen;
 static unsigned shader_textures, allocated, freed, begun, ended, staged, calls, locked;
@@ -325,7 +340,7 @@ static struct pipe_resource *create(struct pipe_screen *s, const struct pipe_res
     if ((int)allocated == fail_alloc) return NULL;
     unsigned i = allocated++;
     assert(i < 128);
-    copies[i] = (struct ps5_resource){.base=*r, .data=copy_bytes[i], .size=64};
+    copies[i] = (struct ps5_resource){.base=*r, .data=copy_bytes[i], .size=64, .allocation_size=64};
     copies[i].base.refs=1;
     return &copies[i].base;
 }
@@ -387,15 +402,17 @@ static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_i
 static void reset(void) {
     allocated=freed=begun=ended=staged=calls=locked=shader_textures=fragment_textures=retained_draws=0;
     fail_alloc=fail_draw=-1; fail_begin=fail_end=0;
-    borrowed=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=1, .refs=1}};
-    depth_buffer=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=PIPE_FORMAT_Z32_FLOAT, .refs=1}};
+    borrowed=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=1, .refs=1},
+        .data=borrowed_bytes, .size=64, .allocation_size=64};
+    depth_buffer=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=PIPE_FORMAT_Z32_FLOAT, .refs=1},
+        .data=depth_bytes, .size=64, .allocation_size=64};
     screen=(struct ps5_screen){.base={create}, .render_pool=&borrowed.base};
     context=(struct ps5_context){.base={&screen.base}, .framebuffer={.cbufs={{.texture=&borrowed.base, .format=1}},
         .nr_cbufs=1}, .framebuffer_valid=true, .vs=&shader_textures, .fs=&shader_textures,
         .vertex_buffer_count=PIPE_MAX_ATTRIBS, .border_color_storage=&borrowed.base};
     for (unsigned i=0; i<3; ++i) {
         memset(original_bytes[i], 0xa0+i, 64);
-        original[i]=(struct ps5_resource){.base={.target=PIPE_BUFFER, .refs=1}, .data=original_bytes[i], .size=64};
+        original[i]=(struct ps5_resource){.base={.target=PIPE_BUFFER, .refs=1}, .data=original_bytes[i], .size=64, .allocation_size=64};
     }
     context.vertex_descriptor_table=&original[0].base;
     context.descriptor_storage[0]=&original[1].base; context.descriptor_storage[1]=&original[2].base;
@@ -404,7 +421,7 @@ static void reset(void) {
         context.constants[s][i].buffer=&borrowed.base;
     for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) {
         textures[unit]=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=1, .refs=1},
-            .data=texels[unit], .size=64, .render_staging_size=64};
+            .data=texels[unit], .size=64, .allocation_size=64, .render_staging_size=64};
         views[unit]=(struct pipe_sampler_view){.texture=&textures[unit].base, .target=PIPE_TEXTURE_2D, .format=1};
     }
 }
@@ -540,6 +557,48 @@ int main(void) {
     struct pipe_draw_info info={.mode=4,.instance_count=1,.index_size=2,.index={&borrowed.base}};
     struct pipe_draw_start_count_bias draw={0,6,0};
     deferred_mode=true;
+    assert(!ps5_memory_overlaps((void *)100, 10, (void *)110, 10));
+    assert(!ps5_memory_overlaps((void *)110, 10, (void *)100, 10));
+    assert(ps5_memory_overlaps((void *)100, 10, (void *)109, 10));
+    assert(ps5_memory_overlaps((void *)109, 10, (void *)100, 10));
+    assert(ps5_memory_overlaps((void *)100, 0, (void *)110, 10));
+    assert(ps5_memory_overlaps(NULL, 10, (void *)110, 10));
+    assert(ps5_memory_overlaps((void *)(UINTPTR_MAX-1), 4, (void *)100, 10));
+    for (unsigned kind=0; kind<10; ++kind) {
+        reset();
+        uint8_t unrelated[64];
+        struct ps5_resource cpu={.base={.target=PIPE_BUFFER}, .data=unrelated, .allocation_size=64};
+        assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+        ps5_draw_batch_drain_buffer(&cpu.base);
+        assert(!locked && !ended && staged==1); /* Unrelated uploads leave the batch queued. */
+        if (kind<3) cpu.data=copies[kind].data+1; /* Each private descriptor allocation. */
+        if (kind==3) cpu.data=borrowed.data+63; /* Distinct object, last-byte overlap. */
+        if (kind==4) cpu.base.target=PIPE_TEXTURE_2D; /* Textures remain conservative. */
+        if (kind==5) cpu.data=NULL;
+        if (kind==6) cpu.allocation_size=0;
+        if (kind==7) { borrowed.stencil_data=cpu.data; borrowed.stencil_allocation_size=64; }
+        if (kind==8) { borrowed.stencil_data=cpu.data; borrowed.stencil_allocation_size=0; }
+        ps5_draw_batch_drain_buffer(kind==9 ? NULL : &cpu.base);
+        idle(); assert(ended==1);
+    }
+    reset();
+    borrowed.base.bind=PIPE_BIND_DISPLAY_TARGET;
+    borrowed.data=(uint8_t *)4096; borrowed.allocation_size=0x4000000;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    struct ps5_resource arena={.base={.target=PIPE_BUFFER, .refs=1},
+        .data=(uint8_t *)(4096u+PS5_RENDER_ARENA_OFFSET), .allocation_size=16384};
+    ps5_draw_batch_drain_buffer(&arena.base);
+    assert(!ended && staged==1); /* Parent lifetime reference is not access to all arena bytes. */
+    pipe_resource_reference(&ps5_deferred.slots[0].retained[ps5_deferred.slots[0].retained_count++], &arena.base);
+    ps5_draw_batch_drain_buffer(&arena.base);
+    idle(); assert(ended==1 && arena.base.refs==1); /* A used suballocation still drains. */
+    reset();
+    borrowed.base.bind=PIPE_BIND_DISPLAY_TARGET;
+    borrowed.data=(uint8_t *)4096; borrowed.allocation_size=0x4000000;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    arena.data=(uint8_t *)(4096u+PS5_RENDER_ARENA_OFFSET-1);
+    ps5_draw_batch_drain_buffer(&arena.base);
+    idle(); assert(ended==1); /* Overlap with either scanout slot still drains. */
     for (unsigned depth=0; depth<2; ++depth) for (unsigned n=1;n<=8;++n) {
         reset();
         struct pipe_depth_stencil_alpha_state dsa={.depth_enabled=true};
@@ -615,14 +674,21 @@ with tempfile.TemporaryDirectory() as tmp:
         assert (run.returncode == 0) != mutate, run.stderr
 
 # The queue test alone cannot prove that CPU access / lifecycle entry points drain.
-for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_transfer_map",
-             "ps5_transfer_flush_region", "ps5_transfer_unmap", "ps5_blit",
+for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_blit",
              "ps5_generate_mipmap", "ps5_get_timestamp", "ps5_begin_query", "ps5_end_query",
-             "ps5_flush", "ps5_clear", "ps5_buffer_subdata", "ps5_context_last_draw_status",
+             "ps5_flush", "ps5_clear", "ps5_context_last_draw_status",
              "ps5_context_destroy", "ps5_screen_destroy"):
     start = source.index("\n" + name + "(")
     function = source[start:source.index("\n}\n", start)]
     assert function.count("ps5_draw_batch_drain();") == 1, name
+for name, argument in (("ps5_transfer_map", "base"),
+                       ("ps5_transfer_flush_region", "transfer ? transfer->resource : NULL"),
+                       ("ps5_transfer_unmap", "transfer->resource"),
+                       ("ps5_buffer_subdata", "resource")):
+    start = source.index("\n" + name + "(")
+    function = source[start:source.index("\n}\n", start)]
+    assert function.count("ps5_draw_batch_drain_buffer(" + argument + ");") == 1, name
+    assert "ps5_draw_batch_drain();" not in function, name
 start = source.index("\nps5_flush(")
 function = source[start:source.index("\n}\n", start)]
 assert function.index("ps5_draw_batch_drain();") < function.index("if (!out_fence)")

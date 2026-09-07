@@ -54,7 +54,7 @@ static bool ps5_linear_sampled_layout(const struct pipe_resource *r) { return !r
 static bool ps5_render_target_format(unsigned f) { return f == COLOR; }
 static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); }
 static unsigned drains;
-static void ps5_draw_batch_drain(void) { ++drains; }
+static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { (void)r; ++drains; }
 static unsigned heap_live, mapped_live, maps, unmaps;
 static unsigned fail_heap;
 static bool fail_map;
