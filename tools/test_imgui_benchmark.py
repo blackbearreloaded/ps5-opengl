@@ -145,3 +145,26 @@ int main() {
         # A missed performance target remains a valid measurement, not a pass claim.
         slow = text.replace("seconds=30.000000 fps=60.000000", "seconds=31.000000 fps=58.064516")
         self.assertFalse(profile(slow, window_target=60)["window_benchmark"]["target_met"])
+        for height, width, size in ((1080, 1920, 0xa00000), (1440, 2560, 0x1000000), (2160, 3840, 0x2000000)):
+            mode = text.replace("width=1920 height=1080", f"width={width} height={height}")
+            status = "\n".join(f"[ps5-output] stage={stage} render_width={width} render_height={height} "
+                f"buffer_bytes={size} resolution_rc=00000000 full_width=3840 full_height=2160 "
+                "pane_width=1920 pane_height=1080 refresh_id=3 output_rc=00000000 output_refresh_id=3"
+                for stage in ("warmup", "end"))
+            mode += f"[ps5-output-register] width={width} height={height} offset={size} result=00000000\n"
+            result = profile(mode + status, window_target=60, window_height=height, output_status=True)
+            self.assertEqual(result["videoout_status"]["reported_refresh_hz"], 59.94)
+            self.assertFalse(result["window_benchmark"]["output_mode_verified"])
+            for old, new in (("resolution_rc=00000000", "resolution_rc=ffffffff"),
+                             ("full_width=3840", "full_width=0"), ("output_refresh_id=3", "output_refresh_id=13"),
+                             ("refresh_id=3", "refresh_id=999")):
+                uncertain = profile(mode + status.replace(old, new, 1), window_target=60,
+                                    window_height=height, output_status=True)
+                self.assertIsNone(uncertain["videoout_status"]["reported_refresh_hz"])
+            for bad in (status.replace(f"buffer_bytes={size}", "buffer_bytes=1", 1),
+                        status.replace("stage=end", "stage=warmup"), "", status + "\n" + status):
+                with self.assertRaises(ValueError):
+                    profile(mode + bad, window_target=60, window_height=height, output_status=True)
+            with self.assertRaises(ValueError):
+                profile(mode.replace(f"offset={size}", "offset=0") + status,
+                        window_target=60, window_height=height, output_status=True)

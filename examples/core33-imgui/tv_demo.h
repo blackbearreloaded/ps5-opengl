@@ -16,7 +16,7 @@
 #endif
 // Higher-rate output needs its own presenter integration and validation first.
 static_assert(PS5_IMGUI_WINDOW_TARGET == 30 || PS5_IMGUI_WINDOW_TARGET == 60,
-              "window benchmark currently supports only 1080p30/60 targets");
+              "window benchmark currently supports only 30/60 FPS targets");
 #endif
 
 #ifndef PS5_IMGUI_HOST_REFERENCE
@@ -66,7 +66,8 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     EGLint width = 0, height = 0;
     if (!check(eglQuerySurface(display, surface, EGL_WIDTH, &width) &&
                eglQuerySurface(display, surface, EGL_HEIGHT, &height) &&
-               width == 1920 && height == 1080, "TV surface 1920x1080"))
+               ((width == 1920 && height == 1080) || (width == 2560 && height == 1440) ||
+                (width == 3840 && height == 2160)), "TV surface dimensions"))
         return false;
 
 #ifdef PS5_IMGUI_WINDOW_BENCHMARK
@@ -95,8 +96,8 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     (void)owns_user_service;
 #endif
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-    io.DisplayFramebufferScale = ImVec2(1, 1);
+    io.DisplaySize = ImVec2(1920, 1080);
+    io.DisplayFramebufferScale = ImVec2(width / 1920.0f, height / 1080.0f);
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     bool ok = true, animate = true;
     float speed = 1.0f, phase = 0.0f;
@@ -207,7 +208,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         ImGui::Dummy(ImVec2(canvas_width, 430));
         ImGui::TextUnformatted("Live geometry, font textures, alpha blending, and interactive widgets.");
         ImGui::ProgressBar((std::sin(phase) + 1.0f) * 0.5f, ImVec2(-1, 30), "OpenGL + ImGui");
-        ImGui::Text("Native app: PPSA99005  |  1920 x 1080  |  bounded %.0f-second run", duration);
+        ImGui::Text("Native app: PPSA99005  |  %d x %d  |  bounded %.0f-second run", width, height, duration);
         ImGui::End();
         ImGui::Render();
 #ifdef PS5_IMGUI_PROFILE
@@ -233,7 +234,8 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
 #endif
         ) {
             unsigned char p[4] = {};
-            glReadPixels(static_cast<int>(x), height - 1 - static_cast<int>(origin.y + 135),
+            glReadPixels(static_cast<int>(x * io.DisplayFramebufferScale.x),
+                         height - 1 - static_cast<int>((origin.y + 135) * io.DisplayFramebufferScale.y),
                          1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p);
             const ImU32 color = colors[palette];
             ok = check(glGetError() == GL_NO_ERROR && abs(p[0] - static_cast<int>(color & 255)) <= 2 &&

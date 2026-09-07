@@ -32,7 +32,7 @@ PS5_OPENGL_PSBC_CFLAGS := -DHAVE_PTHREAD=1 -DHAVE_STRUCT_TIMESPEC=1 \
 	-I$(PS5_OPENGL_PSBC)/src
 
 PS5_OPENGL_CORE33_DEFINES := \
-	-DPS5_RENDER_POOL_BYTES=0x4000000u \
+	-DPS5_RENDER_ARENA_BYTES=0x2c00000u \
 	-DPS5_ENABLE_FRAMEBUFFER_SRGB_CANDIDATE=1 \
 	-DPS5_ENABLE_PACKED_FLOAT_CANDIDATE=1 \
 	-DPS5_ENABLE_NARROW_TEXTURE_INTEGER_CANDIDATE=1 \
@@ -114,7 +114,8 @@ $(PS5_OPENGL_BUILD)/runtime-config.txt: ps5-opengl-config-force | $(PS5_OPENGL_B
 	@cmp -s $@.tmp $@ || cp $@.tmp $@
 	@rm -f $@.tmp
 
-$(PS5_OPENGL_RUNTIME_OBJECTS): $(PS5_OPENGL_BUILD)/runtime-config.txt $(ps5_opengl_mk_self)
+$(PS5_OPENGL_RUNTIME_OBJECTS): $(PS5_OPENGL_BUILD)/runtime-config.txt $(ps5_opengl_mk_self) \
+	$(PS5_OPENGL_PLATFORM)/ps5_scanout.h
 
 $(PS5_OPENGL_BUILD)/ps5_egl.o: $(PS5_OPENGL_ROOT)/src/egl/ps5_egl.c \
 	$(PS5_OPENGL_DRIVER)/ps5_screen.h | $(PS5_OPENGL_BUILD)

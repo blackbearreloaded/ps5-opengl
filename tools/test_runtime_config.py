@@ -97,10 +97,16 @@ class RuntimeConfigTest(unittest.TestCase):
         end = source.index("\n$(PS5_OPENGL_BUILD)/ps5_egl.o:", start)
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
+            (work / "ps5_scanout.h").touch()
             (work / "Makefile").write_text(".DEFAULT_GOAL := all\nPS5_OPENGL_BUILD := .\n"
-                "PS5_OPENGL_RUNTIME_OBJECTS := object\n" + source[start:end] +
+                "PS5_OPENGL_PLATFORM := .\nPS5_OPENGL_RUNTIME_OBJECTS := object\n" + source[start:end] +
                 "\nall: object\nobject:\n\t@printf 'rebuilt\\n' >> count\n\t@touch object\n")
             for defines, expected in (("", 1), ("", 1), ("-DPS5_MULTIDRAW_BATCH=1", 2),
-                                      ("-DPS5_MULTIDRAW_BATCH=1", 2), ("", 3)):
+                                      ("-DPS5_MULTIDRAW_BATCH=1", 2), ("", 3),
+                                      ("-DPS5_SCANOUT_HEIGHT=2160", 4),
+                                      ("-DPS5_SCANOUT_HEIGHT=2160", 4), ("", 5)):
                 subprocess.run(["make", "-s", "PS5_OPENGL_RUNTIME_DEFINES=" + defines], cwd=work, check=True)
                 self.assertEqual(len((work / "count").read_text().splitlines()), expected)
+            (work / "ps5_scanout.h").write_text("/* changed layout */\n")
+            subprocess.run(["make", "-s", "PS5_OPENGL_RUNTIME_DEFINES="], cwd=work, check=True)
+            self.assertEqual(len((work / "count").read_text().splitlines()), 6)

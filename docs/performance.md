@@ -303,6 +303,18 @@ resolution/high-refresh integration. Full local summaries are beside the receipt
 
 - 2026-09-07 | matched window benchmark | c88497a | pass: 1080p60/30, pixels/groups/flips, healthy teardown | results/window-benchmark{60,30}-20260907
 
+G5b coordinates `PS5_SCANOUT_HEIGHT=1080|1440|2160` across EGL, Gallium, the
+runtime bridge and VideoOut registration. Each SDK has one build-time window
+mode; double-buffer strides are 10/16/32 MiB per buffer, with the same 44 MiB
+working arena. Default 1080p layout is unchanged. The TV demo keeps the same
+logical scene and scales its viewport and probes. Profiled native builds record
+registration results and read-only VideoOut full/pane/refresh status after warm-up
+and before close; failures/unknown modes stay explicit. No output reconfiguration
+or metadata change is part of this step. Audit with `--window-target 60
+--window-height HEIGHT --output-status`. First revalidate 1080p60, then larger
+render surfaces in separate bounded cycles. API status is not an independent
+HDMI/TV measurement; 90/120 FPS remains disabled pending its own integration.
+
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
 and retirement. Start with a focused matched 1080p FBO case and affected

@@ -8,7 +8,8 @@ import re
 
 
 def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False,
-              clear_batches=False, soak=False, window_target=None):
+              clear_batches=False, soak=False, window_target=None, window_height=1080,
+              output_status=False):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
@@ -154,10 +155,12 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
                 "missing GPU-present frames or readback fallback")
         report["gpu_present_frames"] = int(gpu_present[0])
     if window_target is not None:
-        require(not soak and window_target in (30, 60), "unsupported window benchmark target")
+        require(not soak and window_target in (30, 60) and window_height in (1080, 1440, 2160),
+                "unsupported window benchmark target")
+        window_width = window_height * 16 // 9
         begins = re.findall(r"^\[ps5-imgui-window\] begin (.+)$", text, re.M)
         results = re.findall(r"^\[ps5-imgui-window\] result (.+)$", text, re.M)
-        require(begins == [f"width=1920 height=1080 target={window_target} mode=window-presented"] and
+        require(begins == [f"width={window_width} height={window_height} target={window_target} mode=window-presented"] and
                 len(results) == 1 and text.count("[ps5-imgui-window]") == 2, "missing/wrong window benchmark")
         pairs = [token.split("=", 1) for token in results[0].split()]
         require(all(len(p) == 2 for p in pairs), "malformed window fields")
@@ -200,10 +203,47 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
             shutdown = re.findall(r"\[ps5-agc\] present-shutdown unregister=([0-9a-f]+) close=([0-9a-f]+) frames=(\d+)", text)
             require(shutdown in [[(code, "00000000", str(frames + warmup))]
                                  for code in ("00000000", "80290009")], "window presenter cleanup failed")
-        report["window_benchmark"] = dict(width=1920, height=1080, target_fps=window_target,
+        report["window_benchmark"] = dict(width=window_width, height=window_height, target_fps=window_target,
             achieved_fps=fps, seconds=seconds, target_met=fps >= window_target * 0.99,
             frame_mean_ms=seconds * 1000 / frames, frame_budget_tolerance_ms=0.25,
             output_mode_verified=False, **timing, **misses)
+    if output_status:
+        require(not host and window_target is not None, "output status requires a native window benchmark")
+        buffer_bytes = {1080: 0xa00000, 1440: 0x1000000, 2160: 0x2000000}[window_height]
+        registration = re.findall(r"^\[ps5-output-register\] (.+)$", text, re.M)
+        require(registration == [f"width={window_width} height={window_height} offset={buffer_bytes} result=00000000"],
+                "display registration/double-buffer offset mismatch")
+        lines = re.findall(r"^\[ps5-output\] (.+)$", text, re.M)
+        require(len(lines) == text.count("[ps5-output]") == 2, "missing/duplicate output snapshots")
+        snapshots = []
+        for line, stage in zip(lines, ("warmup", "end")):
+            pairs = [token.split("=", 1) for token in line.split()]
+            require(all(len(p) == 2 for p in pairs), "malformed output fields")
+            row = dict(pairs)
+            numeric = ["render_width", "render_height", "buffer_bytes", "full_width", "full_height",
+                       "pane_width", "pane_height", "refresh_id", "output_refresh_id"]
+            require(len(row) == len(pairs) and set(row) == set(numeric + ["stage", "resolution_rc", "output_rc"]),
+                    "unexpected output fields")
+            require(row["stage"] == stage and all(re.fullmatch(r"[0-9]+", row[k]) for k in numeric) and
+                    all(re.fullmatch(r"[0-9a-f]{8}", row[k]) for k in ("resolution_rc", "output_rc")),
+                    "invalid output field values")
+            values = {k: int(row[k]) for k in numeric}
+            require(values["render_width"] == window_width and values["render_height"] == window_height and
+                    values["buffer_bytes"] == buffer_bytes,
+                    "EGL/presenter display-buffer layout mismatch")
+            snapshots.append(dict(stage=stage, resolution_rc=row["resolution_rc"], output_rc=row["output_rc"], **values))
+        # Preserve raw status. Unknown/error/disagreeing status never proves an output mode.
+        first, last = snapshots
+        keys = ("full_width", "full_height", "pane_width", "pane_height", "refresh_id", "output_refresh_id")
+        valid = all(s["resolution_rc"] == s["output_rc"] == "00000000" and
+                    0 < s["full_width"] <= 8192 and 0 < s["full_height"] <= 8192 and
+                    0 < s["pane_width"] <= 8192 and 0 < s["pane_height"] <= 8192 and
+                    s["refresh_id"] == s["output_refresh_id"] for s in snapshots)
+        stable = valid and all(first[k] == last[k] for k in keys)
+        refresh = {3: 59.94, 13: 119.88, 35: 89.91}.get(last["refresh_id"]) if stable else None
+        report["videoout_status"] = dict(snapshots=snapshots, stable_known_status=refresh is not None,
+            reported_refresh_hz=refresh, physical_output_independently_verified=False)
+        # Status reports full/pane extents; do not equate render size with physical HDMI output.
     return report
 
 
@@ -343,6 +383,8 @@ if __name__ == "__main__":
     parser.add_argument("--clear-batches", action="store_true")
     parser.add_argument("--soak", action="store_true")
     parser.add_argument("--window-target", type=int, choices=(30, 60))
+    parser.add_argument("--window-height", type=int, choices=(1080, 1440, 2160), default=1080)
+    parser.add_argument("--output-status", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -352,4 +394,4 @@ if __name__ == "__main__":
             parser.error("receipt required")
         print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
                                    args.deferred_batches, args.present_profile, args.clear_batches, args.soak,
-                                   args.window_target), indent=2))
+                                   args.window_target, args.window_height, args.output_status), indent=2))

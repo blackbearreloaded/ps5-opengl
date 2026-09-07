@@ -28,9 +28,11 @@ typedef uint32_t *(*ps5_agc_set_cx_fn)(void *, const void *, uint32_t);
 #define PS5_AGC_MAX_COLOR_HEIGHT PS5_MAX_RENDER_SIZE
 #define PS5_AGC_MAX_DEPTH_WIDTH PS5_MAX_RENDER_SIZE
 #define PS5_AGC_MAX_DEPTH_HEIGHT PS5_MAX_RENDER_SIZE
-#define PS5_AGC_FRAMEBUFFER_BYTES UINT32_C(0xa00000)
-#define PS5_AGC_FRAMEBUFFER_POOL_BYTES UINT32_C(0x1400000)
-#define PS5_AGC_FRAMEBUFFER_ALIGNMENT UINT32_C(0x200000)
+#define PS5_AGC_FRAMEBUFFER_BYTES PS5_SCANOUT_BYTES
+#define PS5_AGC_FRAMEBUFFER_POOL_BYTES PS5_SCANOUT_POOL_BYTES
+#define PS5_AGC_FRAMEBUFFER_ALIGNMENT PS5_SCANOUT_ALIGNMENT
+/* Preserve the legacy depth adapter's minimum independently of scanout size. */
+#define PS5_AGC_DEPTH_LEGACY_MIN_BYTES UINT32_C(0xa00000)
 #define PS5_AGC_COLOR_TARGET_ALIGNMENT UINT32_C(0x10000)
 #define PS5_AGC_BORDER_COLOR_BYTES UINT32_C(0x10000)
 #define PS5_AGC_BORDER_COLOR_ALIGNMENT UINT32_C(0x100)
@@ -638,8 +640,8 @@ ps5_agc_gate2_set_depth_buffer(void *depth, size_t size,
    if (size < required)
       return -1;
    return ps5_agc_native_set_depth_buffer(
-      depth, size < PS5_AGC_FRAMEBUFFER_BYTES
-                ? PS5_AGC_FRAMEBUFFER_BYTES : size,
+      depth, size < PS5_AGC_DEPTH_LEGACY_MIN_BYTES
+                ? PS5_AGC_DEPTH_LEGACY_MIN_BYTES : size,
       depth_control);
 }
 
@@ -666,8 +668,8 @@ ps5_agc_gate2_set_depth_stencil_buffer(
        stencil_size < required_stencil)
       return -1;
    return ps5_agc_native_set_depth_stencil_buffer(
-      depth, depth_size < PS5_AGC_FRAMEBUFFER_BYTES
-                ? PS5_AGC_FRAMEBUFFER_BYTES : depth_size,
+      depth, depth_size < PS5_AGC_DEPTH_LEGACY_MIN_BYTES
+                ? PS5_AGC_DEPTH_LEGACY_MIN_BYTES : depth_size,
       stencil, stencil_size < UINT32_C(0x280000)
                   ? UINT32_C(0x280000) : stencil_size,
       depth_control, stencil_control, stencil_refmask,

@@ -566,17 +566,12 @@ int ps5_agc_gate2_set_point_coord_input(uint32_t enabled)
 #define TARGET_DUMP_PATH "/data/VdecHello/opengl33-triangle-target.bgra"
 #endif
 
-#ifdef AGC_4K
-#define DISPLAY_WIDTH 3840u
-#define DISPLAY_HEIGHT 2160u
-#define FRAMEBUFFER_BYTES 0x2000000u
-#else
-#define DISPLAY_WIDTH 1920u
-#define DISPLAY_HEIGHT 1080u
-#define FRAMEBUFFER_BYTES 0xa00000u
-#endif
-#define FRAMEBUFFER_POOL_BYTES (2u * FRAMEBUFFER_BYTES)
-#define FRAMEBUFFER_ALIGNMENT 0x200000u
+#include "ps5_scanout.h"
+#define DISPLAY_WIDTH PS5_SCANOUT_WIDTH
+#define DISPLAY_HEIGHT PS5_SCANOUT_HEIGHT
+#define FRAMEBUFFER_BYTES PS5_SCANOUT_BYTES
+#define FRAMEBUFFER_POOL_BYTES PS5_SCANOUT_POOL_BYTES
+#define FRAMEBUFFER_ALIGNMENT PS5_SCANOUT_ALIGNMENT
 #define OFFSCREEN_BYTES FRAMEBUFFER_BYTES
 #define DEPTH_BYTES 0xa00000u
 #define DEPTH_ALIGNMENT 0x200000u
@@ -1078,6 +1073,44 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
 }
 #endif
 
+#if defined(PS5_DRAW_PROFILE) && defined(PS5_NATIVE_TITLE_RUNTIME)
+/* Read-only ABI subset also exercised by the independently authored
+ * ProsperoLight presenter. Raw status is evidence, not a requested mode. */
+typedef struct runtime_resolution_status {
+    uint32_t full_width, full_height, pane_width, pane_height;
+    uint64_t refresh_rate;
+    float screen_inches;
+    uint32_t reserved[4];
+} runtime_resolution_status_t;
+typedef struct runtime_output_status {
+    uint32_t resolution_class, output_class;
+    uint64_t refresh_rate, flags;
+    uint32_t mode, reserved[5];
+} runtime_output_status_t;
+_Static_assert(sizeof(runtime_resolution_status_t) == 48 &&
+               offsetof(runtime_resolution_status_t, refresh_rate) == 16 &&
+               sizeof(runtime_output_status_t) == 48 &&
+               offsetof(runtime_output_status_t, refresh_rate) == 8,
+               "VideoOut status ABI size/offset mismatch");
+extern int sceVideoOutGetResolutionStatus(int32_t, runtime_resolution_status_t *);
+extern int sceVideoOutGetOutputStatus(int32_t, runtime_output_status_t *);
+
+static void runtime_video_report(const char *stage)
+{
+    runtime_resolution_status_t resolution = {0};
+    runtime_output_status_t output = {0};
+    int resolution_rc = sceVideoOutGetResolutionStatus(runtime_video_handle, &resolution);
+    int output_rc = sceVideoOutGetOutputStatus(runtime_video_handle, &output);
+    printf("[ps5-output] stage=%s render_width=%u render_height=%u buffer_bytes=%u "
+           "resolution_rc=%08" PRIx32 " full_width=%u full_height=%u pane_width=%u pane_height=%u "
+           "refresh_id=%" PRIu64 " output_rc=%08" PRIx32 " output_refresh_id=%" PRIu64 "\n",
+           stage, DISPLAY_WIDTH, (unsigned)DISPLAY_HEIGHT, FRAMEBUFFER_BYTES,
+           (uint32_t)resolution_rc, resolution.full_width, resolution.full_height,
+           resolution.pane_width, resolution.pane_height, resolution.refresh_rate,
+           (uint32_t)output_rc, output.refresh_rate);
+}
+#endif
+
 int ps5_agc_gate2_shutdown_present(void)
 {
     int unregister_rc = 0;
@@ -1099,6 +1132,9 @@ int ps5_agc_gate2_shutdown_present(void)
         printf("[ps5-agc] present-drain result=%08" PRIx32 "\n", (uint32_t)drain_rc);
         if (drain_rc != 0)
             return drain_rc; /* Preserve scanout ownership if retirement is unknown. */
+#if defined(PS5_DRAW_PROFILE) && defined(PS5_NATIVE_TITLE_RUNTIME)
+        runtime_video_report("end");
+#endif
         unregister_rc = runtime_video_api.unregister_buffers(
             runtime_video_handle, 0);
         if (unregister_rc == 0)
@@ -1163,8 +1199,15 @@ static int runtime_video_acquire(const video_api_t *video,
         goto fail;
     video->set_attribute2(&attribute, VIDEO_OUT_PIXEL_FORMAT, 0,
                           DISPLAY_WIDTH, DISPLAY_HEIGHT, 0, 0, 0);
-    if (video->register_buffers2(runtime_video_handle, 0, 0, buffers, 2,
-                                 &attribute, 0, NULL) != 0)
+    int register_rc = video->register_buffers2(runtime_video_handle, 0, 0, buffers, 2,
+                                               &attribute, 0, NULL);
+#ifdef PS5_DRAW_PROFILE
+    printf("[ps5-output-register] width=%u height=%u offset=%u result=%08" PRIx32 "\n",
+           DISPLAY_WIDTH, (unsigned)DISPLAY_HEIGHT,
+           framebuffer_size >= FRAMEBUFFER_POOL_BYTES ? FRAMEBUFFER_BYTES : 0u,
+           (uint32_t)register_rc);
+#endif
+    if (register_rc != 0)
         goto fail;
     runtime_video_framebuffer = framebuffer;
     runtime_video_framebuffer_size = framebuffer_size;
@@ -1251,6 +1294,10 @@ int ps5_agc_gate2_present(unsigned buffer_index)
 #endif
     if (result == 0) {
         ++runtime_present_count;
+#if defined(PS5_DRAW_PROFILE) && defined(PS5_NATIVE_TITLE_RUNTIME)
+        if (runtime_present_count == 30)
+            runtime_video_report("warmup");
+#endif
     }
     return result;
 }

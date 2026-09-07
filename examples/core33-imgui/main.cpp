@@ -246,7 +246,11 @@ int main()
               eglBindAPI(EGL_OPENGL_API) && eglChooseConfig(display, config_attributes, &config, 1, &count) &&
               count == 1, "EGL initialization")) {
 #ifdef PS5_IMGUI_HOST_REFERENCE
-        const EGLint pbuffer_attributes[] = {EGL_WIDTH, 1920, EGL_HEIGHT, 1080, EGL_NONE};
+#ifndef PS5_IMGUI_HOST_HEIGHT
+#define PS5_IMGUI_HOST_HEIGHT 1080
+#endif
+        const EGLint pbuffer_attributes[] = {
+            EGL_WIDTH, PS5_IMGUI_HOST_HEIGHT * 16 / 9, EGL_HEIGHT, PS5_IMGUI_HOST_HEIGHT, EGL_NONE};
         surface = eglCreatePbufferSurface(display, config, pbuffer_attributes);
 #else
         surface = eglCreateWindowSurface(display, config, (EGLNativeWindowType)0, nullptr);

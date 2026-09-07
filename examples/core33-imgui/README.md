@@ -131,8 +131,17 @@ Host checks run ten measured frames without pacing and retain simulated input.
 
 Use the usual frozen, locked `imgui_tv` cycle with a 60-second observation cap.
 Require the new harness to reproduce 59–60.5 FPS at 1080p before extending it.
-Higher resolutions and 90/120 FPS are currently rejected, pending coordinated
-presenter support. No physical output-mode or GPU-timer claim follows from the
+Separate SDK builds can select `PS5_SCANOUT_HEIGHT=1080`, `1440` or `2160` when
+running `toolchain/install-ps5-opengl-core33.sh SEPARATE_PREFIX`. Select that
+frozen prefix with `PS5_OPENGL_PREFIX` for the app build. All layers use matching
+render dimensions and display-buffer strides. The scene stays logically
+1920x1080 and scales to the queried surface. Host checks select the same size
+with `PS5_IMGUI_HOST_HEIGHT`; the auditor uses `--window-height`.
+Profiled native SDKs additionally support `--output-status`, requiring matching
+registration/offset receipts and two raw VideoOut status snapshots. No output
+reconfiguration is requested; hardware support must be measured, not inferred.
+90/120 FPS remains rejected pending high-refresh integration.
+No independent physical output-mode or GPU-timer claim follows from the
 application timing. The accepted release SDK remains unchanged.
 
 ## Bounded offscreen performance matrix

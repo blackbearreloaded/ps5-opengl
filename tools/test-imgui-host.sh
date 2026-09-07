@@ -7,6 +7,7 @@ test "$(git -C "$imgui" rev-parse HEAD)" = f5befd2d29e66809cd1110a152e375a7f1981
 test -z "$(git -C "$imgui" status --porcelain)"
 mkdir -p "$root/build/imgui-host"
 demo_flags=()
+case ${PS5_IMGUI_HOST_HEIGHT:-1080} in 1080|1440|2160) ;; *) echo 'Invalid host surface height' >&2; exit 2 ;; esac
 main_source="$root/examples/core33-imgui/main.cpp"
 case ${1:-} in
     '') ;;
@@ -23,6 +24,7 @@ esac
 clang++-18 -std=c++11 -O2 -Wall -Wextra -Werror \
     "${demo_flags[@]}" \
     -DPS5_IMGUI_HOST_REFERENCE -DGL_GLEXT_PROTOTYPES=1 \
+    -DPS5_IMGUI_HOST_HEIGHT=${PS5_IMGUI_HOST_HEIGHT:-1080} \
     -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -include GL/gl.h \
     -I"$root/build/sdk/ps5-opengl-core33/include" \
     -I"$imgui" -I"$imgui/backends" \
@@ -42,7 +44,7 @@ if [[ ${1:-} == --benchmark ]]; then
 fi
 if [[ ${1:-} == --window-benchmark ]]; then
     python3 "$root/tools/summarize-imgui-profile.py" "$root/build/imgui-host/check.log" \
-        --host --window-target "${PS5_IMGUI_WINDOW_TARGET:-60}"
+        --host --window-target "${PS5_IMGUI_WINDOW_TARGET:-60}" --window-height "${PS5_IMGUI_HOST_HEIGHT:-1080}"
 fi
 if [[ ${1:-} == --tv-demo ]]; then
     python3 - "$root/build/imgui-host/check.log" <<'PY'

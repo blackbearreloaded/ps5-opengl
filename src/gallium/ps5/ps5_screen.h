@@ -6,9 +6,10 @@ struct pipe_context;
 struct pipe_resource;
 
 #include <stddef.h>
+#include "../../platform/ps5_scanout.h"
 
-#define PS5_RENDER_WIDTH 1920u
-#define PS5_RENDER_HEIGHT 1080u
+#define PS5_RENDER_WIDTH PS5_SCANOUT_WIDTH
+#define PS5_RENDER_HEIGHT PS5_SCANOUT_HEIGHT
 #define PS5_MAX_RENDER_SIZE 8192u
 #define PS5_MULTIDRAW_BATCH_CAPACITY 8u
 
