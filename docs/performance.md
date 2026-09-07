@@ -519,6 +519,13 @@ buffers and drains the pending queue. Next: add RGBA8 to the existing packed
 vertex/compiler format mapping, validate channel order/normalization and rerun
 the same profile. Keep the CPU-access synchronization guards unchanged.
 
+- 2026-09-07 | G8 | 45b711c | pass: native RGBA8 input, 41,472 pixels incl. intermediate RGB/alpha, 65 paired chunks and upload/map/query/fence/orphan checks; healthy teardown/unlock | results/g8-rgba8-vertex/235852
+
+RGBA8 now reuses the existing packed-format path (PSBC enum appended, no encoder
+or synchronization change). The next ImGui profile uses a separate opt-in SDK;
+`summarize-imgui-profile.py RECEIPT --deferred-batches` additionally rejects
+single-draw-only or failed batch receipts. Default SDK is unchanged.
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and

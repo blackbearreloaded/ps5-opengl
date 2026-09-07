@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 
-def summarize(text, host=False, submit_profile=False):
+def summarize(text, host=False, submit_profile=False, deferred_batches=False):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
@@ -40,6 +40,18 @@ def summarize(text, host=False, submit_profile=False):
         require(re.findall(r"\[pss-opengl-native\] gate completed status=(\d+)", text) == ["0"],
                 "native gate incomplete")
     report = dict(mode="host-reference" if host else "PS5", frames=frames, warmup=warmup, **values)
+    if deferred_batches:
+        chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
+        native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
+        require(not host and len(chunks) == text.count("[ps5-deferred-batch]") ==
+                len(native) == text.count("[ps5-multidraw-batch]"), "missing or failed batch receipt")
+        require(all(count == draws == attempted and 0 < int(count) <= 8 and int(waits) < 2000
+                    for count, (draws, attempted, waits) in zip(chunks, native)), "invalid batch retirement")
+        grouped = sum(int(count) > 1 for count in chunks)
+        # Aggregate coverage, not a claim that each frame had a particular group.
+        require(grouped >= frames, "insufficient actual multi-draw groups")
+        report["deferred_batches"] = dict(chunks=len(chunks), draws=sum(map(int, chunks)),
+                                         multi_draw_chunks=grouped)
     submit_lines = re.findall(r"^\[ps5-submit-perf\] (.+)$", text, re.M)
     if submit_lines or submit_profile:
         require(not host and len(submit_lines) == 1, "expected one native submission profile")
@@ -81,6 +93,19 @@ def self_test():
 """
     assert summarize(text)["cpu_wall_ms"] == 10
     assert summarize(text.replace("\n", "\r\n"))["frames"] == 100
+    batch = "[ps5-multidraw-batch] draws=2 attempted=2 waits=1 result=0\n[ps5-deferred-batch] draws=2 result=0\n"
+    assert summarize(text + batch * 130, deferred_batches=True)["deferred_batches"]["draws"] == 260
+    for bad in (text, text + batch * 99, text + batch.replace("=2", "=1") * 130,
+                text + batch.replace("attempted=2", "attempted=1") * 130,
+                text + batch.replace("waits=1", "waits=2000") * 130,
+                text + batch.replace("result=0", "result=-1") * 130,
+                text + batch * 130 + "[ps5-deferred-batch] malformed"):
+        try:
+            summarize(bad, deferred_batches=True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("missing, ungrouped or failed batches accepted")
     submit = ("[ps5-submit-perf] calls=300 failures=0 warmup_frames=30 "
               "setup_ms=1 scanout_flush_ms=2 video_ms=0 command_ms=1 "
               "command_flush_ms=0 submit_wait_ms=1 cleanup_ms=1 total_ms=6\n")
@@ -122,6 +147,7 @@ if __name__ == "__main__":
     parser.add_argument("receipt", type=Path, nargs="?")
     parser.add_argument("--host", action="store_true")
     parser.add_argument("--submit-profile", action="store_true")
+    parser.add_argument("--deferred-batches", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -129,4 +155,5 @@ if __name__ == "__main__":
     else:
         if not args.receipt:
             parser.error("receipt required")
-        print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile), indent=2))
+        print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
+                                   args.deferred_batches), indent=2))
