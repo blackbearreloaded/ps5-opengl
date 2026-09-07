@@ -78,9 +78,9 @@ presentation took 15.834 ms (15.822 ms in post-flip vblank; queue-idle only
 0.004 ms), leaving 12.390 ms of other swap work. Busy unregister remained;
 close succeeded. This is a diagnostic result, not an optimization or new CTS campaign.
 
-Next target: coalesce eligible clear/draw work without losing resource ownership
-or CPU/GPU ordering. Internal blitter draws are deliberately excluded from the
-queue today; the clear also uses triangle-fan topology, outside ordinary batch
+This identified the next target: coalesce eligible clear/draw work without losing
+resource ownership or CPU/GPU ordering. The accepted SDK excludes internal blitter
+draws from the queue; its clear also uses triangle-fan topology, outside ordinary batch
 eligibility. In the accepted SDK, CPU buffer uploads/maps/unmaps unconditionally drain queued work.
 Simply allowing the clear would move its wait to the next upload. Any successor
 needs alias-aware resource-hazard checks, retained clear vertices/uniforms,
@@ -98,16 +98,42 @@ Clear batching and the accepted SDK are unchanged at this stage.
 
 - 2026-09-07 | buffer hazards | aa27dcf | pass: four modes retained 8+2 groups across unrelated uploads; pixels/hazards/teardown healthy | results/buffer-hazards-20260907
 
-The following candidate admits only the existing eligible **color-only** blitter
+The second successor (`fe337eb`) admits only the existing eligible **color-only** blitter
 clear into the deferred queue (including its four-vertex nonindexed fan). General
 blits, queries, mixed depth/stencil clears and presentation waits are unchanged.
-Gate it first with the 128x128 clear sweep/state/query/mixed-clear oracle, then the
-unchanged 30-second ImGui workload against the frozen 50.049 ms profile. Require
+Its 128x128 clear oracle passed the 256-value RGBA sweep (4,194,304 pixels), state
+restoration, active-query exclusion and mixed color/depth/stencil checks. The
+unchanged 30-second ImGui workload then passed 899 frames, both pixel probes and
+899 three-draw retirements: one clear plus two ordinary draws per frame. Audit with
 `summarize-imgui-profile.py RECEIPT --present-profile --clear-batches` so ordinary
 two-draw batching alone cannot be mistaken for combined clear/draw execution.
-Neither candidate inherits the accepted SDK's full CTS campaign.
+
+| Same 1080p ImGui workload | Instrumented baseline | Clear-batching candidate |
+| --- | ---: | ---: |
+| Measured frames after 30-frame warm-up | 572 | 869 |
+| Mean frame CPU wall time | 50.049 ms | 33.366 ms |
+| Observed throughput | 19.98 FPS | 29.97 FPS |
+| Mean clear CPU wall time | 17.769 ms | 1.856 ms |
+| Mean draw CPU wall time | 4.020 ms | 4.071 ms |
+| Mean swap CPU wall time | 28.225 ms | 27.404 ms |
+
+This bounded sample improves throughput by **~50%** and reduces frame time by
+**~33%**. The demo retains its 30 FPS pacing ceiling; this is not maximum GPU
+throughput or a game-FPS estimate. Candidate native presentation still took
+15.889 ms, including 15.878 ms of post-flip vblank waiting. No presentation guard
+was removed. Both successor gates closed cleanly, passed service checks and
+released their exact lock tokens. The ImGui run still reported busy unregister
+`80290009` followed by successful close; no fresh TV/controller check is claimed.
+
+These are source candidates with separately built SDKs. The accepted SDK is
+unchanged, and neither candidate inherits its full CTS campaign. Next: affected
+3D renderer, depth/texture and longer-session regressions, then frozen-candidate
+release validation before promotion. Remaining presentation time is a separate
+profiling target, not justification to remove waits without lifecycle evidence.
 
 - 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
+- 2026-09-07 | clear batching | fe337eb | pass: RGBA sweep, state/query/mixed-clear checks and teardown | results/deferred-clear-20260907
+- 2026-09-07 | ImGui coalescing | fe337eb | pass: 899 clear+two-draw groups, pixels, ~29.97 FPS, healthy teardown | results/deferred-clear-imgui-20260907
 
 ## OpenGL-only follow-up order
 
