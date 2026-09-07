@@ -95,12 +95,12 @@ static int draw(unsigned count, unsigned mode, float angle, int64_t times[3])
          glUniform1i(object_index, i);
          glDrawArrays(GL_TRIANGLES, 0, 36);
       }
-#ifdef PS5_NATIVE_CUBES_TEST
-      if (!check(ps5_egl_current_draw_status(NULL) == 0, "native draw")) return 0;
-#endif
    }
    /* One completion boundary per frame; never time unfinished work as FPS. */
    glFinish();
+#ifdef PS5_NATIVE_CUBES_TEST
+   if (!check(ps5_egl_current_draw_status(NULL) == 0, "native draw")) return 0;
+#endif
    times[2] = now_ns();
    return check(times[0] > 0 && times[1] > times[0] && times[2] > times[1] &&
                 glGetError() == GL_NO_ERROR, "draw");

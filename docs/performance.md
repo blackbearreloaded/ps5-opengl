@@ -557,6 +557,13 @@ tests/writes; paired native control/candidate must precede the unchanged cubes.
 
 - 2026-09-07 | G8 | c0659d4 | pass: paired depth control/batch, 41,472 pixels each, 65 matched chunks; 154.7–166.6 → 32.3–33.5 ms grouped (4.67–5.14x); healthy teardown/unlock | results/g8-depth-{control,batch}
 
+Cube successor moves the native draw-status query out of the per-object loop
+to after the existing frame `glFinish`: that query drains deferred work. Scene,
+shaders, 668 probes and 48 measured frames are unchanged. Require a matched
+synchronous control and `summarize-cubes.py --deferred-batches` candidate
+(108 chunks / 528 draws), not timing alone. The earlier `g8-depth-cubes` build
+was not run because offline inspection identified this measurement barrier.
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and

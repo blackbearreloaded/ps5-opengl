@@ -7,7 +7,7 @@ import re
 import statistics
 
 
-def summarize(text, host=False, uv=False):
+def summarize(text, host=False, uv=False, deferred_batches=False):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
@@ -42,9 +42,22 @@ def summarize(text, host=False, uv=False):
     require(not re.search(r"\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))", text), "Driver error")
     if not host:
         require(re.findall(r"\[pss-opengl-native\] gate completed status=(\d+)", text) == ["0"], "Native gate incomplete")
-    return dict(mode="host-reference" if host else "PS5", width=1920, height=1080,
+    result = dict(mode="host-reference" if host else "PS5", width=1920, height=1080,
                 oracle="UV/material coordinates" if uv else "depth/texture pixels",
                 note="Low-poly draw-call benchmark; full-frame CPU wall time with one glFinish and swap per frame. Not a GPU-throughput or full-game benchmark.", workloads=report)
+    if deferred_batches:
+        require(not host and not uv and modes == 2, "Batch audit requires the native textured comparison")
+        chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
+        native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
+        require(len(chunks) == text.count("[ps5-deferred-batch]") ==
+                len(native) == text.count("[ps5-multidraw-batch]"), "Missing or failed batch receipt")
+        require(all(count == draws == attempted and int(waits) < 2000
+                    for count, (draws, attempted, waits) in zip(chunks, native)), "Invalid batch retirement")
+        # Twelve renders per cell: two oracle frames, two warmups, eight timed.
+        expected = [1] * 12 + [8] * (12 + 48) + [1] * 36
+        require(list(map(int, chunks)) == expected, "Wrong grouping: expected 108 chunks / 528 draws")
+        result["deferred_batches"] = dict(chunks=len(chunks), draws=sum(expected), multi_draw_chunks=60)
+    return result
 
 
 def self_test():
@@ -72,6 +85,20 @@ def self_test():
                 continue
             raise AssertionError("Invalid benchmark accepted")
         if modes == 2:
+            batches = "".join(f"[ps5-multidraw-batch] draws={n} attempted={n} waits=1 result=0\n"
+                              f"[ps5-deferred-batch] draws={n} result=0\n"
+                              for n in [1] * 12 + [8] * 60 + [1] * 36)
+            assert summarize(text + batches, deferred_batches=True)["deferred_batches"]["draws"] == 528
+            for bad in (text, text + batches.replace("=8", "=1"),
+                        text + batches.replace("attempted=8", "attempted=7", 1),
+                        text + batches.replace("waits=1", "waits=2000", 1),
+                        text + batches.replace("result=0", "result=-1", 1),
+                        text + batches + "[ps5-deferred-batch] malformed"):
+                try:
+                    summarize(bad, deferred_batches=True)
+                except ValueError:
+                    continue
+                raise AssertionError("Invalid cube batches accepted")
             uv_text = text.replace("modes=2", "modes=2 diagnostic=uv")
             assert summarize(uv_text, uv=True)["oracle"] == "UV/material coordinates"
             for bad in (text.replace("mode=1 ", "mode=0 ", 1), text.replace("modes=2", "modes=3"),
@@ -89,6 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("receipt", nargs="?")
     parser.add_argument("--host", action="store_true")
     parser.add_argument("--uv", action="store_true", help="Audit UV diagnostic, never count it as texture validation")
+    parser.add_argument("--deferred-batches", action="store_true", help="Require the exact native grouped-draw receipt")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -96,4 +124,4 @@ if __name__ == "__main__":
     else:
         if not args.receipt:
             parser.error("receipt is required")
-        print(json.dumps(summarize(Path(args.receipt).read_text(), args.host, args.uv), indent=2))
+        print(json.dumps(summarize(Path(args.receipt).read_text(), args.host, args.uv, args.deferred_batches), indent=2))
