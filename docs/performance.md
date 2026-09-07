@@ -449,6 +449,17 @@ new batches, changed pools and the default path retain the flush. Submission,
 completion polling and lifetime guards are unchanged. Validate pixels, exact
 batch/flip counts, phase reduction and healthy teardown before claiming a gain.
 
+- 2026-09-07 | G5d | 4a4a17e | partial-pass: 1080p120 119.883173 FPS; 4K120 70.089393 FPS; pixels/health/restore passed | results/g5d-flush*-20260907
+
+The scanout-only change reduced 4K native scanout flushes from 3.459438 to
+1.151136 ms per frame, improving average FPS by about 17%, but not reaching 120.
+4K p95/p99 completed intervals were 17.189521/17.341554 ms; uneven pacing remains.
+The successor retains this change and skips CPU cache flushing of depth/stencil
+backing only when the encoded depth/stencil control is exactly zero, under the
+same opt-in GPU-present build flag. All nonzero controls, CPU transfer handling,
+staging, target validation/binding, completion and default-build behavior remain
+unchanged. Compare 1080p120 and 4K120 again before making a throughput claim.
+
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
 and retirement. Start with a focused matched 1080p FBO case and affected

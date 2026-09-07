@@ -7121,6 +7121,13 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          depth_data = depth->data + depth->depth_staging_offset;
          depth_allocation = depth->depth_staging_size;
       }
+#ifdef PS5_GPU_PRESENT_BATCH
+      /* Disabled depth AND stencil cannot access either backing buffer.
+       * Any enabled/unknown control retains both flushes before GPU use. */
+      const bool flush_depth_stencil = native.depth_control != 0;
+#else
+      const bool flush_depth_stencil = true;
+#endif
       printf("[ps5-gallium] depth-state format=%u address=%p enabled=%u write=%u func=%u control=%08x\n",
              depth->base.format, depth_data, dsa->depth_enabled,
              dsa->depth_writemask, dsa->depth_func,
@@ -7136,7 +7143,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          context->last_draw_status = -29;
          return;
       }
-      ps5_flush_gpu_data(depth_data, depth_allocation);
+      if (flush_depth_stencil)
+         ps5_flush_gpu_data(depth_data, depth_allocation);
       if (packed) {
          if (!ps5_agc_gate2_set_depth_stencil_buffer ||
              !depth->stencil_data ||
@@ -7145,8 +7153,9 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             context->last_draw_status = -17;
             return;
          }
-         ps5_flush_gpu_data(depth->stencil_data,
-                            depth->stencil_allocation_size);
+         if (flush_depth_stencil)
+            ps5_flush_gpu_data(depth->stencil_data,
+                               depth->stencil_allocation_size);
          printf("[ps5-gallium] stencil-state format=%u depth=%p/%zu stencil=%p/%zu control=%08x refmask=%08x refmask-bf=%08x\n",
                 depth->base.format, depth_data, depth_allocation,
                 depth->stencil_data, depth->stencil_allocation_size,

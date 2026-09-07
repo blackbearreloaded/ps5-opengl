@@ -200,3 +200,53 @@ with tempfile.TemporaryDirectory() as tmp:
                         str(c), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
 print("PASS: scanout flush retained at batch/CPU-access/pool boundaries; default path unchanged")
+
+screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()
+start = screen.index("#ifdef PS5_GPU_PRESENT_BATCH\n      /* Disabled depth AND stencil")
+policy = screen[start:screen.index("#endif", start) + len("#endif")] + "\n"
+start = screen.index("      if (flush_depth_stencil)")
+depth_flush = screen[start:screen.index("      if (packed)", start)]
+start = screen.index("         if (flush_depth_stencil)")
+stencil_flush = screen[start:screen.index('         printf(', start)]
+code = r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+static unsigned flushes;
+static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); ++flushes; }
+static void run(uint32_t control) {
+    struct { uint32_t depth_control; } native = {control};
+    (void)native;
+    char backing[2] = {0};
+    void *depth_data = backing;
+    size_t depth_allocation = 32;
+    struct { void *stencil_data; size_t stencil_allocation_size; } buffer = {backing + 1, 8}, *depth = &buffer;
+''' + policy + depth_flush + "\n{\n" + stencil_flush + "}\n" + r'''
+}
+int main(void) {
+    for (unsigned control = 0; control < 256; ++control) {
+        flushes = 0; run(control);
+#ifdef PS5_GPU_PRESENT_BATCH
+        assert(flushes == (control ? 2u : 0u));
+#else
+        assert(flushes == 2);
+#endif
+    }
+    /* Disable, CPU update, re-enable: active draw still flushes both buffers. */
+    flushes = 0; run(0); run(2); run(1); run(3);
+#ifdef PS5_GPU_PRESENT_BATCH
+    assert(flushes == 6);
+#else
+    assert(flushes == 8);
+#endif
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    c, exe = Path(tmp) / "depth_flush.c", Path(tmp) / "depth_flush"
+    c.write_text(code)
+    for flags in ([], ["-DPS5_GPU_PRESENT_BATCH=1"]):
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags,
+                        str(c), "-o", str(exe)], check=True)
+        subprocess.run([str(exe)], check=True)
+print("PASS: disabled depth/stencil flush elision; all nonzero controls and default retain flushing")
