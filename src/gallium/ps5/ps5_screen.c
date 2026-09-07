@@ -4228,6 +4228,7 @@ ps5_stage_color_surface(const struct pipe_surface *surface, bool to_staging)
    unsigned width;
    unsigned height;
    size_t tiled_layer_size;
+   size_t x_offsets[256];
    uint8_t *staging;
 
    if (!surface || !surface->texture)
@@ -4252,6 +4253,14 @@ ps5_stage_color_surface(const struct pipe_surface *surface, bool to_staging)
           resource->allocation_size - resource->render_staging_offset)
       return false;
 
+   /* All supported color equations repeat their X XOR within 256 pixels.
+    * Reuse those terms; add tile bases, XOR only the local 64 KiB address.
+    * Ownership, copies, bounds and cache maintenance remain unchanged. */
+   for (unsigned x = 0; x < MIN2(width, ARRAY_SIZE(x_offsets)); ++x) {
+      x_offsets[x] = ps5_tiled_color_offset(surface->format, x, 0, width);
+      if (x_offsets[x] == SIZE_MAX)
+         return false;
+   }
    if (!to_staging)
       ps5_flush_gpu_data(staging, resource->render_staging_size);
    for (unsigned layer = surface->first_layer;
@@ -4262,22 +4271,29 @@ ps5_stage_color_surface(const struct pipe_surface *surface, bool to_staging)
          (size_t)(layer - surface->first_layer) * tiled_layer_size;
 
       for (unsigned y = 0; y < height; ++y) {
-         for (unsigned x = 0; x < width; ++x) {
-            size_t linear = linear_base +
-               (size_t)y * resource->level_stride[surface->level] +
-               (size_t)x * format_size;
-            size_t tiled = tiled_base +
-               ps5_tiled_color_offset(surface->format, x, y, width);
+         for (unsigned first_x = 0; first_x < width;
+              first_x += ARRAY_SIZE(x_offsets)) {
+            size_t row = tiled_base +
+               ps5_tiled_color_offset(surface->format, first_x, y, width);
+            for (unsigned x = 0;
+                 x < MIN2(width - first_x, ARRAY_SIZE(x_offsets)); ++x) {
+               size_t linear = linear_base +
+                  (size_t)y * resource->level_stride[surface->level] +
+                  (size_t)(first_x + x) * format_size;
+               size_t tiled = (row & ~(size_t)0xffff) +
+                  (x_offsets[x] & ~(size_t)0xffff) +
+                  ((row ^ x_offsets[x]) & 0xffff);
 
-            if (linear > resource->size ||
-                resource->size - linear < format_size ||
-                tiled > resource->render_staging_size ||
-                resource->render_staging_size - tiled < format_size)
-               return false;
-            if (to_staging)
-               memcpy(staging + tiled, resource->data + linear, format_size);
-            else
-               memcpy(resource->data + linear, staging + tiled, format_size);
+               if (linear > resource->size ||
+                   resource->size - linear < format_size ||
+                   tiled > resource->render_staging_size ||
+                   resource->render_staging_size - tiled < format_size)
+                  return false;
+               if (to_staging)
+                  memcpy(staging + tiled, resource->data + linear, format_size);
+               else
+                  memcpy(resource->data + linear, staging + tiled, format_size);
+            }
          }
       }
    }
