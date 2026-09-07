@@ -1117,23 +1117,20 @@ static void runtime_video_report(const char *stage)
 #endif
 extern int sceVideoOutIsOutputSupported(int32_t, uint32_t, const void *, const void *, const void *);
 extern int sceVideoOutConfigureOutput(int32_t, uint32_t, const void *, const void *, const void *);
-extern int sceVideoOutVrrUnpegFromFixedRate(int32_t);
 static int runtime_output_needs_restore;
 
 static int runtime_video_configure_output(void)
 {
     int support = sceVideoOutIsOutputSupported(runtime_video_handle, 15, NULL, NULL, NULL);
-    int preset = -1, vrr = -1, result = support > 0 ? 0 : -1;
+    int preset = -1, result = support > 0 ? 0 : -1;
     if (result == 0) {
         /* Even a partially failed request must be restored before closing. */
         runtime_output_needs_restore = 1;
         result = preset = sceVideoOutConfigureOutput(runtime_video_handle, 15, NULL, NULL, NULL);
-        if (result == 0 && PS5_SCANOUT_FPS == 90)
-            result = vrr = sceVideoOutVrrUnpegFromFixedRate(runtime_video_handle);
     }
     printf("[ps5-output-mode] target=%u support=%08" PRIx32 " preset=%08" PRIx32
            " vrr=%08" PRIx32 " result=%08" PRIx32 "\n", (unsigned)PS5_SCANOUT_FPS,
-           (uint32_t)support, (uint32_t)preset, (uint32_t)vrr, (uint32_t)result);
+           (uint32_t)support, (uint32_t)preset, UINT32_MAX, (uint32_t)result);
     return result;
 }
 

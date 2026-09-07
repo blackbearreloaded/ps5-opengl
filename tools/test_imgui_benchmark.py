@@ -168,7 +168,7 @@ int main() {
             with self.assertRaises(ValueError):
                 profile(mode.replace(f"offset={size}", "offset=0") + status,
                         window_target=60, window_height=height, output_status=True)
-        for fps, refresh_id in ((90, 35), (120, 13)):
+        for fps, refresh_id in ((90, 13), (120, 13)):
             frames = fps * 30
             hfr = text.split("[ps5-multidraw-batch]", 1)[0]
             for old, new in (("target=60", f"target={fps}"), ("1800", str(frames)),
@@ -182,8 +182,7 @@ int main() {
             hfr += ("[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0\n"
                     "[ps5-deferred-batch] draws=3 result=0\n") * (frames + 30)
             hfr += "[ps5-output-register] width=1920 height=1080 offset=10485760 result=00000000\n"
-            hfr += f"[ps5-output-mode] target={fps} support=00000001 preset=00000000 " \
-                   f"vrr={'00000000' if fps == 90 else 'ffffffff'} result=00000000\n"
+            hfr += "[ps5-output-mode] target=120 support=00000001 preset=00000000 vrr=ffffffff result=00000000\n"
             hfr += "[ps5-output-restore] result=00000000 wait=00000000\n"
             for stage, mode_id in (("warmup", refresh_id), ("end", refresh_id), ("restored", 3)):
                 hfr += f"[ps5-output] stage={stage} render_width=1920 render_height=1080 " \
@@ -192,9 +191,11 @@ int main() {
             report = profile(hfr, window_target=fps)
             self.assertTrue(report["window_benchmark"]["target_met"])
             self.assertTrue(report["videoout_status"]["normal_output_restored"])
+            self.assertEqual(report["videoout_status"]["application_paced_on_fixed_refresh"], fps == 90)
             self.assertFalse(report["videoout_status"]["physical_output_independently_verified"])
             for old, new in (("support=00000001", "support=00000000"),
                              ("support=00000001", "support=ffffffff"), ("preset=00000000", "preset=ffffffff"),
+                             ("vrr=ffffffff", "vrr=8029001c"),
                              ("wait=00000000", "wait=ffffffff"), ("stage=restored", "stage=end"),
                              (f"refresh_id={refresh_id}", "refresh_id=3"),
                              ("[ps5-output-mode]", "[missing-output-mode]"),

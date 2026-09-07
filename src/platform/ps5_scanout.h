@@ -33,7 +33,7 @@
 #ifndef PS5_SCANOUT_FPS
 #define PS5_SCANOUT_FPS 60
 #endif
-#if PS5_SCANOUT_FPS != 60 && PS5_SCANOUT_FPS != 90 && PS5_SCANOUT_FPS != 120
+#if PS5_SCANOUT_FPS != 60 && PS5_SCANOUT_FPS != 120
 #error Unsupported PS5 presentation rate
 #endif
 #define PS5_SCANOUT_TILED_BYTES \

@@ -2,7 +2,6 @@
 from pathlib import Path
 import subprocess
 import json
-import re
 import sys
 import tempfile
 import unittest
@@ -115,8 +114,8 @@ int main(void) {
 #include <stdio.h>
 #include "ps5_scanout.h"
 #define PS5_NATIVE_TITLE_RUNTIME 1
-static int runtime_video_handle = 7, support = 1, preset, vrr, restore, wait_result;
-static int presets, vrr_calls, restores, waits;
+static int runtime_video_handle = 7, support = 1, preset, restore, wait_result;
+static int presets, restores, waits;
 static int wait_vblank(int h) { assert(h == 7); ++waits; return wait_result; }
 static struct { int (*wait_vblank)(int); } runtime_video_api = { wait_vblank };
 ''' + body + r'''
@@ -128,35 +127,32 @@ int sceVideoOutConfigureOutput(int32_t h, uint32_t type, const void *a, const vo
     if (type == 15) { ++presets; return preset; }
     assert(type == 1); ++restores; return restore;
 }
-int sceVideoOutVrrUnpegFromFixedRate(int32_t h) { assert(h == 7); ++vrr_calls; return vrr; }
 int main(void) {
     for (support = -1; support <= 0; ++support) {
         assert(runtime_video_configure_output() != 0 && !runtime_output_needs_restore);
         assert(runtime_video_restore_output() == 0 && !presets && !restores && !waits);
     }
     support = 1; preset = -2;
-    assert(runtime_video_configure_output() == -2 && runtime_output_needs_restore && !vrr_calls);
+    assert(runtime_video_configure_output() == -2 && runtime_output_needs_restore);
     assert(runtime_video_restore_output() == 0 && !runtime_output_needs_restore && waits == 2);
-    preset = 0; vrr = -3;
-    assert(runtime_video_configure_output() == (PS5_SCANOUT_FPS == 90 ? -3 : 0));
-    assert(runtime_output_needs_restore && vrr_calls == (PS5_SCANOUT_FPS == 90));
+    preset = 0; assert(runtime_video_configure_output() == 0 && runtime_output_needs_restore);
     restore = -4; assert(runtime_video_restore_output() == -4 && runtime_output_needs_restore);
     restore = 0; wait_result = -5;
     assert(runtime_video_restore_output() == -5 && runtime_output_needs_restore);
     wait_result = 0; assert(runtime_video_restore_output() == 0 && !runtime_output_needs_restore);
-    vrr = 0; assert(runtime_video_configure_output() == 0 && runtime_output_needs_restore);
+    assert(runtime_video_configure_output() == 0 && runtime_output_needs_restore);
     assert(runtime_video_restore_output() == 0 && !runtime_output_needs_restore);
     int previous = restores; assert(runtime_video_restore_output() == 0 && restores == previous);
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
             executable = str(Path(tmp) / "hfr")
-            for fps in (90, 120):
+            for fps in (120,):
                 subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c", "-",
                                 "-I" + str(ROOT / "src/platform"), f"-DPS5_SCANOUT_FPS={fps}", "-o", executable],
                                input=code, text=True, check=True)
                 subprocess.run([executable], check=True, capture_output=True)
-            for fps in (0, 30, 91, 121):
+            for fps in (0, 30, 90, 91, 121):
                 result = subprocess.run(["cc", "-x", "c", "-", "-I" + str(ROOT / "src/platform"),
                                          f"-DPS5_SCANOUT_FPS={fps}", "-o", executable],
                                         input='#include "ps5_scanout.h"\nint main(void) { return 0; }',
@@ -178,14 +174,3 @@ int main(void) {
             subprocess.run([sys.executable, "-", str(path)], input=body, text=True, check=True)
             actual = json.loads(path.read_text())
         self.assertEqual(actual, original | {"attribute3": 0x80040})
-
-    def test_videoout_import_stub(self):
-        # Link-only symbol coverage, not alternative implementations of system APIs.
-        source = (ROOT / "src/platform/ps5_agc_native_runtime.c").read_text()
-        required = set(re.findall(r"extern (?:int|void) (sceVideoOut\w+)\(", source))
-        with tempfile.TemporaryDirectory() as tmp:
-            library = str(Path(tmp) / "libSceVideoOut.so")
-            subprocess.run(["cc", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
-                            str(ROOT / "native-app/videoout_link_stub.c"), "-o", library], check=True)
-            symbols = subprocess.check_output(["nm", "-D", "--defined-only", library], text=True)
-        self.assertEqual(set(re.findall(r"\b(sceVideoOut\w+)$", symbols, re.M)), required)

@@ -106,7 +106,7 @@ class RuntimeConfigTest(unittest.TestCase):
                                       ("-DPS5_SCANOUT_HEIGHT=2160", 4),
                                       ("-DPS5_SCANOUT_HEIGHT=2160", 4), ("", 5),
                                       ("-DPS5_SCANOUT_FPS=120", 6),
-                                      ("-DPS5_SCANOUT_FPS=120", 6), ("-DPS5_SCANOUT_FPS=90", 7), ("", 8)):
+                                      ("-DPS5_SCANOUT_FPS=120", 6), ("-DPS5_SCANOUT_FPS=60", 7), ("", 8)):
                 subprocess.run(["make", "-s", "PS5_OPENGL_RUNTIME_DEFINES=" + defines], cwd=work, check=True)
                 self.assertEqual(len((work / "count").read_text().splitlines()), expected)
             (work / "ps5_scanout.h").write_text("/* changed layout */\n")

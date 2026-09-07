@@ -350,12 +350,13 @@ accepted SDK is unchanged; this candidate has not received a new CTS campaign.
 
 - 2026-09-07 | G5b | d0abe47 | pass: 6/6 matched 30/60 FPS cases, 12 probes, healthy teardown; 6/12 matrix complete | results/scanout*-20260907
 
-G5c adds opt-in `PS5_SCANOUT_FPS=90|120` to each resolution-specific SDK.
+G5c adds opt-in `PS5_SCANOUT_FPS=120` to each resolution-specific SDK.
 The profiled native ImGui window builder selects the matching ordinary HFR
 title metadata (`attribute3=0x80040`); the source/default metadata remains unchanged.
-VideoOut support is checked before requesting high refresh. Target 90 additionally
-requests variable-refresh operation and uses the existing absolute-deadline pacer.
-Target 120 retains unpaced, completion-checked swaps. No console Settings changes,
+VideoOut support is checked before requesting high refresh. Both application targets
+use the verified fixed 120 Hz output: target 90 uses the existing absolute-deadline
+pacer; target 120 retains unpaced, completion-checked swaps. This is a 90 FPS
+application measurement on a 120 Hz output, not a native 90 Hz display claim. No console Settings changes,
 new GPU commands, extra measured-frame readbacks or weakened retirement checks.
 
 After drain/unregister, restore ordinary output before close, wait two vblanks
@@ -369,7 +370,14 @@ Freeze and validate 1080p120 first, then 1080p90, before larger render surfaces.
 Each case measures 30 seconds after 30 warm-up frames, using one bounded, locked
 PPSA99005 cycle and healthy teardown. FPS misses are benchmark outcomes, not false
 passes; unsupported modes and lifecycle/health failures stop the affected hardware
-path for offline analysis. The six new combinations are not validated yet.
+path for offline analysis. The six new combinations are not all validated yet.
+
+- 2026-09-07 | G5c | 29fde32 | pass: 1080p120 at 119.878624 FPS, output 119.88/restored 59.94, healthy teardown | results/hfr1080-120-20260907
+- 2026-09-07 | G5c | 4f1dd3e | failed: VRR request 0x8029001c before registration/frames; restored and closed healthy | results/hfr1080-90-20260907
+
+The VRR path is removed; do not retry it or change console Settings for this
+benchmark. The 90 FPS successor reuses the frozen, proven 120 Hz SDK and metadata,
+changing only the application's pacing. This also removes the extra VRR import stub.
 
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards

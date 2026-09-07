@@ -251,10 +251,10 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
                                r"preset=([0-9a-f]{8}) vrr=([0-9a-f]{8}) result=([0-9a-f]{8})$", text, re.M)
             require(len(modes) == text.count("[ps5-output-mode]") == 1, "missing/duplicate HFR request")
             target, support, preset, vrr, result = modes[0]
-            require(int(target) == window_target and 0 < int(support, 16) < 0x80000000 and
-                    preset == result == "00000000" and vrr == ("00000000" if window_target == 90 else "ffffffff"),
+            require(int(target) == 120 and 0 < int(support, 16) < 0x80000000 and
+                    preset == result == "00000000" and vrr == "ffffffff",
                     "HFR support/configuration failed or mismatched")
-            require(refresh is not None and refresh >= window_target * 0.99, "requested HFR output is unverified")
+            require(refresh is not None and refresh >= 120 * 0.99, "requested HFR output is unverified")
             require(text.count("[ps5-output-restore]") == 1 and
                     re.findall(r"^\[ps5-output-restore\] (.+)$", text, re.M) ==
                     ["result=00000000 wait=00000000"], "HFR restoration failed or missing")
@@ -264,6 +264,8 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
                     all(0 < restored[k] <= 8192 for k in keys[:4]), "normal output restoration is unverified")
             report["videoout_status"]["high_refresh_request_verified"] = True
             report["videoout_status"]["normal_output_restored"] = True
+            report["videoout_status"]["requested_output_fps"] = 120
+            report["videoout_status"]["application_paced_on_fixed_refresh"] = window_target == 90
         # Status reports full/pane extents; do not equate render size with physical HDMI output.
     return report
 
