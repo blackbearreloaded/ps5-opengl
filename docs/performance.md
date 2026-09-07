@@ -313,7 +313,7 @@ and before close; failures/unknown modes stay explicit. No output reconfiguratio
 or metadata change is part of this step. Audit with `--window-target 60
 --window-height HEIGHT --output-status`. First revalidate 1080p60, then larger
 render surfaces in separate bounded cycles. API status is not an independent
-HDMI/TV measurement; 90/120 FPS remains disabled pending its own integration.
+HDMI/TV measurement; this G5b candidate only exercised 30/60 FPS.
 
 The coordinated-resolution candidate (`d0abe47`) passed **six matched cases**
 on the same firmware-6.02 console. Each uses the original ImGui scene, 30 warm-up
@@ -350,11 +350,26 @@ accepted SDK is unchanged; this candidate has not received a new CTS campaign.
 
 - 2026-09-07 | G5b | d0abe47 | pass: 6/6 matched 30/60 FPS cases, 12 probes, healthy teardown; 6/12 matrix complete | results/scanout*-20260907
 
-G5c next: integrate ordinary, title-owned 90/120 Hz presentation with a support
-check and restoration on close, without console Settings changes. Validate a
-frozen 1080p120 successor first, including reported output status and the same
-pixel/retirement checks, before expanding resolutions. Unsupported or unverified
-output modes must remain explicit; a faster render loop alone is not HFR proof.
+G5c adds opt-in `PS5_SCANOUT_FPS=90|120` to each resolution-specific SDK.
+The profiled native ImGui window builder selects the matching ordinary HFR
+title metadata (`attribute3=0x80040`); the source/default metadata remains unchanged.
+VideoOut support is checked before requesting high refresh. Target 90 additionally
+requests variable-refresh operation and uses the existing absolute-deadline pacer.
+Target 120 retains unpaced, completion-checked swaps. No console Settings changes,
+new GPU commands, extra measured-frame readbacks or weakened retirement checks.
+
+After drain/unregister, restore ordinary output before close, wait two vblanks
+and record a third status snapshot. Setup/restore failures remain errors; the
+auditor requires successful mode calls, stable high-refresh status and reported
+59.94 Hz restoration. Raw output dimensions remain separate from render dimensions
+and no independent HDMI timing is claimed. Audit as before with `--window-target
+90|120 --window-height HEIGHT`; native HFR targets automatically require output status.
+
+Freeze and validate 1080p120 first, then 1080p90, before larger render surfaces.
+Each case measures 30 seconds after 30 warm-up frames, using one bounded, locked
+PPSA99005 cycle and healthy teardown. FPS misses are benchmark outcomes, not false
+passes; unsupported modes and lifecycle/health failures stop the affected hardware
+path for offline analysis. The six new combinations are not validated yet.
 
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards

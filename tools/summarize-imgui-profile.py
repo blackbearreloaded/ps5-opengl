@@ -16,6 +16,8 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
 
     if window_target is not None and not host:
         present_profile = clear_batches = True
+        if window_target > 60:
+            output_status = True
     require(not re.search(r"^\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))",
                           text, re.M), "driver reported a failed operation")
     lines = re.findall(r"^\[ps5-imgui-perf\] (.+)$", text, re.M)
@@ -155,7 +157,7 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
                 "missing GPU-present frames or readback fallback")
         report["gpu_present_frames"] = int(gpu_present[0])
     if window_target is not None:
-        require(not soak and window_target in (30, 60) and window_height in (1080, 1440, 2160),
+        require(not soak and window_target in (30, 60, 90, 120) and window_height in (1080, 1440, 2160),
                 "unsupported window benchmark target")
         window_width = window_height * 16 // 9
         begins = re.findall(r"^\[ps5-imgui-window\] begin (.+)$", text, re.M)
@@ -214,9 +216,10 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
         require(registration == [f"width={window_width} height={window_height} offset={buffer_bytes} result=00000000"],
                 "display registration/double-buffer offset mismatch")
         lines = re.findall(r"^\[ps5-output\] (.+)$", text, re.M)
-        require(len(lines) == text.count("[ps5-output]") == 2, "missing/duplicate output snapshots")
+        stages = ("warmup", "end", "restored") if window_target > 60 else ("warmup", "end")
+        require(len(lines) == text.count("[ps5-output]") == len(stages), "missing/duplicate output snapshots")
         snapshots = []
-        for line, stage in zip(lines, ("warmup", "end")):
+        for line, stage in zip(lines, stages):
             pairs = [token.split("=", 1) for token in line.split()]
             require(all(len(p) == 2 for p in pairs), "malformed output fields")
             row = dict(pairs)
@@ -233,16 +236,34 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
                     "EGL/presenter display-buffer layout mismatch")
             snapshots.append(dict(stage=stage, resolution_rc=row["resolution_rc"], output_rc=row["output_rc"], **values))
         # Preserve raw status. Unknown/error/disagreeing status never proves an output mode.
-        first, last = snapshots
+        first, last = snapshots[:2]
         keys = ("full_width", "full_height", "pane_width", "pane_height", "refresh_id", "output_refresh_id")
         valid = all(s["resolution_rc"] == s["output_rc"] == "00000000" and
                     0 < s["full_width"] <= 8192 and 0 < s["full_height"] <= 8192 and
                     0 < s["pane_width"] <= 8192 and 0 < s["pane_height"] <= 8192 and
-                    s["refresh_id"] == s["output_refresh_id"] for s in snapshots)
+                    s["refresh_id"] == s["output_refresh_id"] for s in snapshots[:2])
         stable = valid and all(first[k] == last[k] for k in keys)
         refresh = {3: 59.94, 13: 119.88, 35: 89.91}.get(last["refresh_id"]) if stable else None
         report["videoout_status"] = dict(snapshots=snapshots, stable_known_status=refresh is not None,
             reported_refresh_hz=refresh, physical_output_independently_verified=False)
+        if window_target > 60:
+            modes = re.findall(r"^\[ps5-output-mode\] target=(\d+) support=([0-9a-f]{8}) "
+                               r"preset=([0-9a-f]{8}) vrr=([0-9a-f]{8}) result=([0-9a-f]{8})$", text, re.M)
+            require(len(modes) == text.count("[ps5-output-mode]") == 1, "missing/duplicate HFR request")
+            target, support, preset, vrr, result = modes[0]
+            require(int(target) == window_target and 0 < int(support, 16) < 0x80000000 and
+                    preset == result == "00000000" and vrr == ("00000000" if window_target == 90 else "ffffffff"),
+                    "HFR support/configuration failed or mismatched")
+            require(refresh is not None and refresh >= window_target * 0.99, "requested HFR output is unverified")
+            require(text.count("[ps5-output-restore]") == 1 and
+                    re.findall(r"^\[ps5-output-restore\] (.+)$", text, re.M) ==
+                    ["result=00000000 wait=00000000"], "HFR restoration failed or missing")
+            restored = snapshots[2]
+            require(restored["resolution_rc"] == restored["output_rc"] == "00000000" and
+                    restored["refresh_id"] == restored["output_refresh_id"] == 3 and
+                    all(0 < restored[k] <= 8192 for k in keys[:4]), "normal output restoration is unverified")
+            report["videoout_status"]["high_refresh_request_verified"] = True
+            report["videoout_status"]["normal_output_restored"] = True
         # Status reports full/pane extents; do not equate render size with physical HDMI output.
     return report
 
@@ -382,7 +403,7 @@ if __name__ == "__main__":
     parser.add_argument("--present-profile", action="store_true")
     parser.add_argument("--clear-batches", action="store_true")
     parser.add_argument("--soak", action="store_true")
-    parser.add_argument("--window-target", type=int, choices=(30, 60))
+    parser.add_argument("--window-target", type=int, choices=(30, 60, 90, 120))
     parser.add_argument("--window-height", type=int, choices=(1080, 1440, 2160), default=1080)
     parser.add_argument("--output-status", action="store_true")
     parser.add_argument("--self-test", action="store_true")

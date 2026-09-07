@@ -1111,6 +1111,52 @@ static void runtime_video_report(const char *stage)
 }
 #endif
 
+#if PS5_SCANOUT_FPS > 60
+#ifndef PS5_NATIVE_TITLE_RUNTIME
+#error High refresh requires the native title runtime
+#endif
+extern int sceVideoOutIsOutputSupported(int32_t, uint32_t, const void *, const void *, const void *);
+extern int sceVideoOutConfigureOutput(int32_t, uint32_t, const void *, const void *, const void *);
+extern int sceVideoOutVrrUnpegFromFixedRate(int32_t);
+static int runtime_output_needs_restore;
+
+static int runtime_video_configure_output(void)
+{
+    int support = sceVideoOutIsOutputSupported(runtime_video_handle, 15, NULL, NULL, NULL);
+    int preset = -1, vrr = -1, result = support > 0 ? 0 : -1;
+    if (result == 0) {
+        /* Even a partially failed request must be restored before closing. */
+        runtime_output_needs_restore = 1;
+        result = preset = sceVideoOutConfigureOutput(runtime_video_handle, 15, NULL, NULL, NULL);
+        if (result == 0 && PS5_SCANOUT_FPS == 90)
+            result = vrr = sceVideoOutVrrUnpegFromFixedRate(runtime_video_handle);
+    }
+    printf("[ps5-output-mode] target=%u support=%08" PRIx32 " preset=%08" PRIx32
+           " vrr=%08" PRIx32 " result=%08" PRIx32 "\n", (unsigned)PS5_SCANOUT_FPS,
+           (uint32_t)support, (uint32_t)preset, (uint32_t)vrr, (uint32_t)result);
+    return result;
+}
+
+static int runtime_video_restore_output(void)
+{
+    if (!runtime_output_needs_restore)
+        return 0;
+    int result = sceVideoOutConfigureOutput(runtime_video_handle, 1, NULL, NULL, NULL);
+    int wait = 0;
+    for (unsigned i = 0; result == 0 && wait == 0 && i < 2; ++i)
+        wait = runtime_video_api.wait_vblank(runtime_video_handle);
+    printf("[ps5-output-restore] result=%08" PRIx32 " wait=%08" PRIx32 "\n",
+           (uint32_t)result, (uint32_t)wait);
+    if (result != 0 || wait != 0)
+        return result != 0 ? result : wait;
+    runtime_output_needs_restore = 0;
+#ifdef PS5_DRAW_PROFILE
+    runtime_video_report("restored");
+#endif
+    return 0;
+}
+#endif
+
 int ps5_agc_gate2_shutdown_present(void)
 {
     int unregister_rc = 0;
@@ -1140,6 +1186,13 @@ int ps5_agc_gate2_shutdown_present(void)
         if (unregister_rc == 0)
             runtime_video_registered = 0;
     }
+#if PS5_SCANOUT_FPS > 60
+    if (runtime_video_handle >= 0) {
+        int restore_rc = runtime_video_restore_output();
+        if (restore_rc != 0)
+            return restore_rc;
+    }
+#endif
     if (runtime_video_handle >= 0)
         close_rc = runtime_video_api.close(runtime_video_handle);
     if (runtime_video_handle >= 0)
@@ -1194,8 +1247,13 @@ static int runtime_video_acquire(const video_api_t *video,
             sceKernelUsleep(UINT32_C(500000));
     }
     runtime_video_api = *video;
-    if (runtime_video_handle < 0 ||
-        video->set_flip_rate(runtime_video_handle, 0) != 0)
+    if (runtime_video_handle < 0)
+        goto fail;
+#if PS5_SCANOUT_FPS > 60
+    if (runtime_video_configure_output() != 0)
+        goto fail;
+#endif
+    if (video->set_flip_rate(runtime_video_handle, 0) != 0)
         goto fail;
     video->set_attribute2(&attribute, VIDEO_OUT_PIXEL_FORMAT, 0,
                           DISPLAY_WIDTH, DISPLAY_HEIGHT, 0, 0, 0);

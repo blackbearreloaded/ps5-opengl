@@ -168,3 +168,38 @@ int main() {
             with self.assertRaises(ValueError):
                 profile(mode.replace(f"offset={size}", "offset=0") + status,
                         window_target=60, window_height=height, output_status=True)
+        for fps, refresh_id in ((90, 35), (120, 13)):
+            frames = fps * 30
+            hfr = text.split("[ps5-multidraw-batch]", 1)[0]
+            for old, new in (("target=60", f"target={fps}"), ("1800", str(frames)),
+                             ("1830", str(frames + 30)), ("1828", str(frames + 28)),
+                             ("fps=60.000000", f"fps={fps}.000000"),
+                             ("clear_ms=2 draw_ms=3", "clear_ms=1 draw_ms=1"),
+                             ("swap_ms=10 cpu_wall_ms=16", "swap_ms=5 cpu_wall_ms=8"),
+                             ("active_mean_ms=16 active_p50_ms=16 active_p95_ms=16.5 active_p99_ms=16.6",
+                              "active_mean_ms=8 active_p50_ms=8 active_p95_ms=8 active_p99_ms=8")):
+                hfr = hfr.replace(old, new)
+            hfr += ("[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0\n"
+                    "[ps5-deferred-batch] draws=3 result=0\n") * (frames + 30)
+            hfr += "[ps5-output-register] width=1920 height=1080 offset=10485760 result=00000000\n"
+            hfr += f"[ps5-output-mode] target={fps} support=00000001 preset=00000000 " \
+                   f"vrr={'00000000' if fps == 90 else 'ffffffff'} result=00000000\n"
+            hfr += "[ps5-output-restore] result=00000000 wait=00000000\n"
+            for stage, mode_id in (("warmup", refresh_id), ("end", refresh_id), ("restored", 3)):
+                hfr += f"[ps5-output] stage={stage} render_width=1920 render_height=1080 " \
+                       "buffer_bytes=10485760 resolution_rc=00000000 full_width=3840 full_height=2160 " \
+                       f"pane_width=3840 pane_height=2160 refresh_id={mode_id} output_rc=00000000 output_refresh_id={mode_id}\n"
+            report = profile(hfr, window_target=fps)
+            self.assertTrue(report["window_benchmark"]["target_met"])
+            self.assertTrue(report["videoout_status"]["normal_output_restored"])
+            self.assertFalse(report["videoout_status"]["physical_output_independently_verified"])
+            for old, new in (("support=00000001", "support=00000000"),
+                             ("support=00000001", "support=ffffffff"), ("preset=00000000", "preset=ffffffff"),
+                             ("wait=00000000", "wait=ffffffff"), ("stage=restored", "stage=end"),
+                             (f"refresh_id={refresh_id}", "refresh_id=3"),
+                             ("[ps5-output-mode]", "[missing-output-mode]"),
+                             ("[ps5-output-restore] result=00000000", "[ps5-output-restore] result=ffffffff")):
+                with self.subTest(fps=fps, old=old), self.assertRaises(ValueError):
+                    profile(hfr.replace(old, new, 1), window_target=fps)
+            with self.assertRaises(ValueError):
+                profile(hfr + "\n[ps5-output-restore]malformed", window_target=fps)

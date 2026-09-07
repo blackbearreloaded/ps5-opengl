@@ -43,6 +43,13 @@ esac
     exit 2
 }
 test_name=${gate_object%.o}
+case ${PS5_IMGUI_WINDOW_TARGET:-60} in 30|60|90|120) ;; *) echo 'Invalid window target' >&2; exit 2 ;; esac
+if [[ ${PS5_IMGUI_WINDOW_TARGET:-60} -gt 60 ]]; then
+    [[ $gate_object == egl_public_core33_imgui_tv.o && ${PS5_IMGUI_PROFILE:-0} == 1 &&
+       ${PS5_IMGUI_WINDOW_BENCHMARK:-0} == 1 ]] || {
+        echo 'High-refresh metadata is restricted to the profiled window benchmark' >&2; exit 2;
+    }
+fi
 if [[ $test_name == egl_public_core33_submit_batch ]]; then
     [[ ${PS5_DRAW_BATCH_PROBE:-0} == 1 ]] || { echo 'Batch gate requires PS5_DRAW_BATCH_PROBE=1' >&2; exit 2; }
 elif [[ ${PS5_DRAW_BATCH_PROBE:-0} == 1 ]]; then
@@ -137,6 +144,19 @@ for headers in EGL GL KHR; do
     cp -a "$public_headers/$headers" "$app/include/"
 done
 cp "$root/native-app/param.json" "$app/sce_sys/param.json"
+if [[ ${PS5_IMGUI_WINDOW_TARGET:-60} -gt 60 ]]; then
+    # Ordinary high-resolution/HFR title metadata, matching the native VideoOut request.
+    python3 - "$app/sce_sys/param.json" <<'HFR_METADATA'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+metadata = json.loads(path.read_text())
+assert metadata["titleId"] == "PPSA99005" and metadata["attribute3"] == 0
+metadata["attribute3"] = 0x80040
+path.write_text(json.dumps(metadata, indent=2) + "\n")
+HFR_METADATA
+fi
 
 group="$app/vendor/libps5_opengl_group.a"
 {

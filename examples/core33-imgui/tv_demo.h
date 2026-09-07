@@ -14,9 +14,9 @@
 #ifndef PS5_IMGUI_WINDOW_TARGET
 #define PS5_IMGUI_WINDOW_TARGET 60
 #endif
-// Higher-rate output needs its own presenter integration and validation first.
-static_assert(PS5_IMGUI_WINDOW_TARGET == 30 || PS5_IMGUI_WINDOW_TARGET == 60,
-              "window benchmark currently supports only 30/60 FPS targets");
+static_assert(PS5_IMGUI_WINDOW_TARGET == 30 || PS5_IMGUI_WINDOW_TARGET == 60 ||
+              PS5_IMGUI_WINDOW_TARGET == 90 || PS5_IMGUI_WINDOW_TARGET == 120,
+              "unsupported window benchmark target");
 #endif
 
 #ifndef PS5_IMGUI_HOST_REFERENCE
@@ -260,7 +260,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
             // Swap retains the same GPU-completion/flip checks as the control.
             // Do not insert glFinish or readbacks into the measured render path.
 #ifndef PS5_IMGUI_HOST_REFERENCE
-            if (PS5_IMGUI_WINDOW_TARGET == 30)
+            if (PS5_IMGUI_WINDOW_TARGET == 30 || PS5_IMGUI_WINDOW_TARGET == 90)
                 ok = check(bench_wait(sample_start + (measured + 1.0) / PS5_IMGUI_WINDOW_TARGET),
                            "window benchmark pacing");
 #else

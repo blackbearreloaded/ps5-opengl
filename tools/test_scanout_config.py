@@ -1,6 +1,8 @@
 """Check shared display layout constants and the actual read-only status reporter."""
 from pathlib import Path
 import subprocess
+import json
+import sys
 import tempfile
 import unittest
 
@@ -99,3 +101,79 @@ int main(void) {
         self.assertIn("full_width=3840 full_height=2160 pane_width=1920 pane_height=1080", output[0])
         self.assertIn("resolution_rc=ffffffff full_width=0", output[1])
         self.assertIn("output_rc=fffffffe output_refresh_id=0", output[1])
+
+    def test_high_refresh_lifecycle(self):
+        source = (ROOT / "src/platform/ps5_agc_native_runtime.c").read_text()
+        start = source.index("#if PS5_SCANOUT_FPS > 60\n#ifndef PS5_NATIVE_TITLE_RUNTIME")
+        body = source[start:source.index("\nint ps5_agc_gate2_shutdown_present", start)]
+        code = r'''
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include "ps5_scanout.h"
+#define PS5_NATIVE_TITLE_RUNTIME 1
+static int runtime_video_handle = 7, support = 1, preset, vrr, restore, wait_result;
+static int presets, vrr_calls, restores, waits;
+static int wait_vblank(int h) { assert(h == 7); ++waits; return wait_result; }
+static struct { int (*wait_vblank)(int); } runtime_video_api = { wait_vblank };
+''' + body + r'''
+int sceVideoOutIsOutputSupported(int32_t h, uint32_t type, const void *a, const void *b, const void *c) {
+    assert(h == 7 && type == 15 && !a && !b && !c); return support;
+}
+int sceVideoOutConfigureOutput(int32_t h, uint32_t type, const void *a, const void *b, const void *c) {
+    assert(h == 7 && !a && !b && !c);
+    if (type == 15) { ++presets; return preset; }
+    assert(type == 1); ++restores; return restore;
+}
+int sceVideoOutVrrUnpegFromFixedRate(int32_t h) { assert(h == 7); ++vrr_calls; return vrr; }
+int main(void) {
+    for (support = -1; support <= 0; ++support) {
+        assert(runtime_video_configure_output() != 0 && !runtime_output_needs_restore);
+        assert(runtime_video_restore_output() == 0 && !presets && !restores && !waits);
+    }
+    support = 1; preset = -2;
+    assert(runtime_video_configure_output() == -2 && runtime_output_needs_restore && !vrr_calls);
+    assert(runtime_video_restore_output() == 0 && !runtime_output_needs_restore && waits == 2);
+    preset = 0; vrr = -3;
+    assert(runtime_video_configure_output() == (PS5_SCANOUT_FPS == 90 ? -3 : 0));
+    assert(runtime_output_needs_restore && vrr_calls == (PS5_SCANOUT_FPS == 90));
+    restore = -4; assert(runtime_video_restore_output() == -4 && runtime_output_needs_restore);
+    restore = 0; wait_result = -5;
+    assert(runtime_video_restore_output() == -5 && runtime_output_needs_restore);
+    wait_result = 0; assert(runtime_video_restore_output() == 0 && !runtime_output_needs_restore);
+    vrr = 0; assert(runtime_video_configure_output() == 0 && runtime_output_needs_restore);
+    assert(runtime_video_restore_output() == 0 && !runtime_output_needs_restore);
+    int previous = restores; assert(runtime_video_restore_output() == 0 && restores == previous);
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            executable = str(Path(tmp) / "hfr")
+            for fps in (90, 120):
+                subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c", "-",
+                                "-I" + str(ROOT / "src/platform"), f"-DPS5_SCANOUT_FPS={fps}", "-o", executable],
+                               input=code, text=True, check=True)
+                subprocess.run([executable], check=True, capture_output=True)
+            for fps in (0, 30, 91, 121):
+                result = subprocess.run(["cc", "-x", "c", "-", "-I" + str(ROOT / "src/platform"),
+                                         f"-DPS5_SCANOUT_FPS={fps}", "-o", executable],
+                                        input='#include "ps5_scanout.h"\nint main(void) { return 0; }',
+                                        text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+        shutdown = source[source.index("int ps5_agc_gate2_shutdown_present"):source.index("static int runtime_video_acquire")]
+        self.assertLess(shutdown.index("runtime_video_wait_idle()"), shutdown.index("runtime_video_restore_output()"))
+        self.assertLess(shutdown.index("runtime_video_restore_output()"), shutdown.index("runtime_video_api.close("))
+        acquire = source[source.index("static int runtime_video_acquire"):source.index("static int runtime_video_wait_idle(void)\n{")]
+        self.assertLess(acquire.index("runtime_video_configure_output()"), acquire.index("video->register_buffers2("))
+
+    def test_high_refresh_metadata(self):
+        builder = (ROOT / "tools/build-native-test-app.sh").read_text()
+        body = builder.split("<<'HFR_METADATA'\n", 1)[1].split("\nHFR_METADATA", 1)[0]
+        original = json.loads((ROOT / "native-app/param.json").read_text())
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "param.json"
+            path.write_text(json.dumps(original))
+            subprocess.run([sys.executable, "-", str(path)], input=body, text=True, check=True)
+            actual = json.loads(path.read_text())
+        self.assertEqual(actual, original | {"attribute3": 0x80040})

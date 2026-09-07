@@ -30,6 +30,12 @@
 
 #define PS5_SCANOUT_ALIGNMENT 0x200000u
 #define PS5_SCANOUT_POOL_BYTES (2u * PS5_SCANOUT_BYTES)
+#ifndef PS5_SCANOUT_FPS
+#define PS5_SCANOUT_FPS 60
+#endif
+#if PS5_SCANOUT_FPS != 60 && PS5_SCANOUT_FPS != 90 && PS5_SCANOUT_FPS != 120
+#error Unsupported PS5 presentation rate
+#endif
 #define PS5_SCANOUT_TILED_BYTES \
    (((PS5_SCANOUT_WIDTH + 127u) / 128u) * \
     ((PS5_SCANOUT_HEIGHT + 127u) / 128u) * 0x10000u)

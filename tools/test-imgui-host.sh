@@ -14,7 +14,7 @@ case ${1:-} in
     --tv-demo) demo_flags=(-DPS5_IMGUI_TV_DEMO) ;;
     --profile) demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_PROFILE) ;;
     --window-benchmark)
-        case ${PS5_IMGUI_WINDOW_TARGET:-60} in 30|60) ;; *) echo 'Invalid window target' >&2; exit 2 ;; esac
+        case ${PS5_IMGUI_WINDOW_TARGET:-60} in 30|60|90|120) ;; *) echo 'Invalid window target' >&2; exit 2 ;; esac
         demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_PROFILE -DPS5_IMGUI_WINDOW_BENCHMARK
                     -DPS5_IMGUI_WINDOW_TARGET=${PS5_IMGUI_WINDOW_TARGET:-60}) ;;
     --benchmark) demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_BENCHMARK) ;;
