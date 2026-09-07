@@ -1,6 +1,8 @@
 """Changing runtime flags must rebuild objects; identical flags must not."""
 from pathlib import Path
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -8,6 +10,26 @@ import unittest
 
 
 class RuntimeConfigTest(unittest.TestCase):
+    def test_cts_runtime_flags(self):
+        root = Path(__file__).resolve().parents[1]
+        builder = (root / "tools/build-native-cts-app.sh").read_text().replace("\\\n", " ")
+        command = shlex.split(re.search(r'^make -C .*? runtime$', builder, re.M)[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            for name in ("tests/ps5", "toolchain", "sdk/toolchain"):
+                (work / name).mkdir(parents=True)
+            shutil.copyfile(root / "tests/ps5/native-app.mk", work / "tests/ps5/native-app.mk")
+            for name in ("toolchain/ps5-opengl-core33.mk", "sdk/toolchain/prospero.mk"):
+                (work / name).touch()
+            command = [arg.replace("$root", str(work)).replace("$sdk", str(work / "sdk"))
+                       for arg in command[:-1]]
+            command += ["--eval=probe:;@echo $(PS5_OPENGL_RUNTIME_DEFINES)", "probe"]
+            for enabled in ("0", "1", "0"):
+                output = subprocess.check_output(command, text=True, env=dict(os.environ,
+                    PS5_MULTIDRAW_BATCH="0", PS5_DEFERRED_DRAW_BATCH=enabled))
+                self.assertEqual(output.split(), ["-DPS5_NATIVE_TITLE_RUNTIME=1"] +
+                    (["-DPS5_MULTIDRAW_BATCH=1", "-DPS5_DEFERRED_DRAW_BATCH=1"] if enabled == "1" else []))
+
     def test_native_compiler_identity(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as tmp:

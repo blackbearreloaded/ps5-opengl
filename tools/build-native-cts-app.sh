@@ -33,7 +33,6 @@ test -s "$runner"
 
 make -C "$root/tests/ps5" --no-print-directory -f native-app.mk -j8 \
     PS5_PAYLOAD_SDK="$sdk" \
-    PS5_OPENGL_RUNTIME_DEFINES='-DPS5_NATIVE_TITLE_RUNTIME=1' \
     runtime
 mapfile -t opengl_libraries < <(
     make -C "$root/tests/ps5" --no-print-directory -s -f native-app.mk \
