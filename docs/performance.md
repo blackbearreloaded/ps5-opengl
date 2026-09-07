@@ -611,6 +611,13 @@ do not weaken retirement checks. These are CPU-wall microbenchmark results, not
 game FPS. Both closes, native teardowns, health checks and exact-token releases
 passed. Frozen identities: `build/frozen/g7-cubes-profile-pair-20260907.md`.
 
+- 2026-09-07 | G7 | 163ba15 | partial-pass: batch depth-cache pixels/hazards/health pass, FPS unchanged 3.33/29.97; cache removed | results/g7-depth-cache-*-20260907
+
+Batch-local depth-flush reuse saved no completed-frame time; measured batch
+polling increased from 7.32 to 8.29 ms. The extra cache was dropped, with the
+experiment retained in history and `build/frozen/g7-depth-cache-20260907.md`.
+Next isolate mixed-clear ordering, preserving CPU/GPU hazards and exact pixels.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
