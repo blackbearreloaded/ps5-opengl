@@ -28,7 +28,7 @@ egl_public_core33_imgui_lifecycle.o: lifecycle.o $(filter-out main.o,$(objects))
 	ld.lld-18 -r -o $@ $^
 
 tv_main.o: main.cpp tv_demo.h
-	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO $(if $(filter 1,$(PS5_IMGUI_PROFILE)),-DPS5_IMGUI_PROFILE) -c -o $@ $<
+	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO $(if $(filter 1,$(PS5_IMGUI_PROFILE)),-DPS5_IMGUI_PROFILE) $(if $(filter 1,$(PS5_IMGUI_PROFILE_SOAK)),-DPS5_IMGUI_PROFILE_SOAK) -c -o $@ $<
 
 egl_public_core33_imgui_tv.o: tv_main.o $(filter-out main.o,$(objects))
 	ld.lld-18 -r -o $@ $^

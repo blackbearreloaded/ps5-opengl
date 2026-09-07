@@ -77,7 +77,11 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     int palette = 0, changes = 0;
     unsigned frame = 0;
 #ifdef PS5_IMGUI_PROFILE
+#ifdef PS5_IMGUI_PROFILE_SOAK
+    const double duration = 300.0;
+#else
     const double duration = 30.0;
+#endif
     double totals[5] = {};
     unsigned measured = 0;
 #ifdef PS5_IMGUI_HOST_REFERENCE

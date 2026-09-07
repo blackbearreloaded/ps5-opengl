@@ -147,13 +147,25 @@ The opt-in `PS5_GPU_PRESENT_BATCH=1` candidate uses Mesa's existing before-flush
 callback to append a flip to the final deferred batch. A completion marker after
 the flip preserves command ownership; the exact flip marker and empty queue are
 required before returning from swap. Readback-drained/empty batches retain the
-CPU-flip path. This is pending hardware evidence, not an accepted release default.
+CPU-flip path. Its first 30-second hardware run passed 1,795 frames, two pixel
+checks and 1,793 confirmed GPU flips: **16.683 ms/frame (~59.94 FPS)** after warm-up.
+Presentation took 0.008 ms; the GPU completion poll still took 10.334 ms, but the
+separate CPU flip no longer added another refresh interval. Clean teardown and
+service checks passed; busy unregister remains. This is not yet sustained-run
+evidence or an accepted release default.
+
+For the five-minute check, keep the same frozen SDK and add
+`PS5_IMGUI_PROFILE_SOAK=1` to the profiled demo build. Audit with
+`summarize-imgui-profile.py RECEIPT --present-profile --clear-batches --soak`:
+all eleven pixel probes, ten 30-second windows at 59–60.5 FPS, matching GPU/CPU
+flip coverage, frame accounting and clean lifecycle must pass.
 
 - 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
 - 2026-09-07 | clear batching | fe337eb | pass: RGBA sweep, state/query/mixed-clear checks and teardown | results/deferred-clear-20260907
 - 2026-09-07 | ImGui coalescing | fe337eb | pass: 899 clear+two-draw groups, pixels, ~29.97 FPS, healthy teardown | results/deferred-clear-imgui-20260907
 - 2026-09-07 | batch profile | f5e2a03 | pass: 869 warm frames, poll 11.247 ms/~10 sleeps, submit+suspend 0.017 ms; healthy teardown | results/batch-profile-20260907
 - 2026-09-07 | submit mode | 34e4fc1 | pass: pixels/lifecycle; no speedup (~29.97 FPS), opt-in probe removed | results/submit-mode-20260907
+- 2026-09-07 | GPU presentation | 18c4d65 | pass: ~59.94 FPS, 1,793 GPU flips, pixels, healthy teardown | results/gpu-present-20260907
 
 ## OpenGL-only follow-up order
 

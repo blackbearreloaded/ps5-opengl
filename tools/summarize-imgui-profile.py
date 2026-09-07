@@ -8,7 +8,7 @@ import re
 
 
 def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False,
-              clear_batches=False):
+              clear_batches=False, soak=False):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
@@ -33,7 +33,9 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
             "phase accounting mismatch")
     require(fields["status"] == "0", "profile failed")
     probes = re.findall(r"\[ps5-imgui-tv\] readback frame=(\d+) rgba=[0-9,]+ (\w+)", text)
-    require(probes == [("0", "PASS"), ("10", "PASS")], "pixel probes missing or failed")
+    require(probes[:2] == [("0", "PASS"), ("10", "PASS")] and
+            len(probes) == (11 if soak else 2) and all(p[1] == "PASS" for p in probes),
+            "pixel probes missing or failed")
     finished = re.findall(r"\[ps5-imgui-tv\] finished frames=(\d+) changes=\d+ status=(\d+)", text)
     require(finished == [(str(frames + warmup), "0")], "frame count or cleanup mismatch")
     require(re.findall(r"\[ps5-imgui\] finished status=(\d+)", text) == ["0"], "EGL cleanup failed")
@@ -41,6 +43,21 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
         require(re.findall(r"\[pss-opengl-native\] gate completed status=(\d+)", text) == ["0"],
                 "native gate incomplete")
     report = dict(mode="host-reference" if host else "PS5", frames=frames, warmup=warmup, **values)
+    if soak:
+        require(not host, "soak requires the native workload")
+        windows = re.findall(r"^\[ps5-imgui-tv\] visible frame=(\d+) elapsed=([0-9.]+) .+$", text, re.M)
+        require(len(windows) == text.count("[ps5-imgui-tv] visible") == 10,
+                "missing or duplicate 30-second cadence windows")
+        points = [(int(n), float(t)) for n, t in windows]
+        require(points[0] == (0, 0) and all(abs(t - i * 30) <= 0.15 for i, (_, t) in enumerate(points)),
+                "invalid cadence timestamps")
+        require([int(n) for n, _ in probes[2:]] == [n for n, _ in points[1:]],
+                "periodic pixel probes do not match cadence windows")
+        points.append((frames + warmup, 300.0))
+        fps = [(n1 - n0) / (t1 - t0) for (n0, t0), (n1, t1) in zip(points, points[1:])]
+        require(all(59.0 <= rate <= 60.5 for rate in fps) and values["cpu_wall_ms"] <= 1000 / 59.0,
+                "sustained 60 Hz performance target not met")
+        report["soak"] = dict(seconds=300, window_fps=fps, pixel_probes=len(probes))
     if deferred_batches or clear_batches:
         chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
         native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
@@ -130,8 +147,8 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
     if gpu_present:
         require(not host and len(gpu_present) == text.count("[ps5-gpu-present]") == 1,
                 "expected one GPU-presentation summary")
-        # Frames 0/10 read back before swap and must use the CPU-flip fallback.
-        require(int(gpu_present[0]) == frames + warmup - 2,
+        # Pre-swap readbacks drain the batch and must use the CPU-flip fallback.
+        require(int(gpu_present[0]) == frames + warmup - len(probes),
                 "missing GPU-present frames or readback fallback")
         report["gpu_present_frames"] = int(gpu_present[0])
     return report
@@ -150,6 +167,23 @@ def self_test():
     batch = "[ps5-multidraw-batch] draws=2 attempted=2 waits=1 result=0\n[ps5-deferred-batch] draws=2 result=0\n"
     gpu_present = "[ps5-gpu-present] frames=128\n"
     assert summarize(text + gpu_present)["gpu_present_frames"] == 128
+    soak_text = text.replace("frames=100", "frames=17970").replace("frames=130", "frames=18000")
+    soak_text = soak_text.replace("swap_ms=4 cpu_wall_ms=10", "swap_ms=10.683 cpu_wall_ms=16.683")
+    for i in range(10):
+        soak_text += f"[ps5-imgui-tv] visible frame={i * 1800} elapsed={i * 30:.1f} pad=0 changes=0 vertices=100\n"
+        if i:
+            soak_text += f"[ps5-imgui-tv] readback frame={i * 1800} rgba=45,215,245,255 PASS\n"
+    soak_text += "[ps5-gpu-present] frames=17989\n"
+    assert summarize(soak_text, soak=True)["soak"]["window_fps"] == [60.0] * 10
+    for bad in (soak_text.replace("frame=1800 elapsed=30.0", "frame=900 elapsed=30.0"),
+                soak_text.replace("readback frame=1800", "readback frame=1801"),
+                soak_text.replace("elapsed=270.0", "elapsed=275.0"),
+                soak_text.replace("frames=17989", "frames=17990")):
+        try:
+            summarize(bad, soak=True)
+        except ValueError:
+            continue
+        raise AssertionError("Invalid soak accepted")
     for bad in (gpu_present * 2, gpu_present.replace("128", "127"), gpu_present.replace("128", "130")):
         try:
             summarize(text + bad)
@@ -254,6 +288,7 @@ if __name__ == "__main__":
     parser.add_argument("--deferred-batches", action="store_true")
     parser.add_argument("--present-profile", action="store_true")
     parser.add_argument("--clear-batches", action="store_true")
+    parser.add_argument("--soak", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -262,4 +297,4 @@ if __name__ == "__main__":
         if not args.receipt:
             parser.error("receipt required")
         print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
-                                   args.deferred_batches, args.present_profile, args.clear_batches), indent=2))
+                                   args.deferred_batches, args.present_profile, args.clear_batches, args.soak), indent=2))
