@@ -546,6 +546,8 @@ host failure injection precedes a normal lifecycle run. This does not assume
 that draining removes the current-buffer busy warning, and introduces no blank
 flip, output-mode change or hardware fault injection.
 
+- 2026-09-07 | G7 | e6dc5ef | pass: three ImGui/EGL sessions, 18 frames/180 probes, all drain/close=0; unregister remains busy with idle queue; healthy teardown/unlock | results/g7-present-drain-lifecycle/001929
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and
