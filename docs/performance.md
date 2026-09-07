@@ -652,6 +652,12 @@ is still bounded; eligibility and completion guards are unchanged. Ordinary
 per-draw CPU preparation remains expensive. Frozen identities and receipts:
 `build/frozen/g7-batch32-20260907.md`. No new full CTS or SDK acceptance is implied.
 
+- 2026-09-07 | G7 | 1286c89 | partial-pass: 32-entry depth-cache correctness passed, ordinary 4.57→4.61 FPS (<1%); cache removed | results/g7-batch32-depth-cache-*-20260907
+
+The repeated cache experiment shifts CPU time into retirement waits again; its
+0.84% average change is not a convincing throughput improvement. Restore the
+validated 32-entry implementation and investigate remaining draw preparation.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
