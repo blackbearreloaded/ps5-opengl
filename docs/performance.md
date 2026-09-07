@@ -555,6 +555,8 @@ the four-mode gate with a far final draw that must be occluded, then disable
 depth for the existing hazards/query checks. Host oracle rejects missing depth
 tests/writes; paired native control/candidate must precede the unchanged cubes.
 
+- 2026-09-07 | G8 | c0659d4 | pass: paired depth control/batch, 41,472 pixels each, 65 matched chunks; 154.7–166.6 → 32.3–33.5 ms grouped (4.67–5.14x); healthy teardown/unlock | results/g8-depth-{control,batch}
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and
