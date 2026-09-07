@@ -47,6 +47,7 @@ test:
 	python3 tests/ps5/test_draw_profile.py
 	python3 tests/ps5/test_submit_batch_probe.py
 	python3 tests/ps5/test_multidraw_lifetime.py
+	python3 tests/ps5/test_submit_retirement.py
 	python3 tests/ps5/test_present_shutdown.py
 	python3 tests/ps5/test_transfer_staging.py
 	python3 tests/ps5/test_app_heap.py

@@ -7556,8 +7556,8 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
    printf("[ps5-gallium] multi-draw-batched draws=%u result=%d\n",
           num_draws, context->last_draw_status);
 release:
-   /* ponytail: one failed batch pins its bounded resources until process
-    * teardown; the native queue rejects further submissions after failure. */
+   /* ponytail: post-retirement cleanup failure pins bounded resources until
+    * process teardown; unconfirmed retirement terminates before returning. */
    if (retired) {
       for (unsigned slot = 0; slot < slots; ++slot)
          for (unsigned stage = 0; stage < 3; ++stage)

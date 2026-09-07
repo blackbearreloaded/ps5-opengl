@@ -71,12 +71,16 @@ print("PASS: receipt audit rejects unbatched, incomplete and failed runs")
 
 root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
+start = source.index("static void runtime_require_retirement(")
+guard = source[start:source.index("\n}\n", start) + 3]
 start = source.index("static struct runtime_batch_entry {")
 body = source[start:source.index("\n#endif", start)]
 code = r'''
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <setjmp.h>
 #include <string.h>
 #include "ps5_screen.h"
 typedef struct { void *words; uint32_t word_count; uint8_t flag, padding[3]; } agc_submit_description_t;
@@ -110,6 +114,14 @@ static int munmap(void *p, size_t n) {
 static int sceKernelReleaseDirectMemory(int64_t p, size_t n) {
     assert(p >= 0 && n == 64 && unmaps > releases); ++releases; return 0;
 }
+static jmp_buf exit_jump;
+static _Noreturn void check_exit(int status) {
+    assert(status == EXIT_FAILURE && !unmaps && !releases);
+    longjmp(exit_jump, 1);
+}
+#define _Exit check_exit
+''' + guard + r'''
+#undef _Exit
 ''' + body + r'''
 static void reset(void) {
     /* Only resets the host mock. Production intentionally has no reset API. */
@@ -150,8 +162,14 @@ int main(void) {
         if (failure == 2) fail_suspend = -1;
         if (failure == 3) { delay = 1; wrong_marker = 1; }
         if (failure == 4) fail_unmap = -1;
-        assert(ps5_agc_gate2_batch_end() != 0);
-        assert(runtime_batch_faulted && !releases);
+        int stopped = setjmp(exit_jump);
+        if (!stopped) {
+            assert(ps5_agc_gate2_batch_end() != 0);
+            assert(failure == 4); /* Only a post-retirement unmap error returns. */
+        } else {
+            assert(failure < 4);
+        }
+        assert(!releases && (runtime_batch_faulted != 0) == (failure == 4));
         assert(unmaps == (failure == 4 ? 1u : 0u));
         assert(submits == (failure == 0 ? 1u : failure == 1 ? 4u : 8u));
         assert(suspends == 1 && sleeps <= 2000);
@@ -166,7 +184,7 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
                     "-I" + str(root / "src/gallium/ps5"), str(c), "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
-print("PASS: staged ownership, 1..8 draws, all-marker retirement, shared timeout, failure quarantine")
+print("PASS: staged ownership, 1..8 draws, all-marker retirement, shared timeout, fail-stop before cleanup")
 
 # Exercise the real Gallium wrapper too: ownership must survive command staging.
 source = (root / "src/gallium/ps5/ps5_screen.c").read_text()

@@ -48,8 +48,11 @@ that all gate-level imports are supplied by the native OpenGL runtime or PS5
 SDK stubs.
 
 Each run writes an unbuffered `/download0/pss-opengl.log` receipt. The managed
-runner retrieves it after teardown and accepts only `gate completed status=0`;
-failed gates remain in safe idle so teardown does not require a process abort.
+runner retrieves it after teardown and accepts only `gate completed status=0`.
+Ordinary failed gates remain in safe idle. A native GPU submission/suspend error
+or unconfirmed completion instead terminates the application before buffer
+cleanup or exit handlers can reuse potentially in-flight memory. This fail-stop
+path is tested with host mocks, never by deliberately faulting the console.
 
 Build the official bounded Khronos GL33 CTS runner into the same title ID with:
 

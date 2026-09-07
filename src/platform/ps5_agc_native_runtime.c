@@ -751,6 +751,20 @@ static uint64_t runtime_render_marker = (uint64_t)RENDER_MARKER;
 static unsigned runtime_present_count;
 static int runtime_agc_initialized;
 
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+static void runtime_require_retirement(int completed)
+{
+    if (completed)
+        return;
+    /* ponytail: fail-stop until device-loss recovery owns every GPU reference.
+     * Returning or running atexit handlers could free/reuse in-flight memory. */
+    fputs("[ps5-agc] submission retirement failed; terminating application before cleanup\n",
+          stderr);
+    fflush(stderr);
+    _Exit(EXIT_FAILURE);
+}
+#endif
+
 #ifdef PS5_MULTIDRAW_BATCH
 /* A batch is synchronous at the Gallium multi-draw boundary. The caller holds
  * the queue lock and retains all descriptors and referenced resources. */
@@ -825,12 +839,7 @@ int ps5_agc_gate2_batch_end(void)
     result |= waits == 2000;
     printf("[ps5-multidraw-batch] draws=%u attempted=%u waits=%u result=%d\n",
            runtime_batch_count, attempted, waits, result);
-    if (result) {
-        /* ponytail: bounded quarantine until process teardown, not guessed
-         * GPU-reset recovery. The caller must also retain its resource refs. */
-        runtime_batch_faulted = 1;
-        return -1;
-    }
+    runtime_require_retirement(result == 0);
     for (unsigned i = 0; i < runtime_batch_count; ++i) {
         struct runtime_batch_entry *entry = &runtime_batch_entries[i];
         if (munmap(entry->memory, entry->bytes) != 0 ||
@@ -3094,6 +3103,9 @@ int main(void)
             }
         }
         status[3] = *completion_marker;
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+        runtime_require_retirement(submit_rc == 0 && suspend_rc == 0 && waits < 2000);
+#endif
 #ifdef PS5_DRAW_BATCH_PROBE
         batch_wait_ns = os_time_get_nano() - batch_start;
 #endif
@@ -3502,7 +3514,7 @@ cleanup:
             framebuffer_start, FRAMEBUFFER_POOL_BYTES);
     if (memory)
         work_unmap_rc = munmap(memory, work_bytes);
-    if (work_start >= 0)
+    if (work_start >= 0 && work_unmap_rc == 0)
         work_release_rc = sceKernelReleaseDirectMemory(work_start, work_bytes);
 #if defined(AGC_RUNTIME_PACKAGES) && !defined(AGC_RUNTIME_DIAGNOSTICS)
     if (work_unmap_rc != 0 || work_release_rc != 0)
@@ -3544,5 +3556,5 @@ cleanup:
            batch_repeats, batch_wait_ns,
            result || work_unmap_rc || work_release_rc || batch_wait_ns <= 0);
 #endif
-    return result;
+    return result || work_unmap_rc || work_release_rc;
 }

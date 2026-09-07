@@ -55,6 +55,16 @@ The performance-branch cube passes shader setup and 180 rendered frames with an
 additional 8.3 MB malloc live. Larger budgets, exhaustive OOM recovery and general
 cross-module ownership contracts are not established by this check.
 
+## Unrecoverable GPU submission errors
+
+The performance candidate uses `_Exit(EXIT_FAILURE)` after a native submission
+or suspend error, or when completion cannot be confirmed within the existing
+bounded poll loop. It does not return to callers, release potentially in-flight
+buffers, or run application exit handlers. This is application fail-stop, not
+device-loss recovery or a console reset. Save important application state during
+normal operation; do not depend on exit handlers after a GPU failure. Fault-path
+tests run on the host; normal console regressions do not prove hardware recovery.
+
 ## Verify the interface
 
 ```sh
