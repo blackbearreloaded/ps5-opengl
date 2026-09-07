@@ -342,8 +342,8 @@ the same output mode. Frame-budget misses use the existing +0.25 ms tolerance
 and are not proof of dropped TV frames. These small-scene, presentation-limited
 results do not predict game FPS or GPU-only throughput.
 
-Six of twelve requested windowed combinations are now measured and meet their
-throughput targets. Raw receipts, lifecycle records and audited summaries are
+G5b measured the first six requested windowed combinations, all meeting their
+throughput targets; G5c below completes the other six. Raw receipts, lifecycle records and audited summaries are
 under `results/scanout{1080,1440,2160}-{30,60}-20260907`; frozen app/SDK hashes
 are in the matching `build/frozen/scanout*-20260907/manifest.md` files. The
 accepted SDK is unchanged; this candidate has not received a new CTS campaign.
@@ -370,7 +370,7 @@ Freeze and validate 1080p120 first, then 1080p90, before larger render surfaces.
 Each case measures 30 seconds after 30 warm-up frames, using one bounded, locked
 PPSA99005 cycle and healthy teardown. FPS misses are benchmark outcomes, not false
 passes; unsupported modes and lifecycle/health failures stop the affected hardware
-path for offline analysis. The six new combinations are not all validated yet.
+path for offline analysis.
 
 - 2026-09-07 | G5c | 29fde32 | pass: 1080p120 at 119.878624 FPS, output 119.88/restored 59.94, healthy teardown | results/hfr1080-120-20260907
 - 2026-09-07 | G5c | 4f1dd3e | failed: VRR request 0x8029001c before registration/frames; restored and closed healthy | results/hfr1080-90-20260907
@@ -378,6 +378,56 @@ path for offline analysis. The six new combinations are not all validated yet.
 The VRR path is removed; do not retry it or change console Settings for this
 benchmark. The 90 FPS successor reuses the frozen, proven 120 Hz SDK and metadata,
 changing only the application's pacing. This also removes the extra VRR import stub.
+
+#### Completed high-refresh window benchmark
+
+All six 90/120-target cases completed on the same firmware-6.02 console, using
+the original scene and 30 measured seconds after 30 warm-up frames. Source
+`8af2ac7` supplies the fixed-output successor; the two 1080p cases reuse its
+frozen, proven `29fde32` 120 Hz runtime. **Rendering checks passed in all six;
+three met their average-FPS targets.** Target attainment means at least 99% of
+the requested rate, not that every frame met its deadline.
+
+| Render size | Target FPS | Achieved FPS | Measured frames | p95 frame ms | p99 frame ms | Budget misses | FPS target met |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 1920x1080 | 90 | 89.985649 | 2,700 | 15.065488 | 15.625183 | 897 | Yes |
+| 1920x1080 | 120 | 119.878624 | 3,597 | 8.957439 | 9.086217 | 699 | Yes |
+| 2560x1440 | 90 | 89.953096 | 2,699 | 16.729819 | 16.869982 | 898 | Yes |
+| 2560x1440 | 120 | 96.753294 | 2,903 | 16.731341 | 16.880567 | 1,078 | No |
+| 3840x2160 | 90 | 59.941941 | 1,799 | 17.455897 | 17.687713 | 1,799 | No |
+| 3840x2160 | 120 | 59.941014 | 1,799 | 17.425107 | 17.701025 | 1,799 | No |
+
+All 12 warm-up pixel probes passed. The 15,677 total frames had exactly 15,677
+clear-plus-two-draw groups (47,031 draws) and 15,665 GPU flips; the other 12 frames
+used the intentional warm-up readback fallback. All six passed native/EGL/title
+teardown, post-health and exact-token release. The busy-unregister warning
+`0x80290009` remains; presenter close succeeded. These are bounded benchmark
+results, not a long-session stability claim.
+
+Both VideoOut status APIs reported stable full/pane extents of 3840x2160 and
+refresh IDs 13/13 (119.88 Hz) during every case, then 3/3 (59.94 Hz) after the
+checked restoration. The lower sizes are render resolutions, not separate
+verified HDMI modes. **90 FPS uses application pacing on fixed 120 Hz, not VRR
+or native 90 Hz**; its frame intervals are uneven. No screenshots, fresh
+controller check or independent TV/HDMI timing measurement were performed.
+Budget misses retain the +0.25 ms tolerance and are not proven dropped TV frames.
+
+Together with G5b, **12/12 windowed combinations are measured and pass rendering
+checks; 9/12 meet their average-FPS targets**. This small ImGui workload does not
+establish a GPU limit or predict 3D game FPS. The accepted SDK is unchanged and
+no new CTS campaign or release promotion is claimed. Local receipts and audited
+summaries are under `results/hfr*-20260907`; exact candidates and receipt hashes
+are indexed in `build/frozen/hfr-results-20260907.md`. The rejected VRR attempt
+above is excluded from these six measured cases, not erased from the history.
+
+- 2026-09-07 | G5c | 8af2ac7 | partial-pass: 6/6 rendered, 3/6 FPS targets met; restored output, healthy teardown | results/hfr*-20260907
+
+Next performance focus: the 4K120 profile spends 9.93 ms in clear/draw calls
+before a further 6.71 ms in swap, including 6.41 ms of batch polling. These are
+CPU-wall spans including waits, not GPU timestamps. Investigate per-frame
+clear/draw preparation and completion/presentation scheduling without weakening
+retirement checks; do not infer a hardware ceiling or rerun all twelve cases
+for each change. Retain 1080p120 as the fast control and 4K120 as the slow case.
 
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
