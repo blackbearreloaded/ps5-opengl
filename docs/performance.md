@@ -429,6 +429,15 @@ clear/draw preparation and completion/presentation scheduling without weakening
 retirement checks; do not infer a hardware ceiling or rerun all twelve cases
 for each change. Retain 1080p120 as the fast control and 4K120 as the slow case.
 
+G5d first profiles deferred draw preparation using the existing phase timestamps,
+without changing commands, flushes or waits. Require `--prepare-profile` with the
+window auditor: exactly three preparations per measured frame, valid phase sums,
+unchanged pixels/groups/flips and clean lifecycle. Measure the frozen 4K120 slow
+case before optimizing scanout cache maintenance; then compare the successor at
+1080p120 and 4K120. Only remove repeated work inside a proven ownership boundary;
+CPU writes/readbacks and retirement checks remain mandatory. No full matrix rerun
+or accepted-SDK promotion is implied by these focused experiments.
+
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
 and retirement. Start with a focused matched 1080p FBO case and affected

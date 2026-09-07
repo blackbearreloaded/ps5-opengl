@@ -894,6 +894,21 @@ static uint64_t runtime_present_profile_ns[3];
 static unsigned runtime_present_profile_calls, runtime_present_profile_failures;
 static uint64_t runtime_batch_profile_ns[4], runtime_batch_profile_sleeps;
 static unsigned runtime_batch_profile_calls, runtime_batch_profile_failures;
+static uint64_t runtime_prepare_profile_ns[5];
+static unsigned runtime_prepare_profile_calls, runtime_prepare_profile_failures;
+
+static void runtime_prepare_profile_record(const int64_t ticks[6], int result)
+{
+    for (unsigned i = 0; i < 6; ++i) {
+        if (result || ticks[i] <= 0 || (i && ticks[i] < ticks[i - 1])) {
+            ++runtime_prepare_profile_failures;
+            return;
+        }
+    }
+    for (unsigned i = 0; i < 5; ++i)
+        runtime_prepare_profile_ns[i] += ticks[i + 1] - ticks[i];
+    ++runtime_prepare_profile_calls;
+}
 
 static void runtime_batch_profile_record(const int64_t ticks[5], unsigned sleeps,
                                          int result)
@@ -988,6 +1003,22 @@ static void runtime_profile_report(void)
     memset(runtime_batch_profile_ns, 0, sizeof(runtime_batch_profile_ns));
     runtime_batch_profile_calls = runtime_batch_profile_failures = 0;
     runtime_batch_profile_sleeps = 0;
+    if (runtime_prepare_profile_calls || runtime_prepare_profile_failures) {
+        const double scale = runtime_prepare_profile_calls ?
+            1e-6 / runtime_prepare_profile_calls : 0;
+        uint64_t total = 0;
+        for (unsigned i = 0; i < 5; ++i)
+            total += runtime_prepare_profile_ns[i];
+        printf("[ps5-prepare-perf] calls=%u failures=%u warmup_frames=30 "
+               "setup_ms=%.6f scanout_flush_ms=%.6f video_ms=%.6f "
+               "command_ms=%.6f command_flush_ms=%.6f total_ms=%.6f\n",
+               runtime_prepare_profile_calls, runtime_prepare_profile_failures,
+               runtime_prepare_profile_ns[0] * scale, runtime_prepare_profile_ns[1] * scale,
+               runtime_prepare_profile_ns[2] * scale, runtime_prepare_profile_ns[3] * scale,
+               runtime_prepare_profile_ns[4] * scale, total * scale);
+    }
+    memset(runtime_prepare_profile_ns, 0, sizeof(runtime_prepare_profile_ns));
+    runtime_prepare_profile_calls = runtime_prepare_profile_failures = 0;
 }
 #define PS5_PROFILE_MARK(i) profile_ticks[i] = os_time_get_nano()
 #endif
@@ -2285,6 +2316,11 @@ int main(void)
 #ifdef PS5_DRAW_PROFILE
     int64_t profile_ticks[10] = {0};
     unsigned profile_sleeps = 0;
+#ifdef PS5_MULTIDRAW_BATCH
+    const int profile_preparation = runtime_present_count >= 30 && runtime_batch_active;
+#else
+    const int profile_preparation = 0;
+#endif
     const int profile_this_draw = runtime_present_count >= 30
 #ifdef PS5_MULTIDRAW_BATCH
                                  && !runtime_batch_active
@@ -3855,6 +3891,9 @@ cleanup:
 #endif
 #ifdef PS5_DRAW_PROFILE
     PS5_PROFILE_MARK(9);
+    if (profile_preparation)
+        runtime_prepare_profile_record(profile_ticks,
+                                       result || work_unmap_rc || work_release_rc);
     if (profile_this_draw)
         runtime_profile_record(profile_ticks, profile_sleeps,
                                result || work_unmap_rc || work_release_rc);

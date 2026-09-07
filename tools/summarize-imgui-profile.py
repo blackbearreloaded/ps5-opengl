@@ -9,7 +9,7 @@ import re
 
 def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False,
               clear_batches=False, soak=False, window_target=None, window_height=1080,
-              output_status=False):
+              output_status=False, prepare_profile=False):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
@@ -107,6 +107,28 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
         report["submission_per_call"] = dict(calls=calls, **timings)
         if "sleeps" in fields:
             report["submission_per_call"]["sleeps"] = int(fields["sleeps"])
+    prepare_lines = re.findall(r"^\[ps5-prepare-perf\] (.+)$", text, re.M)
+    if prepare_lines or prepare_profile:
+        require(not host and len(prepare_lines) == text.count("[ps5-prepare-perf]") == 1,
+                "expected one deferred preparation profile")
+        pairs = [token.split("=", 1) for token in prepare_lines[0].split()]
+        require(all(len(pair) == 2 for pair in pairs), "malformed preparation field")
+        fields = dict(pairs)
+        phases = ["setup_ms", "scanout_flush_ms", "video_ms", "command_ms", "command_flush_ms"]
+        require(len(fields) == len(pairs) and set(fields) ==
+                set(phases + ["calls", "failures", "warmup_frames", "total_ms"]),
+                "unexpected preparation fields")
+        calls = int(fields["calls"])
+        require(calls >= frames and fields["failures"] == "0" and fields["warmup_frames"] == "30",
+                "preparation count/failure/warmup mismatch")
+        if window_target is not None:
+            require(calls == 3 * frames, "window must prepare one clear and two draws per measured frame")
+        timings = {name: float(fields[name]) for name in phases + ["total_ms"]}
+        require(all(math.isfinite(v) and v >= 0 for v in timings.values()) and timings["total_ms"] > 0 and
+                abs(sum(timings[p] for p in phases) - timings["total_ms"]) <= 0.000004 and
+                timings["total_ms"] * calls / frames <= values["clear_ms"] + values["draw_ms"] + 0.00001,
+                "invalid preparation phase accounting")
+        report["preparation_per_call"] = dict(calls=calls, **timings)
     present_lines = re.findall(r"^\[ps5-present-perf\] (.+)$", text, re.M)
     if present_lines or present_profile:
         require(not host and len(present_lines) == 1 and
@@ -279,6 +301,26 @@ def self_test():
 [pss-opengl-native] gate completed status=0
 """
     assert summarize(text)["cpu_wall_ms"] == 10
+    preparation = ("[ps5-prepare-perf] calls=300 failures=0 warmup_frames=30 "
+                   "setup_ms=0.5 scanout_flush_ms=0.5 video_ms=0 command_ms=0.25 "
+                   "command_flush_ms=0.25 total_ms=1.5\n")
+    assert summarize(text + preparation, prepare_profile=True)["preparation_per_call"]["calls"] == 300
+    for bad in (text, text + preparation + preparation, text + preparation + "[ps5-prepare-perf]\n",
+                text + preparation.replace("calls=300", "calls=99"),
+                text + preparation.replace("calls=300", "calls=400"),
+                text + preparation.replace("failures=0", "failures=1"),
+                text + preparation.replace("warmup_frames=30", "warmup_frames=0"),
+                text + preparation.replace("setup_ms=0.5", "setup_ms=nan"),
+                text + preparation.replace("setup_ms=0.5", "setup_ms=-1"),
+                text + preparation.replace("setup_ms=0.5", "setup_ms=0.5 setup_ms=0.5"),
+                text + preparation.replace("setup_ms=0.5", "bad-field"),
+                text + preparation.replace("total_ms=1.5", "total_ms=2")):
+        try:
+            summarize(bad, prepare_profile=True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid preparation profile accepted")
     assert summarize(text.replace("\n", "\r\n"))["frames"] == 100
     batch = "[ps5-multidraw-batch] draws=2 attempted=2 waits=1 result=0\n[ps5-deferred-batch] draws=2 result=0\n"
     gpu_present = "[ps5-gpu-present] frames=128\n"
@@ -403,6 +445,7 @@ if __name__ == "__main__":
     parser.add_argument("--submit-profile", action="store_true")
     parser.add_argument("--deferred-batches", action="store_true")
     parser.add_argument("--present-profile", action="store_true")
+    parser.add_argument("--prepare-profile", action="store_true")
     parser.add_argument("--clear-batches", action="store_true")
     parser.add_argument("--soak", action="store_true")
     parser.add_argument("--window-target", type=int, choices=(30, 60, 90, 120))
@@ -417,4 +460,5 @@ if __name__ == "__main__":
             parser.error("receipt required")
         print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
                                    args.deferred_batches, args.present_profile, args.clear_batches, args.soak,
-                                   args.window_target, args.window_height, args.output_status), indent=2))
+                                   args.window_target, args.window_height, args.output_status,
+                                   args.prepare_profile), indent=2))
