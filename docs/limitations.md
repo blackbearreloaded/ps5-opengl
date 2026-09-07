@@ -25,9 +25,11 @@ distinct when reporting compatibility.
   CPU around each draw. Initial high-resolution ImGui FBO measurements are much
   slower; window throughput must not be generalized to render-to-texture workloads.
   The G7 CPU-copy optimization improves the matched 1080p FBO case from 3.54 to
-  14.98 FPS, still below 60. The synchronized textured-cube benchmark remains
-  about 10–32 FPS depending on draw count/instancing; normal swap-completed
-  3D profiling is pending. Neither result establishes a hardware ceiling.
+  14.98 FPS, still below 60. The later normal-swap 128-cube profile reaches
+  59.94 FPS with instancing after mixed-clear ordering, but only 3.53 FPS with
+  ordinary draws. It uses two tiny textures; neither result predicts game
+  performance or establishes a hardware ceiling. Ordinary submission/retirement
+  and broader render-to-texture optimization remain substantial work.
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.

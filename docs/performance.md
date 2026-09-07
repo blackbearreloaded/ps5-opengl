@@ -618,6 +618,28 @@ polling increased from 7.32 to 8.29 ms. The extra cache was dropped, with the
 experiment retained in history and `build/frozen/g7-depth-cache-20260907.md`.
 Next isolate mixed-clear ordering, preserving CPU/GPU hazards and exact pixels.
 
+### G7 mixed-clear 3D result
+
+- 2026-09-07 | G7 | 3f2254e | pass: 128 instanced cubes 29.97→59.94 FPS; 4.19M clear pixels, depth/hazards, 21464 retired draws, close/health | results/g7-mixed-clear-*-20260907
+
+Completing CPU depth/stencil writes before queueing the existing GPU color clear
+lets that clear share the following draw's retirement/presentation. Pixel loops,
+GPU commands and waits are unchanged. The matched instrumented 1080p profile
+retains 30 measured seconds per path, four pixel oracles and exact per-frame counts.
+
+| 128 textured cubes | Before | Mixed-clear ordering | Mean clear / submit / swap ms |
+| --- | ---: | ---: | ---: |
+| Ordinary draws | 3.330563 FPS | 3.525890 FPS | 4.88 / 263.92 / 14.81 |
+| Instanced draw | 29.969934 FPS | 59.940231 FPS | 4.88 / 1.47 / 10.33 |
+
+The candidate passes 1,905 measured frames, 2,052 probes and 21,464 retired draws
+in 4,177 independently checked batches, plus the clear sweep and depth/CPU-hazard
+gates. Checked close/native teardown and post-health pass. Instanced p99 is
+17.56 ms, so average 60-class throughput is not perfect frame pacing. Ordinary
+submission/retirement remains slow; this tiny-texture workload is not a full game
+or texture-bandwidth result. No new CTS acceptance or SDK promotion is implied.
+Frozen identities and receipts: `build/frozen/g7-mixed-clear-20260907.md`.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
