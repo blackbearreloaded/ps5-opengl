@@ -120,3 +120,44 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "scanout_flush_ms=2.000000" in output and "total_ms=6.000000" in output
     assert "[ps5-present-perf] calls=2 failures=5 warmup_frames=30 idle_ms=1.000000 flip_ms=2.000000 vblank_ms=3.000000 total_ms=6.000000" in output
 print("PASS: draw/present timing, warmup, call order, failures, invalid clocks, report/reset")
+
+# Compile the real once-only initialization with and without the opt-in mode.
+start = source.index("    if (runtime_agc_initialized)\n")
+init = source[start:source.index("\n#else\n    init_rc = agc.init(8);", start)]
+code = r'''
+#include <assert.h>
+#include <stdio.h>
+static int runtime_agc_initialized, init_error, mode_error, inits, modes;
+static int initialize(unsigned version) { assert(version == 8); ++inits; return init_error; }
+int sceAgcSetSubmitMode(int mode) { assert(mode == 1); ++modes; return mode_error; }
+static int run(void) {
+    const struct { int (*init)(unsigned); } agc = {initialize};
+    int init_rc;
+''' + init + r'''
+    return init_rc;
+}
+int main(void) {
+    init_error = -7;
+    assert(run() == -7 && !runtime_agc_initialized && !modes);
+    init_error = 0;
+#ifdef PS5_SUBMIT_MODE_PROBE
+    mode_error = -8;
+    assert(run() == -8 && !runtime_agc_initialized && modes == 1);
+    mode_error = 0;
+#endif
+    assert(run() == 0 && runtime_agc_initialized);
+    int before_init = inits, before_mode = modes;
+    assert(run() == 0 && inits == before_init && modes == before_mode);
+#ifndef PS5_SUBMIT_MODE_PROBE
+    assert(!modes);
+#endif
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    c, exe = Path(tmp) / "init.c", Path(tmp) / "init"
+    c.write_text(code)
+    for flags in ([], ["-DPS5_SUBMIT_MODE_PROBE=1"]):
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags,
+                        str(c), "-o", str(exe)], check=True)
+        subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
+print("PASS: submit-mode probe is opt-in, once-only, and fails before GPU work")

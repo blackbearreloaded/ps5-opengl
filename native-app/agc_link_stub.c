@@ -45,3 +45,4 @@ uint32_t *sceAgcDcbSetFlip(void *cb, uint32_t handle, int index,
     return handle || index || mode || argument ? cb : 0;
 }
 int sceAgcSuspendPoint(void) { return -1; }
+int sceAgcSetSubmitMode(int mode) { (void)mode; return -1; }

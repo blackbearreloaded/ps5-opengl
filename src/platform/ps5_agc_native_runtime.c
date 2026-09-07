@@ -24,6 +24,9 @@
 #if defined(PS5_MULTIDRAW_BATCH) && (!defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT) || defined(PS5_DRAW_BATCH_PROBE))
 #error "Multi-draw batching requires the native runtime without the repeat probe"
 #endif
+#if defined(PS5_SUBMIT_MODE_PROBE) && (!defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(PS5_DRAW_PROFILE))
+#error "Submit-mode probe requires the profiled native application"
+#endif
 #ifdef PS5_DRAW_BATCH_PROBE
 #if !defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT)
 #error "Batch probe requires the native submitting runtime"
@@ -2295,6 +2298,13 @@ int main(void)
         init_rc = 0;
     else {
         init_rc = agc.init(8);
+#ifdef PS5_SUBMIT_MODE_PROBE
+        if (init_rc == 0) {
+            extern int sceAgcSetSubmitMode(int);
+            init_rc = sceAgcSetSubmitMode(1);
+            printf("[ps5-submit-mode] mode=1 result=%d\n", init_rc);
+        }
+#endif
         if (init_rc == 0)
             runtime_agc_initialized = 1;
     }
