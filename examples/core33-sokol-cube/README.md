@@ -22,12 +22,15 @@ uniforms, pipeline state and draw calls are retained. Platform glue replaces the
 there is no interactive input. The software-Mesa host uses a single-buffered
 pbuffer with explicit front-buffer selection; the native window is unchanged.
 
-At frames 0/44/89/134/179, one RGBA8 readback is compared with independent CPU
+At frames 0/44/89/134/179, 17 RGBA8 scanline readbacks are compared with independent CPU
 ray/unit-box intersections using the intended transform. A 31x17 grid checks
 foreground face colors and background, excluding ambiguous cube-edge probes;
 color tolerance is two byte values. The host checks 2,596 pixels over five poses
 and rejects an intentionally erased cube. Readbacks do not prove TV scanout or
-input health. Native acceptance is pending.
+input health. The readback buffer is 7,680 bytes, not a full 8,294,400-byte image.
+The first native candidate aborted during GLSL built-in initialization after
+allocation failure, before drawing. Reducing the test's allocation is the next
+control; native acceptance and broader application-memory robustness remain pending.
 
 The sample is MIT-licensed by Andre Weissflog; its bundled vecmath is used under
 Mattias Gustavsson's MIT option. See [notices](../../THIRD_PARTY_NOTICES.md).

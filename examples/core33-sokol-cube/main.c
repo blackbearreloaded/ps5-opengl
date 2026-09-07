@@ -100,21 +100,24 @@ static void check_frame(void)
         glClear(GL_COLOR_BUFFER_BIT);
     }
 #endif
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     unsigned mismatches = 0, foreground = 0, background = 0, checked = 0;
-    for (int gy = 1; gy <= 17; ++gy) for (int gx = 1; gx <= 31; ++gx) {
-        int x = width * gx / 32, y = height * gy / 18;
-        int face = expected_face(inverse, x, y);
-        if (face == -2) continue;
-        if (face < 0) { ++background; face = 6; }
-        else { ++foreground; face_mask |= 1u << face; }
-        const unsigned char *actual = pixels + ((size_t)y * width + x) * 4;
-        for (int c = 0; c < 4; ++c) if (abs(actual[c] - colors[face][c]) > 2) {
-            if (mismatches < 4) printf("[ps5-sokol-cube] pixel=%d,%d face=%d c=%d got=%u expected=%u\n",
-                x, y, face, c, actual[c], colors[face][c]);
-            ++mismatches;
+    for (int gy = 1; gy <= 17; ++gy) {
+        int y = height * gy / 18;
+        glReadPixels(0, y, width, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        for (int gx = 1; gx <= 31; ++gx) {
+            int x = width * gx / 32;
+            int face = expected_face(inverse, x, y);
+            if (face == -2) continue;
+            if (face < 0) { ++background; face = 6; }
+            else { ++foreground; face_mask |= 1u << face; }
+            const unsigned char *actual = pixels + x * 4;
+            for (int c = 0; c < 4; ++c) if (abs(actual[c] - colors[face][c]) > 2) {
+                if (mismatches < 4) printf("[ps5-sokol-cube] pixel=%d,%d face=%d c=%d got=%u expected=%u\n",
+                    x, y, face, c, actual[c], colors[face][c]);
+                ++mismatches;
+            }
+            ++checked;
         }
-        ++checked;
     }
     int ok = check(!mismatches && foreground >= 20 && background >= 100 && glGetError() == GL_NO_ERROR, "rotation readback");
     ++probes;
@@ -172,7 +175,8 @@ int main(void)
     glDrawBuffer(GL_FRONT);
     glReadBuffer(GL_FRONT);
 #endif
-    pixels = malloc((size_t)width * height * 4);
+    // The oracle samples only 17 rows; do not compete with GLSL setup for 8 MiB.
+    pixels = malloc((size_t)width * 4);
     if (!check(pixels != NULL, "readback allocation")) goto done;
     printf("[ps5-sokol-cube] upstream=8afa83928ce1870efeb0d513e7c4dce4f5db7b3e GL=%s renderer=%s\n",
         glGetString(GL_VERSION), glGetString(GL_RENDERER));

@@ -158,6 +158,17 @@ EGL recreation; those are not implied by successful process restarts.
 
 - 2026-09-06 | G7 | 36ac25b | pass: shutdown-hardened SDK, ImGui 12 frames/120 probes across two clean launches; healthy teardown/unlock | results/g7-shutdown-imgui/195647 + relaunch/195831
 
+- 2026-09-06 | G7 | 0d7ed22 | failed: upstream cube aborts in GLSL built-in allocation before drawing; title released/services healthy/unlocked | results/g7-sokol-cube/202922
+
+The receipt reports internal allocation exhaustion and an IR-allocation assert;
+the local symbolized stack confirms built-in function construction, not a GPU
+timeout. No kernel panic appears in the captured log. The 8.3 MB full-image test
+buffer is unnecessary for its sparse oracle: the successor uses a 7.5 KiB scanline
+buffer with identical probe positions. This tests memory pressure without changing
+the SDK/renderer. Larger application allocations still need validation; this is
+not a demonstrated allocator-capacity limit or a general OOM fix. Resume hardware
+only after the owner confirms idle/input health following the app crash.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
