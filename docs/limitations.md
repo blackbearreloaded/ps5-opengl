@@ -39,9 +39,11 @@ readbacks. Broader stress/lifecycle work and release acceptance remain pending. 
   7.5 KiB scanline-buffer control passes 180 frames with unchanged SDK/shaders,
   supporting memory pressure as the trigger. A mapped caller buffer exposed a
   second heap allocation in driver transfer staging; moving large staging to CPU
-  mappings makes full-frame readback pass all 180 frames/2,596 probes. The CTS app
-  has a separate heap wrapper not yet shared by examples. General allocator
-  capacity, graceful OOM handling and larger application workloads remain open.
+  mappings makes full-frame readback pass all 180 frames/2,596 probes. Native
+  examples now share the existing CTS heap wrapper; the original 8.3 MB malloc
+  scenario also passes shader setup and the full cube oracle. This resolves the
+  two observed failures, not maximum capacity or graceful OOM recovery. The app
+  heap has a fixed 128 MiB process-lifetime budget; broader workloads remain open.
 - **Hardware:** the final campaign covers one research console, not every model
   or firmware. Earlier experiments do not expand the final candidate's scope.
 - **Builds:** source pins/patches are published. Historical executable hashes are

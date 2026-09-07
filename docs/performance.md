@@ -210,6 +210,13 @@ also acquires initialization state before reading non-atomic metadata. Heap
 capacity remains 128 MiB for process lifetime; this is not a general OOM-recovery
 claim, a new allocator implementation, or a change to the standalone SDK ABI.
 
+- 2026-09-06 | G7 | dd8d228 | pass: shared app heap, original 8.3 MB malloc cube completes shader setup/180 frames/2596 probes; clean teardown/health/unlock | results/g7-sokol-cube-app-heap/214126
+
+Both observed memory failures now have passing controls: driver staging for
+full-frame readback, and missing native-example heap integration for the live
+large allocation during shader setup. Next: same-process ImGui/EGL recreation
+with this app integration, then return to synchronization/performance work.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

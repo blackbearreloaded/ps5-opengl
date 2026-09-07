@@ -49,9 +49,11 @@ remains the default; this does not establish general application-heap robustness
 `PS5_SOKOL_HEAP_READBACK=1 make sokol-cube` restores the original 8,294,400-byte
 `malloc` before shader setup (mutually exclusive with mapped readback).
 Use `bash tools/test-sokol-cube-host.sh --heap` for its host oracle. The native
-builder now shares the CTS app's existing 128 MiB process-lifetime heap wrapper;
-hardware acceptance of this integration is pending. No allocator is added to the
-host reference or silently injected by the standalone installed graphics SDK.
+builder now shares the CTS app's existing 128 MiB process-lifetime heap wrapper.
+Native `dd8d228` passes shader setup, 180 frames and all 2,596 probes with this
+original large-malloc pattern. No allocator is added to the host reference or
+silently injected by the standalone installed graphics SDK. This is not maximum
+heap-capacity or exhaustive OOM-recovery validation.
 
 The sample is MIT-licensed by Andre Weissflog; its bundled vecmath is used under
 Mattias Gustavsson's MIT option. See [notices](../../THIRD_PARTY_NOTICES.md).

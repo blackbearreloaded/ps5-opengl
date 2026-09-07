@@ -51,9 +51,9 @@ builders do:
 ```
 
 Foreign pointers retain their original allocator; partial wrapping is unsafe.
-This integration is undergoing native-example validation on the performance
-branch. Larger budgets, exhaustive OOM recovery and cross-module ownership
-contracts are not established by the graphics test campaign.
+The performance-branch cube passes shader setup and 180 rendered frames with an
+additional 8.3 MB malloc live. Larger budgets, exhaustive OOM recovery and general
+cross-module ownership contracts are not established by this check.
 
 ## Verify the interface
 
