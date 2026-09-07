@@ -171,6 +171,16 @@ Busy unregister `80290009` remains with successful close. This establishes the
 60 FPS target for this 1080p ImGui workload, not arbitrary applications, a fresh
 TV/controller check or promotion of the opt-in runtime into the accepted SDK.
 
+An exact-byte 30-second control rerun after the FBO matrix reproduced
+**16.682328 ms/frame (~59.94 FPS)** across 1,765 measured frames, versus the
+original 16.682566 ms. The original `18c4d65` executable, libc and metadata were
+hash-verified locally and remotely; no rebuild or workload change occurred.
+Both pixel probes, all 1,795 clear+two-draw retirements, 1,793 GPU flips and
+native/EGL cleanup passed. Title layers were released, services were healthy,
+and the exact lock token was released. Busy unregister remains. This is the
+reproducible **windowed control** for further comparisons; the sampleable-FBO
+matrix below measures a different scene and storage/synchronization path.
+
 - 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
 - 2026-09-07 | clear batching | fe337eb | pass: RGBA sweep, state/query/mixed-clear checks and teardown | results/deferred-clear-20260907
 - 2026-09-07 | ImGui coalescing | fe337eb | pass: 899 clear+two-draw groups, pixels, ~29.97 FPS, healthy teardown | results/deferred-clear-imgui-20260907
@@ -178,6 +188,7 @@ TV/controller check or promotion of the opt-in runtime into the accepted SDK.
 - 2026-09-07 | submit mode | 34e4fc1 | pass: pixels/lifecycle; no speedup (~29.97 FPS), opt-in probe removed | results/submit-mode-20260907
 - 2026-09-07 | GPU presentation | 18c4d65 | pass: ~59.94 FPS, 1,793 GPU flips, pixels, healthy teardown | results/gpu-present-20260907
 - 2026-09-07 | sustained GPU presentation | 13b2db9 | pass: 300 s/~59.90 FPS, 11 pixel probes, ten cadence windows, healthy teardown | results/gpu-present-soak-20260907
+- 2026-09-07 | window control rerun | artifact 18c4d65 | pass: identical bytes, ~59.94 FPS, pixels/batches/flips, healthy teardown | results/window-control-repro-20260907
 
 ### Follow-up benchmark matrix
 
@@ -198,7 +209,7 @@ presentation cadence. Higher resolutions and 90/120 FPS are unverified targets;
 record unsupported display modes explicitly instead of counting repeated or
 dropped frames as successful presentation.
 
-G4 first measures completed **offscreen** ImGui rendering using the unchanged
+The initial G4 experiment measured completed **offscreen** ImGui rendering using the unchanged
 frozen GPU-presentation SDK. The EGL window is still fixed at 1080p, so the
 matrix uses RGBA8 FBOs and a fixed logical UI scaled to each resolution. Warm-up
 ends after 30 frames or one second (at least two frames), followed by 30 measured
@@ -255,12 +266,19 @@ receipt under `results/imgui-matrix-bounded-20260907`.
 
 - 2026-09-07 | FBO baseline | d4579e4 | pass: 12/12 correctness, 72 probes, 880 frames; 0/12 FPS targets met; clean lifecycle | results/imgui-matrix-bounded-20260907
 
-G5 next: keep eligible render targets GPU-resident and avoid unnecessary
-linear/tiled conversions, preserving sampling/readback, CPU-write hazards and
-retirement. Start with a focused matched 1080p FBO case and affected correctness
-checks; repeat the full matrix only after that hot path improves. Textured 3D,
-heavier workloads and actual high-resolution/high-refresh presentation remain
-unmeasured, separate follow-ups.
+G5 next: extend the **original windowed scene/path**, retaining the frozen
+1080p60 control above. First verify the same scene and render-only target layout
+at 1080p in any revised harness; do not repeat twelve cases until that control
+matches. Resolve supported output modes and presentation cadence before testing
+higher-resolution/high-refresh presentation. Use 30-second cases, freeze each
+candidate, and label unsupported modes and render-only throughput explicitly.
+
+GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
+linear/tiled conversions while preserving sampling/readback, CPU-write hazards
+and retirement. Start with a focused matched 1080p FBO case and affected
+correctness checks; do not use its results as the windowed control or rerun its
+full matrix before the slow path improves. Textured 3D and heavier workloads
+also remain unmeasured, separate follow-ups.
 
 ## OpenGL-only follow-up order
 
