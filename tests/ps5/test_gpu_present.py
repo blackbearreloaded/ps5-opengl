@@ -207,7 +207,7 @@ policy = screen[start:screen.index("#endif", start) + len("#endif")] + "\n"
 start = screen.index("      if (flush_depth_stencil)")
 depth_flush = screen[start:screen.index("      if (packed)", start)]
 start = screen.index("         if (flush_depth_stencil)")
-stencil_flush = screen[start:screen.index('         printf(', start)]
+stencil_flush = screen[start:screen.index(';', start) + 1] + "\n"
 code = r'''
 #include <assert.h>
 #include <stdbool.h>

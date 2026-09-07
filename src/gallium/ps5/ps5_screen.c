@@ -3033,10 +3033,12 @@ ps5_render_arena_allocate(struct ps5_screen *screen,
       pipe_resource_reference(&resource->render_pool_owner,
                               screen->render_pool);
       memset(resource->data, 0, size);
+#ifdef AGC_RUNTIME_DIAGNOSTICS
       printf("[ps5-gallium] shared-resource offset=%zu bytes=%zu first=%u count=%u alignment=%zu\n",
              PS5_RENDER_ARENA_OFFSET +
                 first * (size_t)PS5_RENDER_ARENA_SLOT_BYTES,
              size, first, slots, alignment);
+#endif
       return true;
    }
    return false;
@@ -7150,10 +7152,12 @@ ps5_draw_vbo_locked(struct pipe_context *base,
 #else
       const bool flush_depth_stencil = true;
 #endif
+#ifdef AGC_RUNTIME_DIAGNOSTICS
       printf("[ps5-gallium] depth-state format=%u address=%p enabled=%u write=%u func=%u control=%08x\n",
              depth->base.format, depth_data, dsa->depth_enabled,
              dsa->depth_writemask, dsa->depth_func,
              native.depth_control);
+#endif
       if (PS5_ENABLE_DYNAMIC_DEPTH_TARGET_CANDIDATE &&
           ps5_agc_gate2_set_depth_target_extents(
              depth_width, depth_height) != 0) {
@@ -7178,11 +7182,13 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          if (flush_depth_stencil)
             ps5_flush_gpu_data(depth->stencil_data,
                                depth->stencil_allocation_size);
+#ifdef AGC_RUNTIME_DIAGNOSTICS
          printf("[ps5-gallium] stencil-state format=%u depth=%p/%zu stencil=%p/%zu control=%08x refmask=%08x refmask-bf=%08x\n",
                 depth->base.format, depth_data, depth_allocation,
                 depth->stencil_data, depth->stencil_allocation_size,
                 native.stencil_control, native.stencil_refmask,
                 native.stencil_refmask_bf);
+#endif
          if (ps5_agc_gate2_set_depth_stencil_buffer(
                 depth_data, depth_allocation, depth->stencil_data,
                 depth->stencil_allocation_size, native.depth_control,

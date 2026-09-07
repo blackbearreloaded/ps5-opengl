@@ -1,11 +1,31 @@
 """The shared native logger must retain interleaved stdout and stderr."""
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
 
 
 class NativeLogTest(unittest.TestCase):
+    def test_routine_trace_policy(self):
+        source = (Path(__file__).resolve().parents[1] / "src/gallium/ps5/ps5_screen.c").read_text()
+        blocks = re.findall(r"#ifdef AGC_RUNTIME_DIAGNOSTICS\n.*?#endif", source, re.S)
+        self.assertEqual(len(blocks), 3)
+        for block in blocks:
+            self.assertEqual(block.count("printf("), 1)
+            self.assertNotIn("ps5_flush_gpu_data", block)
+            self.assertNotIn("last_draw_status", block)
+            source = source.replace(block, "")
+        for marker in ("shared-resource exhausted", "reject-clear",
+                       "queued presentation failed", "deferred batch cleanup failed"):
+            self.assertIn(marker, source)
+        for diagnostics in (False, True):
+            flags = ["-DAGC_RUNTIME_DIAGNOSTICS=1"] if diagnostics else []
+            result = subprocess.run(["cc", "-E", "-P", "-x", "c", *flags, "-"],
+                                    input="\n".join(blocks), text=True, capture_output=True, check=True)
+            for marker in ("shared-resource offset=", "depth-state format=", "stencil-state format="):
+                self.assertEqual(marker in result.stdout, diagnostics)
+
     def test_interleaved_streams(self):
         source = (Path(__file__).resolve().parents[1] / "native-app/runtime_shims.c").read_text()
         start = source.index("__attribute__((constructor))")
