@@ -4289,10 +4289,16 @@ ps5_stage_color_surface(const struct pipe_surface *surface, bool to_staging)
                    tiled > resource->render_staging_size ||
                    resource->render_staging_size - tiled < format_size)
                   return false;
-               if (to_staging)
-                  memcpy(staging + tiled, resource->data + linear, format_size);
+               uint8_t *dst = to_staging ? staging + tiled
+                                         : resource->data + linear;
+               const uint8_t *src = to_staging ? resource->data + linear
+                                               : staging + tiled;
+               /* ponytail: inline the measured four-byte hot path; other
+                * byte sizes retain memcpy until profiling justifies more. */
+               if (format_size == 4)
+                  memcpy(dst, src, 4);
                else
-                  memcpy(resource->data + linear, staging + tiled, format_size);
+                  memcpy(dst, src, format_size);
             }
          }
       }
