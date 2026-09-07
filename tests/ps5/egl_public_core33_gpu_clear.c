@@ -6,8 +6,9 @@
 #include <EGL/eglext.h>
 #include <GL/gl.h>
 
-#define WIDTH 64
-#define HEIGHT 32
+/* At the GPU-clear size boundary, so the oracle still exercises u_blitter. */
+#define WIDTH 128
+#define HEIGHT 128
 static uint8_t pixels[WIDTH * HEIGHT * 4];
 
 static int read_pixels(void)

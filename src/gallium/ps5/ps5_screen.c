@@ -70,6 +70,9 @@ _Static_assert(PIPE_LOGICOP_CLEAR == 0 && PIPE_LOGICOP_COPY == 12 &&
                "unexpected Gallium logic-operation order");
 
 #define PS5_DIRECT_ALIGNMENT 0x4000u
+#ifndef PS5_GPU_CLEAR_MIN_PIXELS
+#define PS5_GPU_CLEAR_MIN_PIXELS 16384u
+#endif
 #define PS5_RENDER_TARGET_BYTES 0xa00000u
 #ifndef PS5_RENDER_POOL_BYTES
 #define PS5_RENDER_POOL_BYTES (2u * PS5_RENDER_TARGET_BYTES)
@@ -8035,6 +8038,13 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        context->framebuffer.nr_cbufs != 1 || context->render_condition_query ||
        context->stream_output_target_count || context->active_occlusion_query ||
        context->active_primitives_generated_query || context->active_primitives_emitted_query)
+      return false;
+
+   /* Tiny clears cost less on the CPU than the measured ~16 ms GPU round trip.
+    * ponytail: conservative floor; tune PS5_GPU_CLEAR_MIN_PIXELS with paired
+    * measurements before extending the CPU preference to larger surfaces. */
+   if ((uint64_t)context->framebuffer.width * context->framebuffer.height <
+       PS5_GPU_CLEAR_MIN_PIXELS)
       return false;
 
    const struct pipe_surface *surface = &context->framebuffer.cbufs[0];

@@ -14,8 +14,10 @@ def audit(text):
     assert len(rows) == text.count("[ps5-batch-probe]") == 36, "Missing/extra/malformed GPU records"
     for i, (count, ns, result) in enumerate(rows):
         assert int(count) == (1, 2, 8)[i % 3] and int(ns) > 0 and result == "0", "Failed batch sample"
+    # Historical 64x32 probe and the 128x128 GPU-clear-boundary successor.
+    sweeps = re.findall(r"^\[ps5-gpu-clear\] rgba8-sweep=36 pixels=(\d+) PASS$", text, re.M)
+    assert sweeps in (["73728"], ["589824"]), "Missing/duplicate/wrong-size pixel oracle"
     for marker in (
-        "[ps5-gpu-clear] rgba8-sweep=36 pixels=73728 PASS",
         "[ps5-gpu-clear] completed=36 cleanup=1 result=0",
         "[pss-opengl-native] gate completed status=0",
     ):
@@ -93,8 +95,10 @@ with tempfile.TemporaryDirectory() as tmp:
 sample = "\n".join(f"[ps5-batch-probe] repeats={c} wait_ns=1000000 result=0" for c in (1, 2, 8) * 12)
 sample += "\n[ps5-gpu-clear] rgba8-sweep=36 pixels=73728 PASS\n[ps5-gpu-clear] completed=36 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
 assert audit(sample)[8]["median_wait_ms"] == 1
+assert audit(sample.replace("pixels=73728", "pixels=589824"))[8]["median_wait_ms"] == 1
 for bad in (sample.replace("wait_ns=1000000", "wait_ns=0", 1), sample.replace("repeats=8", "repeats=1", 1),
             sample.replace("result=0", "result=1", 1), sample.replace("cleanup=1", "cleanup=0"),
+            sample.replace("pixels=73728", "pixels=100"),
             sample + "[ps5-batch-probe] malformed", sample.replace("status=0", "status=1")):
     try:
         audit(bad)

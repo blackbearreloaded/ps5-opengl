@@ -6,6 +6,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
 source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
+assert "#define PS5_GPU_CLEAR_MIN_PIXELS 16384u" in source
 start = source.index("static bool\nps5_clear_gpu_color(")
 prefix = source[start:source.index("   if (!context->blitter)", start)]
 code = r'''
@@ -16,6 +17,7 @@ code = r'''
 #define PS5_ENABLE_MRT_CANDIDATE 1
 #define PS5_ENABLE_UBO_CANDIDATE 1
 #define PS5_MAX_CONSTANT_BUFFER_SIZE 16384
+#define PS5_GPU_CLEAR_MIN_PIXELS 16384u
 #define PIPE_CLEAR_COLOR 0x3fc
 #define PIPE_CLEAR_COLOR0 4
 #define PIPE_MASK_RGBA 15
@@ -36,8 +38,9 @@ struct ps5_context {
     unsigned active_primitives_generated_query, active_primitives_emitted_query;
     struct constant constants[2][1]; struct ps5_resource *descriptor_storage[2];
 };
-static unsigned ps5_surface_width(const struct pipe_surface *s) { (void)s; return 64; }
-static unsigned ps5_surface_height(const struct pipe_surface *s) { (void)s; return 32; }
+static unsigned target_width = 128, target_height = 128;
+static unsigned ps5_surface_width(const struct pipe_surface *s) { (void)s; return target_width; }
+static unsigned ps5_surface_height(const struct pipe_surface *s) { (void)s; return target_height; }
 static size_t ps5_copied_constant_offset(unsigned slot) { assert(slot == 1); return 16; }
 ''' + prefix + r'''
    if (state->valid && state->copied) {
@@ -56,12 +59,27 @@ int main(void) {
     uint8_t bytes[PS5_MAX_CONSTANT_BUFFER_SIZE + 16]; memset(bytes, 0xa5, sizeof(bytes));
     struct ps5_resource target = {.base = {.target=2, .format=1}};
     struct ps5_resource storage = {.data=bytes, .size=sizeof(bytes)};
-    struct ps5_context good = {.framebuffer={.width=64, .height=32, .nr_cbufs=1,
+    struct ps5_context good = {.framebuffer={.width=128, .height=128, .nr_cbufs=1,
         .cbufs={{.texture=&target, .format=1}}}, .framebuffer_valid=true,
         .descriptor_storage={0, &storage}};
     union pipe_color_union color = {{0}};
     struct pipe_scissor_state scissor = {0};
     assert(ps5_clear_gpu_color(&good, 4, 15, 0, &color));
+    good.framebuffer.width = target_width = 64;
+    good.framebuffer.height = target_height = 64;
+    assert(!ps5_clear_gpu_color(&good, 4, 15, 0, &color));
+    good.framebuffer.width = target_width = 113;
+    good.framebuffer.height = target_height = 47;
+    assert(!ps5_clear_gpu_color(&good, 4, 15, 0, &color));
+    good.framebuffer.width = target_width = 16383;
+    good.framebuffer.height = target_height = 1;
+    assert(!ps5_clear_gpu_color(&good, 4, 15, 0, &color));
+    good.framebuffer.width = target_width = 16384;
+    assert(ps5_clear_gpu_color(&good, 4, 15, 0, &color));
+    good.framebuffer.width = target_width = 0;
+    assert(!ps5_clear_gpu_color(&good, 4, 15, 0, &color));
+    good.framebuffer.width = target_width = 128;
+    good.framebuffer.height = target_height = 128;
     assert(!ps5_clear_gpu_color(0, 4, 15, 0, &color));
     assert(!ps5_clear_gpu_color(&good, 4, 15, 0, 0));
     assert(!ps5_clear_gpu_color(&good, 4, 15, &scissor, &color));
@@ -136,4 +154,4 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
                     "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], check=True)
-print("PASS: GPU-clear eligibility, uniform snapshot bounds, guarded TGSI adapter, NIR unchanged")
+print("PASS: GPU-clear size boundary/eligibility, uniform snapshot bounds, guarded TGSI adapter, NIR unchanged")

@@ -47,6 +47,17 @@ small workloads. No default SDK promotion or final CTS acceptance yet.
 
 ## Release sequence
 
+- 2026-09-07 | G9 | frozen CTS f09d39d1 | incomplete: 4,656 Pass + 239 reviewed NotSupported before the 1,410-second bound; no case failures, clean teardown/health/unlock | results/g9-release/config-0/013509 | excluded from acceptance
+
+The first G9 batch exposed a small-target performance regression: 1,447 varied
+packed-pixel cases took 1,136 s versus historical 289 s. Each repeats 46 clears;
+the new GPU clear's ~16 ms submission cost explains the increase. The successor
+keeps full RGBA8 clears below 16,384 pixels on the existing CPU path, preserving
+all ordering and fallback checks. This is a conservative tunable floor, not an
+optimal crossover claim. The GPU-clear oracle now uses 128x128 so it still tests
+the accelerated path. Host boundary checks pass; native confirmation and a new
+freeze are required before restarting G9. No incomplete cases become acceptance.
+
 - 2026-09-06 | G7 | e678bbb | pass: presenter-error SDK, three EGL/ImGui sessions, 18 frames/180 probes; clean teardown/health/unlock | results/g7-present-errors-lifecycle/220742
 - 2026-09-06 | G7 | f7daf54 | pass: fail-stop host checks + native lifecycle and 32256-pixel multi-draw controls; clean teardown/health/unlock | results/g7-retirement-{lifecycle,multidraw}
 - 2026-09-06 | G8 | d0fb05c | pass: textured multi-draw, 32256 pixels + upload/query/fence/orphan; 4.16–4.99x workload ratio; clean teardown/health/unlock | results/g8-multidraw-textures/223705
