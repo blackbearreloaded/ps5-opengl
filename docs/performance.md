@@ -298,8 +298,8 @@ Misses count completed application intervals exceeding the target budget plus
 0.25 ms; they are **not** proof of dropped TV frames. Active work includes swap
 but excludes the target-30 sleep: 16.680966 ms at target 60 and 15.513653 ms at
 target 30. Busy unregister remains. Output mode is still explicitly unverified.
-Two of twelve requested windowed combinations are measured; the other ten need
-resolution/high-refresh integration. Full local summaries are beside the receipts.
+These were the first two requested windowed combinations; the expanded G5b
+results below supersede that coverage count. Full local summaries are beside the receipts.
 
 - 2026-09-07 | matched window benchmark | c88497a | pass: 1080p60/30, pixels/groups/flips, healthy teardown | results/window-benchmark{60,30}-20260907
 
@@ -314,6 +314,47 @@ or metadata change is part of this step. Audit with `--window-target 60
 --window-height HEIGHT --output-status`. First revalidate 1080p60, then larger
 render surfaces in separate bounded cycles. API status is not an independent
 HDMI/TV measurement; 90/120 FPS remains disabled pending its own integration.
+
+The coordinated-resolution candidate (`d0abe47`) passed **six matched cases**
+on the same firmware-6.02 console. Each uses the original ImGui scene, 30 warm-up
+frames and a subsequent 30-second sample, with no added measured-frame readbacks.
+
+| Render size | Target FPS | Achieved FPS | Measured frames | p95 frame ms | p99 frame ms | Budget misses |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1920x1080 | 30 | 29.999889 | 900 | 33.339037 | 33.342806 | 0 |
+| 1920x1080 | 60 | 59.942163 | 1,799 | 17.332412 | 17.559417 | 619 |
+| 2560x1440 | 30 | 29.999889 | 900 | 33.415454 | 33.417378 | 0 |
+| 2560x1440 | 60 | 59.940422 | 1,799 | 17.341313 | 17.599991 | 676 |
+| 3840x2160 | 30 | 29.999889 | 900 | 33.369828 | 33.373436 | 0 |
+| 3840x2160 | 60 | 59.939802 | 1,799 | 17.491500 | 17.679615 | 360 |
+
+All 12 warm-up pixel probes passed. The 8,277 total frames had exactly 8,277
+clear-plus-two-draw groups (24,831 draws) and 8,265 GPU flips; the other 12 frames
+used the intentional readback fallback. All six runs passed native/EGL/title
+teardown, post-health and exact-token release. Busy unregister remains, with
+successful presenter close. No fresh TV/controller or independent HDMI check is claimed.
+
+Both VideoOut status APIs succeeded at warm-up and shutdown in every case:
+full/pane extents were 3840x2160 and both refresh IDs were 3 (reported 59.94 Hz).
+Thus 1080p/1440p are **render resolutions**, with a reported 2160p output; the
+2160p case renders at that full size. The 30 FPS cases pace the application on
+the same output mode. Frame-budget misses use the existing +0.25 ms tolerance
+and are not proof of dropped TV frames. These small-scene, presentation-limited
+results do not predict game FPS or GPU-only throughput.
+
+Six of twelve requested windowed combinations are now measured and meet their
+throughput targets. Raw receipts, lifecycle records and audited summaries are
+under `results/scanout{1080,1440,2160}-{30,60}-20260907`; frozen app/SDK hashes
+are in the matching `build/frozen/scanout*-20260907/manifest.md` files. The
+accepted SDK is unchanged; this candidate has not received a new CTS campaign.
+
+- 2026-09-07 | G5b | d0abe47 | pass: 6/6 matched 30/60 FPS cases, 12 probes, healthy teardown; 6/12 matrix complete | results/scanout*-20260907
+
+G5c next: integrate ordinary, title-owned 90/120 Hz presentation with a support
+check and restoration on close, without console Settings changes. Validate a
+frozen 1080p120 successor first, including reported output status and the same
+pixel/retirement checks, before expanding resolutions. Unsupported or unverified
+output modes must remain explicit; a faster render loop alone is not HFR proof.
 
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
