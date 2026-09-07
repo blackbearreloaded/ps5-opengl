@@ -42,10 +42,44 @@ def audit(text, require_postchecks=False, require_textures=False):
     return result
 
 
+def audit_deferred(text, control=False):
+    """Require real coalescing, complete pixels/hazards and inclusive wait timing."""
+    matches = list(re.finditer(r"\[ps5-multidraw\] mode=(\d+) serial_ns=(\d+) batch_ns=(\d+) pixels=6912 PASS", text))
+    assert len(matches) == text.count("[ps5-multidraw] mode=") == 4
+    start, result = 0, []
+    for mode, match in enumerate(matches):
+        actual, serial, batched = map(int, match.groups())
+        assert actual == mode and serial > 0 and batched > 0
+        chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text[start:match.start()])
+        assert list(map(int, chunks)) == ([] if control else [1] * 11 + [8, 2, 1]), chunks
+        result.append({"mode": mode, "serial_ms": serial / 1e6,
+                       "group_ms": batched / 1e6, "single_sample_ratio": serial / batched})
+        start = match.end()
+    chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
+    tail = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text[start:])
+    assert list(map(int, tail)) == ([] if control else [8, 2] * 4 + [1]), tail
+    native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=(\d+)", text)
+    assert len(chunks) == text.count("[ps5-deferred-batch]") == len(native) == text.count("[ps5-multidraw-batch]")
+    assert not control or not chunks
+    for count, (draws, attempted, waits, status) in zip(chunks, native):
+        assert count == draws == attempted and 0 < int(count) <= 8 and int(waits) < 2000 and status == "0"
+    for marker in (
+        "[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=9216 PASS",
+        "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS",
+        "[ps5-multidraw] completed=4 cleanup=1 result=0", "[pss-opengl-native] gate completed status=0",
+    ):
+        assert text.count(marker) == 1, marker
+    return result
+
+
 if len(sys.argv) > 1:
-    assert len(sys.argv) == 2 or (len(sys.argv) == 3 and sys.argv[2] in ("--postchecks", "--textures"))
-    print(json.dumps(audit(Path(sys.argv[1]).read_text(), len(sys.argv) == 3,
-                           "--textures" in sys.argv), indent=2))
+    assert len(sys.argv) == 2 or (len(sys.argv) == 3 and sys.argv[2] in
+        ("--postchecks", "--textures", "--deferred", "--deferred-control"))
+    receipt = Path(sys.argv[1]).read_text()
+    result = audit_deferred(receipt, sys.argv[2] == "--deferred-control") \
+        if len(sys.argv) == 3 and sys.argv[2].startswith("--deferred") else \
+        audit(receipt, len(sys.argv) == 3, "--textures" in sys.argv)
+    print(json.dumps(result, indent=2))
     raise SystemExit
 assert len(sys.argv) == 1
 sample = "".join(
@@ -78,6 +112,32 @@ for bad in (sample.replace("[ps5-multidraw-batch]", "[unused]"), sample.replace(
         continue
     raise AssertionError("Invalid or unbatched receipt accepted")
 print("PASS: receipt audit rejects unbatched, incomplete and failed runs")
+
+def batch_receipt(count):
+    return f"[ps5-multidraw-batch] draws={count} attempted={count} waits=1 result=0\n" \
+           f"[ps5-deferred-batch] draws={count} result=0\n"
+
+
+for control in (False, True):
+    deferred_sample = "".join(
+        ("" if control else "".join(batch_receipt(n) for n in [1] * 11 + [8, 2, 1])) +
+        f"[ps5-multidraw] mode={mode} serial_ns=2000000 batch_ns=1000000 pixels=6912 PASS\n"
+        for mode in range(4))
+    if not control:
+        deferred_sample += "".join(batch_receipt(n) for n in [8, 2] * 4 + [1])
+    deferred_sample += "[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=9216 PASS\n" \
+        "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS\n" \
+        "[ps5-multidraw] completed=4 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
+    assert len(audit_deferred(deferred_sample, control)) == 4
+    for bad in (deferred_sample.replace("map-write=1", "map-write=0"),
+                deferred_sample.replace("cleanup=1", "cleanup=0"),
+                deferred_sample + batch_receipt(1)):
+        try:
+            audit_deferred(bad, control)
+        except AssertionError:
+            continue
+        raise AssertionError("Invalid deferred receipt accepted")
+print("PASS: ordinary-draw receipt audit requires matching native chunks and every hazard oracle")
 
 root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
@@ -206,6 +266,8 @@ code = r'''
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <setjmp.h>
 #include "ps5_screen.h"
 #define MIN2(a,b) ((a)<(b)?(a):(b))
 enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=16, PIPE_BUFFER=1,
@@ -225,6 +287,7 @@ struct pipe_draw_start_count_bias { unsigned start, count; int index_bias; };
 struct pipe_depth_stencil_alpha_state { bool depth_enabled; struct { bool enabled; } stencil[2]; };
 struct ps5_context {
     struct pipe_context base;
+    struct { bool running; } *blitter;
     struct { struct pipe_surface cbufs[1], zsbuf; unsigned nr_cbufs; } framebuffer;
     bool framebuffer_valid; unsigned *vs, *fs, *gs;
     unsigned stream_output_target_count, render_condition_query, active_occlusion_query,
@@ -236,14 +299,17 @@ struct ps5_context {
     const struct pipe_depth_stencil_alpha_state *depth_stencil_alpha;
     int last_draw_status;
 };
-static struct ps5_resource original[3], copies[24], borrowed;
-static uint8_t original_bytes[3][64], copy_bytes[24][64];
+static struct ps5_resource original[3], copies[128], borrowed;
+static uint8_t original_bytes[3][64], copy_bytes[128][64];
 static struct ps5_context context;
 static struct ps5_screen screen;
 static unsigned shader_textures, allocated, freed, begun, ended, staged, calls, locked;
 static int fail_alloc, fail_begin, fail_end, fail_draw;
 static struct ps5_resource *pending[8][3];
 static unsigned expected_start[8], expected_id[8];
+static bool deferred_mode;
+static unsigned retained_draws;
+static uint8_t expected_uniform[8][3];
 static unsigned ps5_shader_texture_count(const unsigned *s) { return *s; }
 static bool ps5_texture_used(const struct ps5_context *c, const unsigned *s, const void *metadata, unsigned unit) {
     (void)c; (void)metadata; return (*s & (1u << unit)) != 0;
@@ -254,10 +320,10 @@ static struct ps5_resource textures[PS5_MAX_TEXTURE_UNITS];
 static struct pipe_sampler_view views[PS5_MAX_TEXTURE_UNITS];
 static uint8_t texels[PS5_MAX_TEXTURE_UNITS][64];
 static struct pipe_resource *create(struct pipe_screen *s, const struct pipe_resource *r) {
-    assert(s == &screen.base && r->target == PIPE_BUFFER && !locked);
+    assert(s == &screen.base && r->target == PIPE_BUFFER && (deferred_mode || !locked));
     if ((int)allocated == fail_alloc) return NULL;
     unsigned i = allocated++;
-    assert(i < 24);
+    assert(i < 128);
     copies[i] = (struct ps5_resource){.base=*r, .data=copy_bytes[i], .size=64};
     copies[i].base.refs=1;
     return &copies[i].base;
@@ -280,39 +346,43 @@ static int end(void) {
             assert(pending[i][stage]->data[0] == expected_start[i]);
             assert(pending[i][stage]->data[1] == expected_id[i]);
             for (unsigned byte=16; byte<64; ++byte)
-                assert(pending[i][stage]->data[byte] == 0xa0+stage);
+                assert(pending[i][stage]->data[byte] == expected_uniform[i][stage]);
         }
     }
-    assert(borrowed.base.refs == 1+4+PIPE_MAX_ATTRIBS+2*PS5_MAX_CONSTANT_BUFFERS+
-        !!context.framebuffer.zsbuf.texture);
+    unsigned factor = deferred_mode ? retained_draws : 1;
+    assert(borrowed.base.refs == 1+factor*(4+PIPE_MAX_ATTRIBS+2*PS5_MAX_CONSTANT_BUFFERS+
+        !!context.framebuffer.zsbuf.texture));
     for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit)
-        if (fragment_textures & (1u << unit)) assert(textures[unit].base.refs == 2);
+        if (fragment_textures & (1u << unit)) assert(textures[unit].base.refs == 1+factor);
     if (fail_end) return -1;
-    staged=0;
+    staged=retained_draws=0;
     return 0;
 }
 static int (*ps5_agc_gate2_batch_begin)(void)=begin;
 static int (*ps5_agc_gate2_batch_end)(void)=end;
 static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_info *info, unsigned id,
     const struct pipe_draw_indirect_info *indirect, const struct pipe_draw_start_count_bias *draw, unsigned n) {
-    assert(b == &context.base && info && !indirect && n==1 && draw->count && locked);
+    struct ps5_context *drawing=(struct ps5_context *)b;
+    assert((b == &context.base || deferred_mode) && info && !indirect && n==1 && draw->count && locked);
     assert(id == 20 + (info->increment_draw_id ? draw->start : 0));
-    if ((int)calls++ == fail_draw) { context.last_draw_status=-9; return; }
+    ++retained_draws;
+    if ((int)calls++ == fail_draw) { drawing->last_draw_status=-9; return; }
     assert(staged < 8);
-    pending[staged][0]=(struct ps5_resource *)context.vertex_descriptor_table;
-    pending[staged][1]=(struct ps5_resource *)context.descriptor_storage[0];
-    pending[staged][2]=(struct ps5_resource *)context.descriptor_storage[1];
+    pending[staged][0]=(struct ps5_resource *)drawing->vertex_descriptor_table;
+    pending[staged][1]=(struct ps5_resource *)drawing->descriptor_storage[0];
+    pending[staged][2]=(struct ps5_resource *)drawing->descriptor_storage[1];
     for (unsigned stage=0; stage<3; ++stage) {
         assert(pending[staged][stage] != &original[stage]);
         pending[staged][stage]->data[0]=draw->start;
         pending[staged][stage]->data[1]=id;
+        expected_uniform[staged][stage]=pending[staged][stage]->data[16];
         for (unsigned i=0; i<staged; ++i) assert(pending[i][stage] != pending[staged][stage]);
     }
     expected_start[staged]=draw->start; expected_id[staged++]=id;
 }
 ''' + body + r'''
 static void reset(void) {
-    allocated=freed=begun=ended=staged=calls=locked=shader_textures=fragment_textures=0;
+    allocated=freed=begun=ended=staged=calls=locked=shader_textures=fragment_textures=retained_draws=0;
     fail_alloc=fail_draw=-1; fail_begin=fail_end=0;
     borrowed=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=1, .refs=1}};
     screen=(struct ps5_screen){.base={create}, .render_pool=&borrowed.base};
@@ -427,3 +497,116 @@ with tempfile.TemporaryDirectory() as tmp:
         failed = subprocess.run([str(exe)], cwd=tmp, text=True, capture_output=True)
         assert failed.returncode != 0 and "Assertion" in failed.stderr
 print("PASS: descriptors/uniforms, chunk retirement, draw IDs, rollback, all 16 fragment texture refs and narrow eligibility")
+
+# Reuse the same Gallium mocks, but exercise the actual cross-call queue too.
+start = source.index("static struct {\n   struct ps5_context *owner;")
+deferred = source[start:source.index("\n#endif", start)]
+deferred_code = code[:code.index("int main(void) {")] + r'''
+static unsigned ps5_deferred_mutex;
+static void simple_mtx_lock(unsigned *m) { assert(m == &ps5_deferred_mutex && !locked); locked=1; }
+static void simple_mtx_unlock(unsigned *m) { assert(m == &ps5_deferred_mutex && locked); locked=0; }
+static jmp_buf exit_jump;
+static _Noreturn void check_exit(int status) {
+    assert(status == EXIT_FAILURE && locked && staged && !freed);
+    longjmp(exit_jump,1);
+}
+#define _Exit check_exit
+''' + deferred + r'''
+#undef _Exit
+static void drain(void) {
+    simple_mtx_lock(&ps5_deferred_mutex);
+    ps5_draw_batch_flush_locked();
+    simple_mtx_unlock(&ps5_deferred_mutex);
+}
+static void idle(void) {
+    assert(!locked && !staged && !ps5_deferred.owner && !ps5_deferred.count);
+    assert(allocated == freed && borrowed.base.refs == 1);
+}
+int main(void) {
+    struct pipe_draw_info info={.mode=4,.instance_count=1,.index_size=2,.index={&borrowed.base}};
+    struct pipe_draw_start_count_bias draw={0,6,0};
+    deferred_mode=true;
+    for (unsigned n=1;n<=8;++n) {
+        reset();
+        for (unsigned i=0;i<n;++i) {
+            for (unsigned s=0;s<3;++s) memset(original_bytes[s],0x40+i+s,64);
+            draw.start=i;
+            assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+            assert(!locked && !context.last_draw_status && begun==1);
+            assert(ended==(i==7)); /* CPU staging, not a hidden wait per draw. */
+            for (unsigned s=0;s<3;++s) assert(original_bytes[s][0]==0x40+i+s);
+        }
+        drain(); idle(); assert(ended==1 && calls==n);
+    }
+    reset(); fragment_textures=0xffff; context.fs=&fragment_textures;
+    for (unsigned u=0;u<16;++u) context.sampler_views[1][u]=&views[u];
+    for (unsigned i=0;i<3;++i) assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    drain(); idle();
+    for (unsigned u=0;u<16;++u) assert(textures[u].base.refs==1);
+    reset();
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    struct ps5_context other=context;
+    assert(ps5_try_deferred_draw(&other.base,&info,20,NULL,&draw,1));
+    assert(ended==1 && ps5_deferred.owner==&other); /* Owner switches retire first. */
+    drain(); idle(); assert(ended==2);
+    for (unsigned boundary=0;boundary<3;++boundary) {
+        reset();
+        assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+        if (!boundary) context.active_occlusion_query=1;
+        if (boundary==1) context.gs=&shader_textures;
+        assert(!ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,boundary==2?2:1));
+        idle(); assert(ended==1 && calls==1);
+    }
+    for (int fail=0;fail<3;++fail) {
+        reset();
+        assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+        fail_alloc=3+fail;
+        assert(!ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+        idle(); assert(ended==1 && calls==1); /* No staged draw replay on OOM. */
+    }
+    reset(); fail_begin=-1;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    idle(); assert(context.last_draw_status==-30 && !calls && !ended);
+    reset();
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    fail_draw=1;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    idle(); assert(context.last_draw_status==-9 && calls==2 && ended==1);
+    reset(); draw.count=0;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    idle(); assert(!begun && !allocated);
+    reset(); draw.count=6;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    fail_end=1;
+    if (!setjmp(exit_jump)) { drain(); assert(!"cleanup failure returned"); }
+    assert(!freed && borrowed.base.refs>1); /* Simulated process exit retains ownership. */
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    exe = Path(tmp) / "deferred"
+    for mutate in (False, True):
+        candidate = deferred_code
+        if mutate:
+            candidate = candidate.replace("if (ps5_deferred.owner && ps5_deferred.owner != context)", "if (false)")
+            assert candidate != deferred_code
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+                        "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
+                       input=candidate, text=True, check=True)
+        run = subprocess.run([str(exe)], cwd=tmp, capture_output=True, text=True)
+        assert (run.returncode == 0) != mutate, run.stderr
+
+# The queue test alone cannot prove that CPU access / lifecycle entry points drain.
+for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_transfer_map",
+             "ps5_transfer_flush_region", "ps5_transfer_unmap", "ps5_blit",
+             "ps5_generate_mipmap", "ps5_get_timestamp", "ps5_begin_query", "ps5_end_query",
+             "ps5_flush", "ps5_clear", "ps5_buffer_subdata", "ps5_context_last_draw_status",
+             "ps5_context_destroy", "ps5_screen_destroy"):
+    start = source.index("\n" + name + "(")
+    function = source[start:source.index("\n}\n", start)]
+    assert function.count("ps5_draw_batch_drain();") == 1, name
+start = source.index("\nps5_flush(")
+function = source[start:source.index("\n}\n", start)]
+assert function.index("ps5_draw_batch_drain();") < function.index("if (!out_fence)")
+start = source.index("\nps5_screen_submit_lock(")
+assert "ps5_draw_batch_flush_locked();" in source[start:source.index("\n}\n", start)]
+print("PASS: deferred 1..8 draw snapshots, resource pins, owner/fallback drains, OOM/no replay, fail-stop and boundary wiring")

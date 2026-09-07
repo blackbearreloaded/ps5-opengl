@@ -13,6 +13,9 @@ enum { BANDS = 9, WIDTH = BANDS * 8, HEIGHT = 32, DRAWS = BANDS + 2 };
 struct vertex { float position[2], color[4]; };
 static struct vertex vertices[(BANDS + 1) * 6];
 static uint8_t pixels[WIDTH * HEIGHT * 4];
+#ifdef PS5_DEFERRED_DRAW_TEST
+static int varying_draw_state = 1;
+#endif
 static const uint8_t colors[7][4] = {
    {255,0,0,255}, {0,255,0,255}, {0,0,255,255}, {255,255,0,255},
    {255,0,255,255}, {0,255,255,255}, {255,255,255,255}
@@ -57,6 +60,12 @@ static int check_pixels(unsigned green, int band0_black)
          memcpy(expected, colors[(x / 8) % 7], 4);
          if (x < 8) memcpy(expected, colors[2], 4); /* Last subdraw overlaps band zero. */
          expected[1] *= green;
+#ifdef PS5_DEFERRED_DRAW_TEST
+         if (varying_draw_state) {
+            if ((x / 8) % 2) expected[1] = 0;
+            if (y >= HEIGHT - 4 * ((x / 8) % 3)) memset(expected, 0, 3);
+         }
+#endif
 #ifdef PS5_MULTIDRAW_TEXTURE_TEST
          unsigned texel0 = (x % 8 >= 4) + 2 * (y % 16 >= 8);
          unsigned texel1 = (x % 16 >= 8) + 2 * (y % 8 >= 4);
@@ -187,16 +196,33 @@ int main(void)
       for (unsigned batched = 0; batched < 2; ++batched) {
          glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
          int64_t start = now_ns();
+#ifndef PS5_DEFERRED_DRAW_TEST
          if (batched) {
             if (!mode) glMultiDrawArrays(GL_TRIANGLES, first, counts, DRAWS);
             else if (mode == 3) glMultiDrawElementsBaseVertex(GL_TRIANGLES, counts, type, offsets, DRAWS, base);
             else glMultiDrawElements(GL_TRIANGLES, counts, type, offsets, DRAWS);
          } else {
+#else
+         {
+            glEnable(GL_SCISSOR_TEST);
+#endif
             for (unsigned i = 0; i < DRAWS; ++i) {
+#ifdef PS5_DEFERRED_DRAW_TEST
+               unsigned band = first[i] == BANDS * 6 ? 0 : first[i] / 6;
+               glUniform4f(tint, 1, green && !(band % 2), 1, 1);
+               glScissor(band * 8, 0, 8, HEIGHT - 4 * (band % 3));
+#endif
                if (!mode) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
                else if (mode == 3) glDrawElementsBaseVertex(GL_TRIANGLES, counts[i], type, offsets[i], base[i]);
                else glDrawElements(GL_TRIANGLES, counts[i], type, offsets[i]);
+#ifdef PS5_DEFERRED_DRAW_TEST
+               if (!batched) glFinish(); /* Same candidate, forced serial control. */
+#endif
             }
+#ifdef PS5_DEFERRED_DRAW_TEST
+            glDisable(GL_SCISSOR_TEST);
+            glFinish(); /* Include retirement, not just command staging, in timings. */
+#endif
          }
          elapsed[batched] = now_ns() - start;
          if (start <= 0 || elapsed[batched] <= 0 || !check_pixels(green, 0)) goto cleanup;
@@ -207,6 +233,44 @@ int main(void)
              mode, (long long)elapsed[0], (long long)elapsed[1], 3 * WIDTH * HEIGHT);
       ++completed;
    }
+#ifdef PS5_DEFERRED_DRAW_TEST
+   varying_draw_state = 0;
+   glUniform4f(tint, 1, 1, 1, 1);
+   glClear(GL_COLOR_BUFFER_BIT);
+   /* Update a sampled texture before readback. The old draws must see old data. */
+   for (unsigned i = 0; i < DRAWS; ++i) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
+   const uint8_t replacement[4] = {0, 255, 255, 255};
+   glActiveTexture(GL_TEXTURE7);
+   glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, replacement);
+   if (!check_pixels(1, 0)) goto cleanup;
+   memcpy(texture_pixels[1][0], replacement, 4);
+   for (unsigned hazard = 0; hazard < 2; ++hazard) {
+      for (unsigned i = 0; i < DRAWS; ++i) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
+      struct vertex changed[6];
+      memcpy(changed, vertices + BANDS * 6, sizeof(changed));
+      for (unsigned v = 0; v < 6; ++v) memset(changed[v].color, 0, 3 * sizeof(float));
+      const GLintptr at = BANDS * 6 * sizeof(struct vertex);
+      if (!hazard) glBufferSubData(GL_ARRAY_BUFFER, at, sizeof(changed), changed);
+      else {
+         void *mapped = glMapBufferRange(GL_ARRAY_BUFFER, at, sizeof(changed), GL_MAP_WRITE_BIT);
+         if (!mapped) goto cleanup;
+         memcpy(mapped, changed, sizeof(changed));
+         if (!glUnmapBuffer(GL_ARRAY_BUFFER)) goto cleanup;
+      }
+      if (!check_pixels(1, 0)) goto cleanup;
+      glBufferSubData(GL_ARRAY_BUFFER, at, sizeof(changed), vertices + BANDS * 6);
+   }
+   /* A fence must retire pending ordinary calls, not merely report success. */
+   for (unsigned i = 0; i < DRAWS; ++i) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
+   fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+   if (!fence) goto cleanup;
+   GLenum pending_wait = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
+   if ((pending_wait != GL_ALREADY_SIGNALED && pending_wait != GL_CONDITION_SATISFIED) ||
+       !check_pixels(1, 0)) goto cleanup;
+   glDeleteSync(fence); fence = NULL;
+   printf("[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=%u PASS\n",
+          4 * WIDTH * HEIGHT);
+#endif
    /* Active queries must keep the synchronous fallback, even after batching. */
    glUniform4f(tint, 1, 1, 1, 1);
    glClear(GL_COLOR_BUFFER_BIT);
@@ -228,7 +292,9 @@ int main(void)
    if (!check_pixels(1, 1)) goto cleanup;
    printf("[ps5-multidraw] query_samples=%u fence=1 orphan=1 pixels=%u PASS\n", samples, 2 * WIDTH * HEIGHT);
 #ifdef PS5_MULTIDRAW_TEXTURE_TEST
+#ifndef PS5_DEFERRED_DRAW_TEST
    printf("[ps5-multidraw-texture] sampled=2 uploads=1 pixels=%u PASS\n", 14 * WIDTH * HEIGHT);
+#endif
 #endif
    passed = 1;
 cleanup:

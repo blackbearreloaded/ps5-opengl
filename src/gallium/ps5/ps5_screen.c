@@ -90,16 +90,45 @@ struct ps5_screen {
    simple_mtx_t submit_mutex;
 };
 
+#ifdef PS5_DEFERRED_DRAW_BATCH
+#ifndef PS5_MULTIDRAW_BATCH
+#error "Deferred draws require the validated multi-draw runtime"
+#endif
+/* Runtime setters/queue are process-global, including across pipe_screens. */
+static simple_mtx_t ps5_deferred_mutex = SIMPLE_MTX_INITIALIZER;
+static void ps5_draw_batch_flush_locked(void);
+#endif
+
 void
 ps5_screen_submit_lock(struct pipe_screen *base)
 {
+#ifdef PS5_DEFERRED_DRAW_BATCH
+   (void)base;
+   simple_mtx_lock(&ps5_deferred_mutex);
+   ps5_draw_batch_flush_locked();
+#else
    simple_mtx_lock(&((struct ps5_screen *)base)->submit_mutex);
+#endif
 }
 
 void
 ps5_screen_submit_unlock(struct pipe_screen *base)
 {
+#ifdef PS5_DEFERRED_DRAW_BATCH
+   (void)base;
+   simple_mtx_unlock(&ps5_deferred_mutex);
+#else
    simple_mtx_unlock(&((struct ps5_screen *)base)->submit_mutex);
+#endif
+}
+
+static void
+ps5_draw_batch_drain(void)
+{
+#ifdef PS5_DEFERRED_DRAW_BATCH
+   ps5_screen_submit_lock(NULL);
+   ps5_screen_submit_unlock(NULL);
+#endif
 }
 
 #define PS5_MAX_TEXTURE_UNITS 16u
@@ -3479,6 +3508,7 @@ ps5_resource_info(struct pipe_resource *base, void **address,
 {
    struct ps5_resource *resource = (struct ps5_resource *)base;
 
+   ps5_draw_batch_drain();
    if (!resource)
       return -1;
    if (address)
@@ -3530,6 +3560,7 @@ ps5_resource_stencil_info(struct pipe_resource *base, void **address,
 {
    struct ps5_resource *resource = (struct ps5_resource *)base;
 
+   ps5_draw_batch_drain();
    if (!resource ||
        resource->base.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ||
        !resource->stencil_data)
@@ -4407,6 +4438,7 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
    unsigned format_size;
 
    (void)context;
+   ps5_draw_batch_drain();
    if (!out_transfer)
       return NULL;
    *out_transfer = NULL;
@@ -4593,6 +4625,7 @@ ps5_transfer_flush_region(struct pipe_context *context,
                           struct pipe_transfer *transfer,
                           const struct pipe_box *box)
 {
+   ps5_draw_batch_drain();
    (void)context;
    (void)transfer;
    (void)box;
@@ -4607,6 +4640,7 @@ ps5_transfer_unmap(struct pipe_context *context,
       (struct ps5_resource *)transfer->resource;
 
    (void)context;
+   ps5_draw_batch_drain();
    if (ps5->staging && (transfer->usage & PIPE_MAP_WRITE) &&
        (transfer->resource->bind & PIPE_BIND_DEPTH_STENCIL) &&
        !resource->depth_staging_size &&
@@ -5143,6 +5177,7 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    bool direct_tiled_dst;
    unsigned min_x, min_y, max_x, max_y;
 
+   ps5_draw_batch_drain();
    if (PS5_ENABLE_MSAA4_CANDIDATE && info && info->src.resource &&
        info->src.resource->nr_samples == 4) {
       if (info->mask & PIPE_MASK_ZS)
@@ -5582,6 +5617,7 @@ ps5_generate_mipmap(struct pipe_context *context,
    unsigned format_size;
 
    (void)context;
+   ps5_draw_batch_drain();
    if (!PS5_ENABLE_TEXTURE_MIPMAP_CANDIDATE || !resource ||
        format != resource->base.format ||
        base_level >= last_level || last_level > resource->base.last_level ||
@@ -5711,9 +5747,8 @@ static bool
 ps5_fence_finish(struct pipe_screen *screen, struct pipe_context *context,
                  struct pipe_fence_handle *fence, uint64_t timeout)
 {
-   /* ponytail: draws retire in ps5_agc_gate2_run before returning, so every
-    * fence is already signaled. Replace this with queue-backed fences when
-    * submission becomes asynchronous or multiple contexts are enabled. */
+   /* Flush retires staged draws before creating a fence, so it is signaled.
+    * ponytail: synchronous fences; replace when GPU work remains in flight. */
    (void)screen;
    (void)context;
    (void)fence;
@@ -5725,6 +5760,7 @@ static uint64_t
 ps5_get_timestamp(struct pipe_screen *screen)
 {
    (void)screen;
+   ps5_draw_batch_drain();
    return os_time_get_nano();
 }
 
@@ -5800,6 +5836,7 @@ ps5_begin_query(struct pipe_context *base, struct pipe_query *pipe_query)
    struct ps5_query *query = (struct ps5_query *)pipe_query;
    struct ps5_query **primitive_query;
 
+   ps5_draw_batch_drain();
    if (!query || query->active)
       return false;
    primitive_query = ps5_active_primitive_query(context, query->type);
@@ -5840,6 +5877,7 @@ ps5_end_query(struct pipe_context *base, struct pipe_query *pipe_query)
    struct ps5_query *query = (struct ps5_query *)pipe_query;
    struct ps5_query **primitive_query;
 
+   ps5_draw_batch_drain();
    if (!query)
       return false;
    primitive_query = ps5_active_primitive_query(context, query->type);
@@ -5988,6 +6026,7 @@ ps5_flush(struct pipe_context *context, struct pipe_fence_handle **out_fence,
    struct ps5_fence *fence;
 
    (void)flags;
+   ps5_draw_batch_drain();
    if (!out_fence)
       return;
 
@@ -7449,7 +7488,7 @@ ps5_multidraw_eligible(const struct ps5_context *context,
       (const struct ps5_resource *)context->framebuffer.zsbuf.texture;
    const struct pipe_depth_stencil_alpha_state *dsa = context->depth_stencil_alpha;
 
-   if (!info || !draws || num_draws < 2 || indirect ||
+   if (!info || !draws || !num_draws || indirect ||
        info->mode != MESA_PRIM_TRIANGLES || !info->instance_count ||
        info->primitive_restart || info->has_user_indices ||
        (info->index_size && info->index_size != 2 && info->index_size != 4) ||
@@ -7497,43 +7536,37 @@ ps5_multidraw_eligible(const struct ps5_context *context,
 }
 
 static bool
-ps5_try_multi_draw_batch(struct pipe_context *base,
-                         const struct pipe_draw_info *info, unsigned drawid_offset,
-                         const struct pipe_draw_indirect_info *indirect,
-                         const struct pipe_draw_start_count_bias *draws,
-                         unsigned num_draws)
+ps5_batch_copy_descriptors(struct pipe_context *base,
+                           struct pipe_resource *const saved[3],
+                           struct pipe_resource *storage[3])
 {
-   struct ps5_context *context = (struct ps5_context *)base;
-   struct ps5_screen *screen = (struct ps5_screen *)base->screen;
-   struct pipe_resource *saved[3] = {context->vertex_descriptor_table,
-      context->descriptor_storage[0], context->descriptor_storage[1]};
-   struct pipe_resource *storage[PS5_MULTIDRAW_BATCH_CAPACITY][3] = {{0}};
-   struct pipe_resource *retained[PIPE_MAX_ATTRIBS +
-      2 * PS5_MAX_CONSTANT_BUFFERS + PS5_MAX_TEXTURE_UNITS + 5] = {0};
-   unsigned retained_count = 0;
-   unsigned slots = MIN2(num_draws, PS5_MULTIDRAW_BATCH_CAPACITY);
-   bool handled = false, retired = true;
-
-   if (!ps5_agc_gate2_batch_begin || !ps5_agc_gate2_batch_end ||
-       !ps5_multidraw_eligible(context, info, indirect, draws, num_draws))
-      return false;
-   /* Preserve copied inline uniforms as well as descriptor storage. Each slot
-    * is reused only after the previous chunk has completely retired. */
-   for (unsigned slot = 0; slot < slots; ++slot) {
-      for (unsigned stage = 0; stage < 3; ++stage) {
-         const struct ps5_resource *source = (const struct ps5_resource *)saved[stage];
-         if (!source || !source->data || source->base.target != PIPE_BUFFER)
-            goto release;
-         storage[slot][stage] = base->screen->resource_create(base->screen, &source->base);
-         struct ps5_resource *copy = (struct ps5_resource *)storage[slot][stage];
-         if (!copy || !copy->data || copy->size != source->size)
-            goto release;
-         memcpy(copy->data, source->data, source->size);
-      }
+   for (unsigned stage = 0; stage < 3; ++stage) {
+      const struct ps5_resource *source = (const struct ps5_resource *)saved[stage];
+      if (!source || !source->data || source->base.target != PIPE_BUFFER)
+         return false;
+      storage[stage] = base->screen->resource_create(base->screen, &source->base);
+      struct ps5_resource *copy = (struct ps5_resource *)storage[stage];
+      if (!copy || !copy->data || copy->size != source->size)
+         return false;
+      memcpy(copy->data, source->data, source->size);
    }
+   return true;
+}
+
+#define PS5_BATCH_RESOURCE_COUNT (PIPE_MAX_ATTRIBS + \
+   2 * PS5_MAX_CONSTANT_BUFFERS + PS5_MAX_TEXTURE_UNITS + 5)
+
+static unsigned
+ps5_batch_retain_resources(const struct ps5_context *context,
+                           const struct pipe_draw_info *info,
+                           struct pipe_resource *retained[PS5_BATCH_RESOURCE_COUNT])
+{
+   const struct ps5_screen *screen = (const struct ps5_screen *)context->base.screen;
+   unsigned retained_count = 0;
    pipe_resource_reference(&retained[retained_count++], context->framebuffer.cbufs[0].texture);
    pipe_resource_reference(&retained[retained_count++], context->framebuffer.zsbuf.texture);
    pipe_resource_reference(&retained[retained_count++], screen->render_pool);
+   /* Border entries are append-only for the lifetime of the context. */
    pipe_resource_reference(&retained[retained_count++], context->border_color_storage);
    if (info->index_size)
       pipe_resource_reference(&retained[retained_count++], info->index.resource);
@@ -7545,6 +7578,34 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
    for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit)
       if (ps5_texture_used(context, context->fs, NULL, unit))
          pipe_resource_reference(&retained[retained_count++], context->sampler_views[1][unit]->texture);
+   return retained_count;
+}
+
+static bool
+ps5_try_multi_draw_batch(struct pipe_context *base,
+                         const struct pipe_draw_info *info, unsigned drawid_offset,
+                         const struct pipe_draw_indirect_info *indirect,
+                         const struct pipe_draw_start_count_bias *draws,
+                         unsigned num_draws)
+{
+   struct ps5_context *context = (struct ps5_context *)base;
+   struct pipe_resource *saved[3] = {context->vertex_descriptor_table,
+      context->descriptor_storage[0], context->descriptor_storage[1]};
+   struct pipe_resource *storage[PS5_MULTIDRAW_BATCH_CAPACITY][3] = {{0}};
+   struct pipe_resource *retained[PS5_BATCH_RESOURCE_COUNT] = {0};
+   unsigned retained_count = 0;
+   unsigned slots = MIN2(num_draws, PS5_MULTIDRAW_BATCH_CAPACITY);
+   bool handled = false, retired = true;
+
+   if (num_draws < 2 || !ps5_agc_gate2_batch_begin || !ps5_agc_gate2_batch_end ||
+       !ps5_multidraw_eligible(context, info, indirect, draws, num_draws))
+      return false;
+   /* Preserve copied inline uniforms as well as descriptor storage. Each slot
+    * is reused only after the previous chunk has completely retired. */
+   for (unsigned slot = 0; slot < slots; ++slot)
+      if (!ps5_batch_copy_descriptors(base, saved, storage[slot]))
+         goto release;
+   retained_count = ps5_batch_retain_resources(context, info, retained);
 
    ps5_screen_submit_lock(base->screen);
    handled = true;
@@ -7592,6 +7653,105 @@ release:
 }
 #endif
 
+#ifdef PS5_DEFERRED_DRAW_BATCH
+/* Reuse the synchronous runtime queue: nothing is submitted until drain, and
+ * drain waits for every marker before releasing any per-draw allocation. */
+static struct {
+   struct ps5_context *owner;
+   unsigned count;
+   struct {
+      struct pipe_resource *storage[3];
+      struct pipe_resource *retained[PS5_BATCH_RESOURCE_COUNT];
+      unsigned retained_count;
+   } slots[PS5_MULTIDRAW_BATCH_CAPACITY];
+} ps5_deferred;
+
+static void
+ps5_draw_batch_flush_locked(void)
+{
+   if (!ps5_deferred.owner)
+      return;
+   if (ps5_agc_gate2_batch_end() != 0) {
+      /* No late error can safely be reported as success by a later GL call. */
+      fputs("[ps5-gallium] deferred batch cleanup failed; terminating before resource release\n", stderr);
+      fflush(stderr);
+      _Exit(EXIT_FAILURE);
+   }
+   printf("[ps5-deferred-batch] draws=%u result=0\n", ps5_deferred.count);
+   for (unsigned slot = 0; slot < ps5_deferred.count; ++slot) {
+      for (unsigned stage = 0; stage < 3; ++stage)
+         pipe_resource_reference(&ps5_deferred.slots[slot].storage[stage], NULL);
+      for (unsigned i = 0; i < ps5_deferred.slots[slot].retained_count; ++i)
+         pipe_resource_reference(&ps5_deferred.slots[slot].retained[i], NULL);
+   }
+   memset(&ps5_deferred, 0, sizeof(ps5_deferred));
+}
+
+static bool
+ps5_try_deferred_draw(struct pipe_context *base,
+                      const struct pipe_draw_info *info, unsigned drawid_offset,
+                      const struct pipe_draw_indirect_info *indirect,
+                      const struct pipe_draw_start_count_bias *draws,
+                      unsigned num_draws)
+{
+   struct ps5_context *context = (struct ps5_context *)base;
+   struct pipe_resource *saved[3] = {context->vertex_descriptor_table,
+      context->descriptor_storage[0], context->descriptor_storage[1]};
+   struct pipe_resource *storage[3] = {0};
+   bool handled = false;
+
+   simple_mtx_lock(&ps5_deferred_mutex);
+   if (ps5_deferred.owner && ps5_deferred.owner != context)
+      ps5_draw_batch_flush_locked();
+   if (!ps5_agc_gate2_batch_begin || !ps5_agc_gate2_batch_end || num_draws != 1 ||
+       (context->blitter && context->blitter->running) ||
+       !ps5_multidraw_eligible(context, info, indirect, draws, num_draws)) {
+      ps5_draw_batch_flush_locked();
+      goto out;
+   }
+   if (!draws[0].count) {
+      context->last_draw_status = 0;
+      handled = true;
+      goto out;
+   }
+   if (!ps5_batch_copy_descriptors(base, saved, storage)) {
+      ps5_draw_batch_flush_locked();
+      goto out; /* Allocation failure falls back only before this draw stages. */
+   }
+   if (!ps5_deferred.owner) {
+      if (ps5_agc_gate2_batch_begin() != 0) {
+         context->last_draw_status = -30;
+         handled = true;
+         goto out;
+      }
+      ps5_deferred.owner = context;
+   }
+   unsigned slot = ps5_deferred.count++;
+   for (unsigned stage = 0; stage < 3; ++stage) {
+      ps5_deferred.slots[slot].storage[stage] = storage[stage];
+      storage[stage] = NULL;
+   }
+   ps5_deferred.slots[slot].retained_count = ps5_batch_retain_resources(
+      context, info, ps5_deferred.slots[slot].retained);
+   context->vertex_descriptor_table = ps5_deferred.slots[slot].storage[0];
+   context->descriptor_storage[0] = ps5_deferred.slots[slot].storage[1];
+   context->descriptor_storage[1] = ps5_deferred.slots[slot].storage[2];
+   context->last_draw_status = 0;
+   ps5_draw_vbo_locked(base, info, drawid_offset, indirect, draws, num_draws);
+   context->vertex_descriptor_table = saved[0];
+   context->descriptor_storage[0] = saved[1];
+   context->descriptor_storage[1] = saved[2];
+   handled = true;
+   if (context->last_draw_status || ps5_deferred.count == PS5_MULTIDRAW_BATCH_CAPACITY)
+      ps5_draw_batch_flush_locked();
+out:
+   for (unsigned stage = 0; stage < 3; ++stage)
+      pipe_resource_reference(&storage[stage], NULL);
+   simple_mtx_unlock(&ps5_deferred_mutex);
+   return handled;
+}
+#endif
+
 static void
 ps5_draw_vbo(struct pipe_context *base, const struct pipe_draw_info *info,
              unsigned drawid_offset,
@@ -7606,6 +7766,10 @@ ps5_draw_vbo(struct pipe_context *base, const struct pipe_draw_info *info,
    struct pipe_draw_start_count_bias uploaded_draw;
    unsigned uploaded_offset;
 
+#ifdef PS5_DEFERRED_DRAW_BATCH
+   if (ps5_try_deferred_draw(base, info, drawid_offset, indirect, draws, num_draws))
+      return;
+#endif
 #ifdef PS5_MULTIDRAW_BATCH
    if (num_draws > 1 && ps5_try_multi_draw_batch(
           base, info, drawid_offset, indirect, draws, num_draws))
@@ -7970,6 +8134,7 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
    unsigned first_depth_layer = 0;
    unsigned last_depth_layer = 0;
 
+   ps5_draw_batch_drain();
    resource = context && context->framebuffer.zsbuf.texture
                  ? (struct ps5_resource *)context->framebuffer.zsbuf.texture
                  : NULL;
@@ -9912,6 +10077,7 @@ ps5_buffer_subdata(struct pipe_context *base, struct pipe_resource *resource,
 
    (void)base;
    (void)usage;
+   ps5_draw_batch_drain();
    if (!buffer || buffer->base.target != PIPE_BUFFER || !data ||
        offset > buffer->size || size > buffer->size - offset)
       return;
@@ -9978,6 +10144,7 @@ ps5_context_last_draw_status(struct pipe_context *base, unsigned *draw_calls)
 {
    struct ps5_context *context = (struct ps5_context *)base;
 
+   ps5_draw_batch_drain();
    if (!context)
       return -1;
    if (draw_calls)
@@ -9991,6 +10158,7 @@ ps5_context_destroy(struct pipe_context *base)
    struct ps5_context *context = (struct ps5_context *)base;
    unsigned index;
 
+   ps5_draw_batch_drain();
    if (context->blitter)
       util_blitter_destroy(context->blitter);
    ps5_release_geometry_pipeline(context);
@@ -10180,6 +10348,7 @@ ps5_screen_destroy(struct pipe_screen *base)
 {
    struct ps5_screen *screen = (struct ps5_screen *)base;
 
+   ps5_draw_batch_drain();
    simple_mtx_destroy(&screen->submit_mutex);
    simple_mtx_destroy(&screen->resource_mutex);
    free(base);

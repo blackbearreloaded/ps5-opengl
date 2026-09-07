@@ -8,13 +8,15 @@ flags=(-std=c11 -O2 -Wall -Wextra -Werror -DGL_GLEXT_PROTOTYPES=1
 export EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1
 export MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330
 source="$root/tests/ps5/egl_public_core33_multidraw_batch.c"
-for variant in plain textured; do
+for variant in plain textured deferred; do
     defines=()
-    [[ $variant != textured ]] || defines=(-DPS5_MULTIDRAW_TEXTURE_TEST=1)
+    [[ $variant == plain ]] || defines=(-DPS5_MULTIDRAW_TEXTURE_TEST=1)
+    [[ $variant != deferred ]] || defines+=(-DPS5_DEFERRED_DRAW_TEST=1)
     clang-18 "${flags[@]}" "${defines[@]}" "$source" -l:libEGL.so.1 -l:libGL.so.1 -o "$out/$variant"
     "$out/$variant" > "$out/$variant.log"
     grep -F '[ps5-multidraw] completed=4 cleanup=1 result=0' "$out/$variant.log"
 done
+grep -F '[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=9216 PASS' "$out/deferred.log"
 grep -F '[ps5-multidraw-texture] sampled=2 uploads=1 pixels=32256 PASS' "$out/textured.log"
 for fault in sampler upload; do
     if [[ $fault == sampler ]]; then
@@ -30,4 +32,18 @@ for fault in sampler upload; do
     fi
     grep -F '[ps5-multidraw] pixel mismatch' "$out/fault-$fault.log" >/dev/null
 done
-echo 'Multidraw host PASS: plain/textured pixels, sparse units, post-batch upload, sampler/upload fault rejection'
+for fault in uniform scissor; do
+    if [[ $fault == uniform ]]; then
+        change='s/green \&\& !(band % 2)/green/'
+    else
+        change='s/glScissor(band \* 8, 0, 8, HEIGHT - 4 \* (band % 3))/glScissor(band * 8, 0, 8, HEIGHT)/'
+    fi
+    sed "$change" "$source" |
+        clang-18 "${flags[@]}" -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 \
+            -x c - -l:libEGL.so.1 -l:libGL.so.1 -o "$out/fault-$fault"
+    if "$out/fault-$fault" > "$out/fault-$fault.log"; then
+        echo "Oracle missed $fault fault" >&2; exit 1
+    fi
+    grep -F '[ps5-multidraw] pixel mismatch' "$out/fault-$fault.log" >/dev/null
+done
+echo 'Draw host PASS: plain/textured/deferred pixels, upload hazards, sampler/upload/uniform/scissor fault rejection'

@@ -477,6 +477,27 @@ batching or diagnostic flags after freezing these apps.
 
 ## Milestones
 
+### Ordinary-call batching candidate — 2026-09-06
+
+`PS5_DEFERRED_DRAW_BATCH=1` also enables the existing multi-draw runtime. It
+stages at most eight ordinary draws, with private descriptor/inline-uniform
+copies and per-draw resource references. A drain submits and retires the whole
+chunk synchronously; there is no worker or GPU work left in flight afterward.
+CPU transfers, blits, clears, mipmaps, query boundaries, flush/fence creation,
+presentation, context switches and destruction drain first. Runtime ownership
+uses one process-wide mutex across screens. Unsupported draws and blitter meta
+draws keep the synchronous path; eligibility is otherwise the existing narrow
+read-only RGBA8 texture / non-staged color-target gate. Border entries remain
+append-only. No shader compiler, command encoder or polling policy changes.
+
+Host ownership/error checks and the software-Mesa oracle pass. The native gate
+`egl_public_core33_deferred_draw` reuses the four-mode pixel test, comparing
+ordinary calls with per-draw `glFinish` against ordinary calls finished once per
+group. Both change uniforms/scissors. It adds pending texture upload, buffer
+subdata/map-write and fence checks: 41,472 exact pixel comparisons in total.
+Hardware validation and real-app performance are pending; this is opt-in and
+does not promote an SDK or inherit the historical CTS campaign.
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and

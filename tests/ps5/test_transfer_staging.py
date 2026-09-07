@@ -53,6 +53,8 @@ static unsigned ps5_tiled_rgba8_width(const struct ps5_resource *r) { return r->
 static bool ps5_linear_sampled_layout(const struct pipe_resource *r) { return !r->bind; }
 static bool ps5_render_target_format(unsigned f) { return f == COLOR; }
 static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); }
+static unsigned drains;
+static void ps5_draw_batch_drain(void) { ++drains; }
 static unsigned heap_live, mapped_live, maps, unmaps;
 static unsigned fail_heap;
 static bool fail_map;
@@ -112,9 +114,10 @@ static void check(unsigned format, unsigned width, unsigned height, unsigned lay
     memset(r.data,0x3a,r.allocation_size); memset(r.stencil_data,0x2b,r.stencil_allocation_size);
     struct pipe_box box={0,0,0,(int)width,(int)height,(int)layers};
     struct pipe_transfer *t=NULL;
-    unsigned before=maps;
+    unsigned before=maps, before_drains=drains;
     uint8_t *p=ps5_transfer_map(NULL,&r.base,0,PIPE_MAP_READ|PIPE_MAP_WRITE,&box,&t);
     assert(p && t); /* Red before fix: full-image staging cannot fit the simulated heap. */
+    assert(drains == before_drains + 1);
     assert(maps == before + (r.size >= 65536));
     assert(t->stride == width*bpp && t->layer_stride == width*height*bpp);
     for (size_t i=0;i<r.size;++i) {
@@ -124,6 +127,7 @@ static void check(unsigned format, unsigned width, unsigned height, unsigned lay
     memset(p,0xc7,r.size);
     ps5_transfer_flush_region(NULL,t,&box);
     ps5_transfer_unmap(NULL,t); idle();
+    assert(drains == before_drains + 3); /* Map, explicit flush, unmap boundaries. */
     for (size_t i=0;i<r.allocation_size;++i) assert(r.data[i] == 0xc7);
     if (bpp == 8) for (size_t i=0;i<r.stencil_allocation_size;++i) assert(r.stencil_data[i] == 0xc7);
     /* Allocation failures return no transfer and retain no scratch. */
