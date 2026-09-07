@@ -12,6 +12,7 @@
     "imgui": {"url": "https://github.com/ocornut/imgui.git", "revision": "f5befd2d29e66809cd1110a152e375a7f1981f06"},
     "nanovg": {"url": "https://github.com/memononen/nanovg.git", "revision": "ce3bf745eb2d2dbc14a50bf2446783f691ac4353"},
     "sokol": {"url": "https://github.com/floooh/sokol.git", "revision": "48c85905aeaa1350feb17515961aecb6c75447d8"},
+    "sokol-samples": {"url": "https://github.com/floooh/sokol-samples.git", "revision": "8afa83928ce1870efeb0d513e7c4dce4f5db7b3e", "optional": true},
     "VK-GL-CTS": {"url": "https://github.com/KhronosGroup/VK-GL-CTS.git", "revision": "cf7edb26d3be2d8763595ed08fdc41f3c1b1966f", "optional": true}
   },
   "psbc_patch": {

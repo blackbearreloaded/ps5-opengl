@@ -63,6 +63,7 @@ def fetch_repo(name, pin):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cts", action="store_true", help="also fetch the optional CTS source")
+    parser.add_argument("--sokol-samples", action="store_true", help="also fetch the optional upstream cube sample")
     parser.add_argument("--verify-psbc", action="store_true", help="offline compiler-source check only")
     args = parser.parse_args()
     if args.verify_psbc:
@@ -71,7 +72,7 @@ def main():
     sources = ROOT / "third_party"
     sources.mkdir(exist_ok=True)
     for name, pin in PINS["repositories"].items():
-        if not pin.get("optional") or args.cts:
+        if not pin.get("optional") or (name == "VK-GL-CTS" and args.cts) or (name == "sokol-samples" and args.sokol_samples):
             fetch_repo(name, pin)
     mesa = PINS["mesa"]
     archive = sources / f"mesa-{mesa['version']}.tar.xz"

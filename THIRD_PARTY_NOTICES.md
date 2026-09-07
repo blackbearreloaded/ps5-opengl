@@ -19,6 +19,8 @@ module is copied into this repository. Patches and the test inventory are includ
 | [Dear ImGui 1.91.9b](https://github.com/ocornut/imgui) | Unmodified renderer/core in the examples | [MIT](LICENSES/Dear-ImGui.txt) |
 | [NanoVG](https://github.com/memononen/nanovg) | Unmodified GL3 renderer | [zlib](LICENSES/NanoVG.txt); preserve embedded dependency notices |
 | [Sokol](https://github.com/floooh/sokol) | Unmodified GL backend; selects existing 3.3 fallback | [zlib/libpng](LICENSES/Sokol.txt) |
+| [Sokol samples](https://github.com/floooh/sokol-samples) | Cube sample with disclosed native platform/GLSL-version adaptations | [MIT](LICENSES/Sokol-Samples.txt) |
+| [vecmath](https://github.com/floooh/sokol-samples/tree/8afa83928ce1870efeb0d513e7c4dce4f5db7b3e/libs/vecmath) | Unmodified matrix/vector header bundled with the pinned cube sample | [MIT option](LICENSES/vecmath.txt) |
 | [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk) | Public homebrew compilers, import libraries and C/C++ support; build prerequisite | SDK's component/per-file licenses; not a vendor SDK |
 | [Native app boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate) | Native runtime, linker/container conversion, assets and folder assembly | Its GPL-3.0-or-later and retained component notices |
 | [LLVM](https://llvm.org/) | Clang/LLD, compiler builtins, libc++, libc++abi and libunwind | Apache-2.0 with LLVM exceptions or component-specific notices |
