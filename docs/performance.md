@@ -640,6 +640,18 @@ submission/retirement remains slow; this tiny-texture workload is not a full gam
 or texture-bandwidth result. No new CTS acceptance or SDK promotion is implied.
 Frozen identities and receipts: `build/frozen/g7-mixed-clear-20260907.md`.
 
+### G7 ordinary-draw batching
+
+- 2026-09-07 | G7 | efb494f | pass: capacity 8→32, ordinary 3.53→4.57 FPS, instanced 59.94 FPS; pixels/25592 draws/close/health | results/g7-batch32-*-20260907
+
+The matched 128-cube profile improves ordinary throughput by 29.7%; its mean
+submission time falls from 263.92 to 199.35 ms. All 2,681 batches retire, including
+680 full 32-draw batches, and all 2,052 pixel probes pass. Instanced throughput is
+59.940087 FPS. Depth/CPU-access/query/fence regression checks also pass. Capacity
+is still bounded; eligibility and completion guards are unchanged. Ordinary
+per-draw CPU preparation remains expensive. Frozen identities and receipts:
+`build/frozen/g7-batch32-20260907.md`. No new full CTS or SDK acceptance is implied.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
