@@ -31,11 +31,19 @@ Four single-sample candidate timings were 150.1–167.6 ms forced serial versus
 The standalone installed SDK is still the previous default; no promotion or
 new complete CTS acceptance is implied. `PS5_DEFERRED_DRAW_BATCH=1` opts into
 ordinary-call staging with private descriptors, retained resources and explicit
-drain boundaries. Unsupported/staged/depth-tested paths remain synchronous.
+drain boundaries. Non-staged Z32/Z32-S8 depth testing is now included;
+unsupported, staged, stencil-tested and multisampled paths remain synchronous.
 Native RGBA8 vertex inputs now let the unchanged 1080p ImGui scene actually
 group its two draws: 50.049 ms/frame (~19.98 FPS), versus 66.732 ms (~14.99 FPS)
 before the format mapping, a 1.33x short-profile throughput ratio. Clear and
 swap still dominate; this is not a general 3D FPS estimate or final acceptance.
+
+Latest matched 1080p cubes (`0dbffb4`): ordinary 1/8/32 draws measured
+21.89/17.82/8.73 FPS with batching versus 21.89/6.00/1.76 FPS synchronously;
+instancing remains ~20.06 FPS. Both pass 668 depth/texture probes and 48 measured
+frames. The candidate proves all 108 retired chunks / 528 draws. These short
+full-frame measurements are not game performance; clear and swap still dominate
+small workloads. No default SDK promotion or final CTS acceptance yet.
 
 ## Release sequence
 
@@ -563,6 +571,8 @@ shaders, 668 probes and 48 measured frames are unchanged. Require a matched
 synchronous control and `summarize-cubes.py --deferred-batches` candidate
 (108 chunks / 528 draws), not timing alone. The earlier `g8-depth-cubes` build
 was not run because offline inspection identified this measurement barrier.
+
+- 2026-09-07 | G8 | 0dbffb4 | pass: paired cubes, 668 probes each, exact 108 chunks; 8/32 ordinary draws 2.97x/4.95x full-frame throughput; healthy teardown/unlock | results/g8-cubes-frame-{control,batch}
 
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
