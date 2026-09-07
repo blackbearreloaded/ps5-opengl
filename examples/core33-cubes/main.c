@@ -13,7 +13,9 @@
 #include <GL/gl.h>
 
 enum { WIDTH = 1920, HEIGHT = 1080, WARMUP = 2, FRAMES = 8 };
+#ifndef PS5_CUBES_PROFILE
 static const unsigned workloads[] = {1, 8, 32};
+#endif
 static const uint8_t texels[2][16] = {
    {255,0,0,255, 0,255,0,255, 0,0,255,255, 255,255,255,255},
    {255,255,0,255, 0,255,255,255, 255,0,255,255, 255,255,255,255}
@@ -70,15 +72,16 @@ static void geometry(void)
 
 static void object_position(unsigned count, unsigned i, float out[4])
 {
-   unsigned cols = count == 1 ? 1 : count == 8 ? 4 : 8;
+   unsigned cols = count == 1 ? 1 : count == 8 ? 4 : count <= 32 ? 8 : count == 128 ? 16 : 32;
    unsigned rows = count / cols;
-   out[0] = ((float)(i % cols) - (cols - 1) * .5f) * .8f;
-   out[1] = ((float)(i / cols) - (rows - 1) * .5f) * .8f;
+   float shrink = count > 32 ? 8.0f / cols : 1;
+   out[0] = ((float)(i % cols) - (cols - 1) * .5f) * .8f * shrink;
+   out[1] = ((float)(i / cols) - (rows - 1) * .5f) * .8f * shrink;
    out[2] = -6;
-   out[3] = count == 1 ? .8f : .25f;
+   out[3] = count == 1 ? .8f : .25f * shrink;
 }
 
-static int draw(unsigned count, unsigned mode, float angle, int64_t times[3])
+static void draw_commands(unsigned count, unsigned mode, float angle, int64_t times[3])
 {
    times[0] = now_ns();
    glClearColor(8 / 255.0f, 12 / 255.0f, 20 / 255.0f, 1);
@@ -96,7 +99,15 @@ static int draw(unsigned count, unsigned mode, float angle, int64_t times[3])
          glDrawArrays(GL_TRIANGLES, 0, 36);
       }
    }
-   /* One completion boundary per frame; never time unfinished work as FPS. */
+#ifdef PS5_CUBES_PROFILE
+   times[2] = now_ns();
+#endif
+}
+
+static int draw(unsigned count, unsigned mode, float angle, int64_t times[3])
+{
+   draw_commands(count, mode, angle, times);
+   /* Historical completion boundary; the opt-in profile names its own mode. */
    glFinish();
 #ifdef PS5_NATIVE_CUBES_TEST
    if (!check(ps5_egl_current_draw_status(NULL) == 0, "native draw")) return 0;
@@ -144,6 +155,10 @@ static int oracle(unsigned count, unsigned mode)
    printf("[ps5-cubes] oracle mode=%u objects=%u probes=%u %s\n", mode, count, 1 + count * 4, passed ? "PASS" : "FAIL");
    return passed;
 }
+
+#ifdef PS5_CUBES_PROFILE
+#include "profile.h"
+#endif
 
 int main(void)
 {
@@ -232,6 +247,9 @@ int main(void)
    glEnableVertexAttribArray(3); glVertexAttribDivisor(3,1);
    glViewport(0,0,WIDTH,HEIGHT); glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LESS); glDepthMask(GL_TRUE);
    glDisable(GL_DITHER); glDisable(GL_CULL_FACE); glDisable(GL_BLEND);
+#ifdef PS5_CUBES_PROFILE
+   if (!profile(display, surface, &completed)) goto cleanup;
+#else
    printf("[ps5-cubes] start width=%u height=%u warmup=%u frames=%u triangles_per_object=12 modes=2"
 #ifdef PS5_CUBES_UV_DIAGNOSTIC
       " diagnostic=uv"
@@ -257,6 +275,7 @@ int main(void)
       if (!draw(objects,mode,0,t) || !oracle(objects,mode) || !eglSwapBuffers(display,surface)) goto cleanup;
       ++completed;
    }
+#endif
    passed = 1;
 cleanup:
    if (current) {
@@ -276,6 +295,12 @@ cleanup:
       clean &= eglTerminate(display);
    }
    clean &= eglGetError() == EGL_SUCCESS;
-   printf("[ps5-cubes] completed=%u cleanup=%u result=%d\n",completed,clean,passed && clean ? 0 : 1);
+   printf(
+#ifdef PS5_CUBES_PROFILE
+      "[ps5-cubes-profile]"
+#else
+      "[ps5-cubes]"
+#endif
+      " completed=%u cleanup=%u result=%d\n",completed,clean,passed && clean ? 0 : 1);
    return passed && clean ? 0 : 1;
 }
