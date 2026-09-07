@@ -183,6 +183,13 @@ does not establish leak-free long-term use, OOM recovery or suspend/resume.
 Address the newly observed application-memory constraint before broad release
 acceptance; per-draw synchronization and busy unregister remain separate work.
 
+- 2026-09-06 | G7 | 1c74dee | failed: mapped 8.3 MB caller buffer allows shader setup, but full-frame readback returns GL_OUT_OF_MEMORY; normal close/health/unlock | results/g7-sokol-cube-mapped/205933
+
+The caller mapping succeeds; the driver still allocates its full-image transfer
+staging on the heap. Investigate that shared color/depth allocation path next.
+No assertion, GPU timeout or kernel panic appears in this receipt. Mapping the
+caller alone is not a fix, and general application-heap robustness remains open.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

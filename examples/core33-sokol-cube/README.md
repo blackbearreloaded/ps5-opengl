@@ -39,8 +39,11 @@ full-frame readback using an anonymous CPU mapping, rounded to the native 16 KiB
 page size and released with `munmap`. It changes no GL/shader/driver path and does
 not replace `malloc`, expand the app's resource budget or access other memory.
 Run `bash tools/test-sokol-cube-host.sh --mapped` first; it also checks a simulated
-allocation failure exits before rendering and cleans up EGL. Native mapping
-acceptance is pending. The small scanline checker remains the default.
+allocation failure exits before rendering and cleans up EGL. Native `1c74dee`
+accepts the mapping and completes shader setup, but its first full-frame readback
+returns `GL_OUT_OF_MEMORY`; the app closes normally. Driver transfer staging
+still uses the heap and is the next investigation. The small checker remains the
+default; neither control establishes general application-heap robustness.
 
 The sample is MIT-licensed by Andre Weissflog; its bundled vecmath is used under
 Mattias Gustavsson's MIT option. See [notices](../../THIRD_PARTY_NOTICES.md).

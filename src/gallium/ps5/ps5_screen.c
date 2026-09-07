@@ -274,6 +274,7 @@ struct ps5_resource {
 struct ps5_transfer {
    struct pipe_transfer base;
    void *staging;
+   size_t staging_mapping_size;
 };
 
 struct ps5_vertex_elements {
@@ -4360,6 +4361,41 @@ ps5_stage_depth_surface(const struct pipe_surface *surface, bool to_staging)
    return true;
 }
 
+static bool
+ps5_transfer_alloc_staging(struct ps5_transfer *transfer, size_t size)
+{
+   if (!size || size > SIZE_MAX - (PS5_DIRECT_ALIGNMENT - 1u))
+      return false;
+
+   /* Keep small transfers cheap; full-image scratch must not exhaust the
+    * native libc heap. This is CPU-only memory, never a GPU resource. */
+   if (size < 0x10000) {
+      transfer->staging = malloc(size);
+      return transfer->staging != NULL;
+   }
+   size = (size + PS5_DIRECT_ALIGNMENT - 1u) &
+          ~(size_t)(PS5_DIRECT_ALIGNMENT - 1u);
+   transfer->staging = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+   if (transfer->staging == MAP_FAILED) {
+      transfer->staging = NULL;
+      return false;
+   }
+   transfer->staging_mapping_size = size;
+   return true;
+}
+
+static void
+ps5_transfer_free_staging(struct ps5_transfer *transfer)
+{
+   if (transfer->staging_mapping_size) {
+      if (munmap(transfer->staging, transfer->staging_mapping_size))
+         fprintf(stderr, "[ps5-gallium] transfer staging munmap failed\n");
+   } else {
+      free(transfer->staging);
+   }
+}
+
 static void *
 ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
                  unsigned level, unsigned usage, const struct pipe_box *box,
@@ -4371,7 +4407,10 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
    unsigned format_size;
 
    (void)context;
-   if (!out_transfer || !ps5_map_bounds(resource, level, box, &offset))
+   if (!out_transfer)
+      return NULL;
+   *out_transfer = NULL;
+   if (!ps5_map_bounds(resource, level, box, &offset))
       return NULL;
 
    transfer = calloc(1, sizeof(*transfer));
@@ -4417,13 +4456,12 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
          return NULL;
       }
       staging_size = staging_layer_stride * (unsigned)box->depth;
-      transfer->staging = malloc(staging_size);
-      if (!transfer->staging ||
+      if (!ps5_transfer_alloc_staging(transfer, staging_size) ||
           (packed && (!resource->stencil_data ||
                       resource->stencil_allocation_size <
                          stencil_layer_size *
                          ps5_texture_level_layers(&resource->base, 0)))) {
-         free(transfer->staging);
+         ps5_transfer_free_staging(transfer);
          free(transfer);
          *out_transfer = NULL;
          return NULL;
@@ -4451,7 +4489,7 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
 
                   if (depth_offset > resource->allocation_size ||
                       resource->allocation_size - depth_offset < 4) {
-                     free(transfer->staging);
+                     ps5_transfer_free_staging(transfer);
                      free(transfer);
                      *out_transfer = NULL;
                      return NULL;
@@ -4465,7 +4503,7 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
 
                      if (stencil_offset >=
                            resource->stencil_allocation_size) {
-                        free(transfer->staging);
+                        ps5_transfer_free_staging(transfer);
                         free(transfer);
                         *out_transfer = NULL;
                         return NULL;
@@ -4508,8 +4546,7 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
          return NULL;
       }
       staging_size = staging_stride * (unsigned)box->height;
-      transfer->staging = malloc(staging_size);
-      if (!transfer->staging) {
+      if (!ps5_transfer_alloc_staging(transfer, staging_size)) {
          free(transfer);
          *out_transfer = NULL;
          return NULL;
@@ -4530,7 +4567,7 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
 
                if (tiled > resource->allocation_size ||
                    resource->allocation_size - tiled < format_size) {
-                  free(transfer->staging);
+                  ps5_transfer_free_staging(transfer);
                   free(transfer);
                   *out_transfer = NULL;
                   return NULL;
@@ -4644,7 +4681,7 @@ ps5_transfer_unmap(struct pipe_context *context,
       }
       ps5_flush_gpu_data(resource->data, resource->allocation_size);
    }
-   free(ps5->staging);
+   ps5_transfer_free_staging(ps5);
    free(ps5);
 }
 
