@@ -8,10 +8,11 @@ flags=(-std=c11 -O2 -Wall -Wextra -Werror -DGL_GLEXT_PROTOTYPES=1
 export EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1
 export MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330
 source="$root/tests/ps5/egl_public_core33_multidraw_batch.c"
-for variant in plain textured deferred; do
+for variant in plain textured deferred rgba8; do
     defines=()
     [[ $variant == plain ]] || defines=(-DPS5_MULTIDRAW_TEXTURE_TEST=1)
-    [[ $variant != deferred ]] || defines+=(-DPS5_DEFERRED_DRAW_TEST=1)
+    [[ $variant != deferred && $variant != rgba8 ]] || defines+=(-DPS5_DEFERRED_DRAW_TEST=1)
+    [[ $variant != rgba8 ]] || defines+=(-DPS5_RGBA8_VERTEX_TEST=1)
     clang-18 "${flags[@]}" "${defines[@]}" "$source" -l:libEGL.so.1 -l:libGL.so.1 -o "$out/$variant"
     "$out/$variant" > "$out/$variant.log"
     grep -F '[ps5-multidraw] completed=4 cleanup=1 result=0' "$out/$variant.log"
@@ -49,4 +50,19 @@ for fault in uniform scissor pending-texture; do
     fi
     grep -F '[ps5-multidraw] pixel mismatch' "$out/fault-$fault.log" >/dev/null
 done
-echo 'Draw host PASS: plain/textured/deferred pixels, upload hazards, sampler/upload/uniform/scissor/pending-texture fault rejection'
+for fault in bgra unnormalized; do
+    if [[ $fault == bgra ]]; then
+        change='s/glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE/glVertexAttribPointer(1, GL_BGRA, GL_UNSIGNED_BYTE/'
+    else
+        change='s/GL_UNSIGNED_BYTE, GL_TRUE, sizeof(struct vertex)/GL_UNSIGNED_BYTE, GL_FALSE, sizeof(struct vertex)/'
+    fi
+    sed "$change" "$source" |
+        clang-18 "${flags[@]}" -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 -DPS5_RGBA8_VERTEX_TEST=1 \
+            -x c - -l:libEGL.so.1 -l:libGL.so.1 -o "$out/fault-$fault"
+    if "$out/fault-$fault" > "$out/fault-$fault.log"; then
+        echo "Oracle missed $fault fault" >&2; exit 1
+    fi
+    grep -F '[ps5-multidraw] pixel mismatch' "$out/fault-$fault.log" >/dev/null
+done
+
+echo 'Draw host PASS: float/RGBA8 pixels, upload hazards and sampler/upload/uniform/scissor/pending-texture/BGRA/normalization fault rejection'

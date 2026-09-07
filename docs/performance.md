@@ -502,14 +502,22 @@ Both native configurations pass, including 65 matched candidate chunks and the
 candidate: `results/g8-deferred-draws-oracle/PPSA99005-20260906-232007-opengl.log`.
 Artifact pins are in their corresponding `build/frozen/*/manifest.md` files.
 Audit with `test_multidraw_lifetime.py RECEIPT --deferred[-control]`.
-Real-app performance remains pending; no SDK promotion or inherited CTS result.
+No SDK promotion or inherited CTS result.
 
-Next consumer case: reuse the unmodified ImGui 30-second TV profile with an
+Consumer case: reuse the unmodified ImGui 30-second TV profile with an
 isolated opt-in SDK. Require its two pixel probes, at least 60 post-warm-up
 frames, complete clear/draw/readback/swap wall-time accounting, real multi-draw
 chunks, and clean native teardown/health/unlock. No per-phase timing alone is a
 speedup: completion waits can move from drawing to swap. This is a short profile,
 not a long-run stability or general 3D performance claim.
+
+- 2026-09-06 | G8 | 2c010ba | partial-pass: ImGui 421 measured + 30 warm-up frames, pixel probes/lifecycle pass; 66.732 ms/frame (~14.99 FPS), every chunk has one draw; healthy teardown/unlock | results/g8-deferred-imgui-profile/232919
+
+The synthetic speedup does not yet reach ImGui. Its normalized RGBA8 colors are
+not advertised as native vertex inputs, so Mesa's CPU format translation maps
+buffers and drains the pending queue. Next: add RGBA8 to the existing packed
+vertex/compiler format mapping, validate channel order/normalization and rerun
+the same profile. Keep the CPU-access synchronization guards unchanged.
 
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the

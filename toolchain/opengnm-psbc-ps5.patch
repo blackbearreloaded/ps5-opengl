@@ -503,7 +503,7 @@ index 945737db85a6e86c1e06b09b32af1d3b1de12485..72a6f1f19de69061e51e4af3fee1c2a1
  
  	psbc_free_output(&output);
 diff --git a/libpsbc/psbc_compile.c b/libpsbc/psbc_compile.c
-index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec69d06884 100644
+index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..e9c6bce91f110aa6a3b86d63e5c46652a4a62dce 100644
 --- a/libpsbc/psbc_compile.c
 +++ b/libpsbc/psbc_compile.c
 @@ -12,6 +12,7 @@
@@ -1592,7 +1592,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec
      /* Set next_stage based on the pipeline graph.
       * For standalone compilation we assume the simplest pipeline:
       *   VS → FS, VS → HS → DS → FS, VS → GS → FS
-@@ -992,46 +1886,360 @@ PsbcResult psbc_compile_shader(
+@@ -992,46 +1886,363 @@ PsbcResult psbc_compile_shader(
      case MESA_SHADER_GEOMETRY:  stage.next_stage = MESA_SHADER_FRAGMENT;     break;
      default:                    stage.next_stage = MESA_SHADER_NONE;         break;
      }
@@ -1812,6 +1812,9 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec
 +        case PSBC_VERTEX_FORMAT_B8G8R8A8_UNORM:
 +            format = PIPE_FORMAT_B8G8R8A8_UNORM;
 +            break;
++        case PSBC_VERTEX_FORMAT_R8G8B8A8_UNORM:
++            format = PIPE_FORMAT_R8G8B8A8_UNORM;
++            break;
 +        case PSBC_VERTEX_FORMAT_R10G10B10A2_UNORM:
 +            format = PIPE_FORMAT_R10G10B10A2_UNORM;
 +            break;
@@ -1976,7 +1979,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec
  
      /* Determine previous stage for shader args declaration.
       * HS/GS need previous_stage=VERTEX so that the merged-pipeline args
-@@ -1049,10 +2257,16 @@ PsbcResult psbc_compile_shader(
+@@ -1049,10 +2260,16 @@ PsbcResult psbc_compile_shader(
      radv_declare_shader_args(
          &compiler_info, &gfx_state, &stage, previous_stage, NULL
      );
@@ -1994,7 +1997,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec
  
      /* For geometry shaders, run the legacy GS lowering pass.
       * On GFX10.3 (PS5), NGG GS requires merging with the previous stage,
-@@ -1080,16 +2294,72 @@ PsbcResult psbc_compile_shader(
+@@ -1080,16 +2297,72 @@ PsbcResult psbc_compile_shader(
              ralloc_free(gs_copy);
      }
  
@@ -2071,7 +2074,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec
          psbc_shutdown();
          return PSBC_RESULT_COMPILE_ACO;
      }
-@@ -1098,6 +2368,22 @@ PsbcResult psbc_compile_shader(
+@@ -1098,6 +2371,22 @@ PsbcResult psbc_compile_shader(
      struct radv_shader_binary_legacy* legacy =
          (struct radv_shader_binary_legacy*)binary;
  
@@ -2094,7 +2097,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec
      /* The data layout in radv_shader_binary_legacy is:
       * [stats | code | ir | disasm | debug_info]
       * Code starts at offset stats_size. */
-@@ -1116,28 +2402,103 @@ PsbcResult psbc_compile_shader(
+@@ -1116,28 +2405,103 @@ PsbcResult psbc_compile_shader(
          .psbc_stage = opts->stage,
          .spirv_data = spirv,
          .spirv_size = spirv_size,
@@ -2203,7 +2206,7 @@ index bacbc6a59bcddef3b477508b32e9c7ef19059fc5..894afdca9661f1c5ad2ef1129899a7ec
  
  const char* psbc_result_string(PsbcResult result) {
 diff --git a/libpsbc/psbc_compile.h b/libpsbc/psbc_compile.h
-index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..9a0530c7afc4ea5c18d6417ff7ad5decb34baed6 100644
+index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..556a062b6caee90eb8786eaae967e6e7149b8ba2 100644
 --- a/libpsbc/psbc_compile.h
 +++ b/libpsbc/psbc_compile.h
 @@ -20,6 +20,11 @@
@@ -2218,7 +2221,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..9a0530c7afc4ea5c18d6417ff7ad5dec
  /* === Types === */
  
  typedef enum {
-@@ -51,9 +56,142 @@ typedef enum {
+@@ -51,9 +56,143 @@ typedef enum {
      PSBC_RESULT_INTERNAL_ERROR,
  } PsbcResult;
  
@@ -2256,6 +2259,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..9a0530c7afc4ea5c18d6417ff7ad5dec
 +    PSBC_VERTEX_FORMAT_R32G32_UINT,
 +    PSBC_VERTEX_FORMAT_R32G32B32_UINT,
 +    PSBC_VERTEX_FORMAT_R32G32B32A32_UINT,
++    PSBC_VERTEX_FORMAT_R8G8B8A8_UNORM,
 +} PsbcVertexFormat;
 +
 +typedef struct {
@@ -2363,7 +2367,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..9a0530c7afc4ea5c18d6417ff7ad5dec
  } PsbcShaderOutput;
  
  typedef struct {
-@@ -61,6 +199,22 @@ typedef struct {
+@@ -61,6 +200,22 @@ typedef struct {
      PsbcStage   stage;
      const char* entrypoint;  /* Default: "main" */
      bool        optimise;    /* Default: true */
@@ -2386,7 +2390,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..9a0530c7afc4ea5c18d6417ff7ad5dec
  } PsbcCompileOptions;
  
  /* === API === */
-@@ -77,20 +231,26 @@ void psbc_init(void);
+@@ -77,20 +232,26 @@ void psbc_init(void);
   */
  void psbc_shutdown(void);
  
@@ -2418,7 +2422,7 @@ index 000e7e1c50fd4c53d1c516804ca8ac7bdb004357..9a0530c7afc4ea5c18d6417ff7ad5dec
   */
  PsbcResult psbc_compile_shader(
      const uint32_t*       spirv,
-@@ -99,6 +259,35 @@ PsbcResult psbc_compile_shader(
+@@ -99,6 +260,35 @@ PsbcResult psbc_compile_shader(
      PsbcShaderOutput*     out
  );
  

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real compiler and descriptor checks for Mesa's zero-stride current attributes."""
+"""Real compiler/driver checks for constant, float and packed color attributes."""
 import subprocess
 import sys
 import tempfile
@@ -10,8 +10,9 @@ rejected = "--expect-rejected" in sys.argv
 source = (ROOT / "src/gallium/ps5/ps5_screen.c").read_text()
 descriptor = ""
 if not rejected:
-    start = source.index("static bool\nps5_vertex_buffer_descriptor(")
-    descriptor = source[start:source.index("\n}", start) + 2]
+    for name in ("ps5_vertex_buffer_descriptor", "ps5_packed_vertex_format", "ps5_vertex_format"):
+        start = source.rindex(f"static bool\n{name}(")
+        descriptor += source[start:source.index("\n}", start) + 2] + "\n"
 code = r'''
 #include <assert.h>
 #include <stdint.h>
@@ -19,6 +20,9 @@ code = r'''
 #include "compiler/nir/nir_builder.h"
 #include "amd/common/amdgfxregs.h"
 #include "psbc_compile.h"
+#include "util/format/u_format.h"
+#define PS5_ENABLE_PACKED_VERTEX_CANDIDATE 1
+#define PS5_ENABLE_INTEGER_VERTEX_CANDIDATE 1
 ''' + descriptor + r'''
 int main(void) {
     psbc_init();
@@ -40,14 +44,18 @@ int main(void) {
             .format=PSBC_VERTEX_FORMAT_R32G32B32A32_FLOAT, .alignment=4}}};
     for (unsigned stride = 0; stride <= 16; stride += 16)
         for (unsigned omit = 0; omit < 2; ++omit)
-            for (unsigned offset = 0; offset <= 16; offset += 16) {
+            for (unsigned offset = 0; offset <= 16; offset += 16)
+            for (unsigned format = 0; format < (EXPECT_REJECTED ? 1 : 3); ++format) {
+                const PsbcVertexFormat formats[] = {PSBC_VERTEX_FORMAT_R32G32B32A32_FLOAT,
+                    PSBC_VERTEX_FORMAT_B8G8R8A8_UNORM, PSBC_VERTEX_FORMAT_R8G8B8A8_UNORM};
+                options.vertex_attributes[0].format = formats[format];
                 options.vertex_attributes[0].stride = stride;
                 options.vertex_attributes[0].offset = offset;
                 options.omit_implicit_primitive_id = omit;
                 PsbcShaderOutput out;
                 PsbcResult result = psbc_compile_nir(b.shader, &options, &out);
                 assert(result == (EXPECT_REJECTED && !stride ? PSBC_RESULT_INTERNAL_ERROR : PSBC_RESULT_OK));
-                printf("vertex-constant stride=%u offset=%u omit=%u result=%u\n", stride, offset, omit, result);
+                printf("vertex-input format=%u stride=%u offset=%u omit=%u result=%u\n", format, stride, offset, omit, result);
                 psbc_free_output(&out);
             }
     options.vertex_attributes[0].alignment = 0;
@@ -57,6 +65,12 @@ int main(void) {
     ralloc_free(b.shader);
     psbc_shutdown();
 #if !EXPECT_REJECTED
+    PsbcVertexFormat format;
+    assert(ps5_packed_vertex_format(PIPE_FORMAT_R8G8B8A8_UNORM));
+    assert(ps5_vertex_format(PIPE_FORMAT_R8G8B8A8_UNORM, &format));
+    assert(format == PSBC_VERTEX_FORMAT_R8G8B8A8_UNORM);
+    assert(ps5_vertex_format(PIPE_FORMAT_B8G8R8A8_UNORM, &format));
+    assert(format == PSBC_VERTEX_FORMAT_B8G8R8A8_UNORM);
     uint32_t desc[4];
     const uintptr_t address = UINT64_C(0x201234000);
     assert(ps5_vertex_buffer_descriptor(address, 64, 0, 1, desc));
@@ -82,4 +96,4 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run(["g++", "-o", exe, obj, str(psbc / "libpsbc.a"), "-pthread", "-lm"], check=True)
     subprocess.run([exe], check=True)
 print("PASS: reproduced zero-stride rejection independent of PrimitiveID" if rejected else
-      "PASS: constant/ordinary inputs, offsets, both export variants and bounded RAW descriptors")
+      "PASS: float/RGBA8/BGRA8 inputs, constant/ordinary strides, offsets, both export variants and bounded RAW descriptors")

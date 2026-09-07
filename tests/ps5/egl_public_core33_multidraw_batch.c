@@ -10,15 +10,27 @@
 #include <GL/gl.h>
 
 enum { BANDS = 9, WIDTH = BANDS * 8, HEIGHT = 32, DRAWS = BANDS + 2 };
-struct vertex { float position[2], color[4]; };
+struct vertex {
+   float position[2];
+#ifdef PS5_RGBA8_VERTEX_TEST
+   uint8_t color[4];
+#else
+   float color[4];
+#endif
+};
 static struct vertex vertices[(BANDS + 1) * 6];
 static uint8_t pixels[WIDTH * HEIGHT * 4];
 #ifdef PS5_DEFERRED_DRAW_TEST
 static int varying_draw_state = 1;
 #endif
 static const uint8_t colors[7][4] = {
+#ifdef PS5_RGBA8_VERTEX_TEST
+   {127,0,0,255}, {0,63,0,255}, {0,0,191,255}, {255,127,0,255},
+   {255,0,255,255}, {0,191,63,255}, {1,127,254,63}
+#else
    {255,0,0,255}, {0,255,0,255}, {0,0,255,255}, {255,255,0,255},
    {255,0,255,255}, {0,255,255,255}, {255,255,255,255}
+#endif
 };
 #ifdef PS5_MULTIDRAW_TEXTURE_TEST
 static uint8_t texture_pixels[2][4][4] = {
@@ -158,7 +170,11 @@ int main(void)
       for (unsigned v = 0; v < 6; ++v) {
          memcpy(vertices[band * 6 + v].position, p[v], sizeof(p[v]));
          for (unsigned c = 0; c < 4; ++c)
-            vertices[band * 6 + v].color[c] = colors[band == BANDS ? 2 : band % 7][c] / 255.0f;
+            vertices[band * 6 + v].color[c] = colors[band == BANDS ? 2 : band % 7][c]
+#ifndef PS5_RGBA8_VERTEX_TEST
+               / 255.0f
+#endif
+               ;
          indices16[band * 6 + v] = indices32[band * 6 + v] = band * 6 + v;
       }
    }
@@ -170,7 +186,12 @@ int main(void)
    glGenBuffers(1, &vbo); glBindBuffer(GL_ARRAY_BUFFER, vbo);
    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(struct vertex), (void *)offsetof(struct vertex, position));
+#ifdef PS5_RGBA8_VERTEX_TEST
+   glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(struct vertex), (void *)offsetof(struct vertex, color));
+   printf("[ps5-rgba8-vertex] normalized=1 channels=RGBA intermediate-values=1\n");
+#else
    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(struct vertex), (void *)offsetof(struct vertex, color));
+#endif
    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1);
    glGenBuffers(1, &ebo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
    glViewport(0, 0, WIDTH, HEIGHT);
@@ -248,7 +269,7 @@ int main(void)
       for (unsigned i = 0; i < DRAWS; ++i) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
       struct vertex changed[6];
       memcpy(changed, vertices + BANDS * 6, sizeof(changed));
-      for (unsigned v = 0; v < 6; ++v) memset(changed[v].color, 0, 3 * sizeof(float));
+      for (unsigned v = 0; v < 6; ++v) memset(changed[v].color, 0, 3 * sizeof(changed[v].color[0]));
       const GLintptr at = BANDS * 6 * sizeof(struct vertex);
       if (!hazard) glBufferSubData(GL_ARRAY_BUFFER, at, sizeof(changed), changed);
       else {
@@ -286,7 +307,7 @@ int main(void)
    GLenum waited = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
    if (waited != GL_ALREADY_SIGNALED && waited != GL_CONDITION_SATISFIED) goto cleanup;
    /* Orphan the original VBO immediately; no queued draw may still need it. */
-   for (unsigned i = 0; i < 6; ++i) memset(vertices[i].color, 0, 3 * sizeof(float));
+   for (unsigned i = 0; i < 6; ++i) memset(vertices[i].color, 0, 3 * sizeof(vertices[i].color[0]));
    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
    glDrawArrays(GL_TRIANGLES, 0, 6);
    if (!check_pixels(1, 1)) goto cleanup;

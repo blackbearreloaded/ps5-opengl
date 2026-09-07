@@ -953,6 +953,7 @@ static bool
 ps5_packed_vertex_format(enum pipe_format format)
 {
    switch (format) {
+   case PIPE_FORMAT_R8G8B8A8_UNORM:
    case PIPE_FORMAT_B8G8R8A8_UNORM:
    case PIPE_FORMAT_R10G10B10A2_UNORM:
    case PIPE_FORMAT_B10G10R10A2_UNORM:
@@ -8529,6 +8530,9 @@ ps5_vertex_format(enum pipe_format format, PsbcVertexFormat *out)
       return PS5_ENABLE_INTEGER_VERTEX_CANDIDATE;
    case PIPE_FORMAT_B8G8R8A8_UNORM:
       *out = PSBC_VERTEX_FORMAT_B8G8R8A8_UNORM;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R8G8B8A8_UNORM:
+      *out = PSBC_VERTEX_FORMAT_R8G8B8A8_UNORM;
       return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
    case PIPE_FORMAT_R10G10B10A2_UNORM:
       *out = PSBC_VERTEX_FORMAT_R10G10B10A2_UNORM;

@@ -1828,6 +1828,9 @@ egl_public_core33_multidraw_texture.o: egl_public_core33_multidraw_batch.c
 egl_public_core33_deferred_draw.o: egl_public_core33_multidraw_batch.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_NATIVE_MULTIDRAW_TEST=1 -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 -c -o $@ $<
 
+egl_public_core33_rgba8_vertex.o: egl_public_core33_multidraw_batch.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_NATIVE_MULTIDRAW_TEST=1 -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 -DPS5_RGBA8_VERTEX_TEST=1 -c -o $@ $<
+
 egl_public_core33_cubes.o: ../../examples/core33-cubes/main.c
 	$(CC) $(CFLAGS) -DPS5_NATIVE_CUBES_TEST=1 -c -o $@ $<
 
