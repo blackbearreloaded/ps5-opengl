@@ -23,21 +23,22 @@ validation export have not been replaced. Batching
 remains opt-in; per-draw completion waits remain the main scaling limitation.
 
 Latest G7: presenter-error and submission-retirement guards pass host injection
-and normal native lifecycle/multi-draw controls. Latest G8: read-only fragment
-texture batching passes 32,256 pixels, sparse units 0/7, post-batch upload and
-query/fence/buffer reuse. Four single-sample timings were 139.9–166.5 ms serial
-versus 33.4–33.7 ms batched (4.16–4.99x); this is not a game-FPS estimate.
+and normal native lifecycle/multi-draw controls. Latest G8: ordinary-call batching
+passes a paired native control/candidate with 41,472 pixel comparisons each,
+changing uniforms/scissors and pending texture/buffer updates, maps and fences.
+Four single-sample candidate timings were 150.1–167.6 ms forced serial versus
+33.2–33.8 ms grouped (4.52–4.99x); this is not a game-FPS estimate.
 The standalone installed SDK is still the previous default; no promotion or
-new complete CTS acceptance is implied. Separate ordinary GL calls remain
-synchronous. Extending batching across those calls requires flush points for
-CPU maps/uploads/clears, queries, presentation and destruction, plus immutable
-descriptors and retained resources; removing waits alone is not safe.
+new complete CTS acceptance is implied. `PS5_DEFERRED_DRAW_BATCH=1` opts into
+ordinary-call staging with private descriptors, retained resources and explicit
+drain boundaries. Unsupported/staged/depth-tested paths remain synchronous.
 
 ## Release sequence
 
 - 2026-09-06 | G7 | e678bbb | pass: presenter-error SDK, three EGL/ImGui sessions, 18 frames/180 probes; clean teardown/health/unlock | results/g7-present-errors-lifecycle/220742
 - 2026-09-06 | G7 | f7daf54 | pass: fail-stop host checks + native lifecycle and 32256-pixel multi-draw controls; clean teardown/health/unlock | results/g7-retirement-{lifecycle,multidraw}
 - 2026-09-06 | G8 | d0fb05c | pass: textured multi-draw, 32256 pixels + upload/query/fence/orphan; 4.16–4.99x workload ratio; clean teardown/health/unlock | results/g8-multidraw-textures/223705
+- 2026-09-06 | G8 | e140f34 | pass: ordinary-call control/candidate, 41472 pixels each; 4.52–4.99x candidate ratio; clean teardown/health/unlock | results/g8-deferred-{control,draws}-oracle
 
 Unconfirmed native submission retirement now terminates the application before
 cleanup or exit handlers can reuse GPU memory; see [consumer limits](consumer-build.md#unrecoverable-gpu-submission-errors).
@@ -495,8 +496,20 @@ Host ownership/error checks and the software-Mesa oracle pass. The native gate
 ordinary calls with per-draw `glFinish` against ordinary calls finished once per
 group. Both change uniforms/scissors. It adds pending texture upload, buffer
 subdata/map-write and fence checks: 41,472 exact pixel comparisons in total.
-Hardware validation and real-app performance are pending; this is opt-in and
-does not promote an SDK or inherit the historical CTS campaign.
+Both native configurations pass, including 65 matched candidate chunks and the
+8+2 grouping in every timed mode. Control receipt:
+`results/g8-deferred-control-oracle/PPSA99005-20260906-231703-opengl.log`;
+candidate: `results/g8-deferred-draws-oracle/PPSA99005-20260906-232007-opengl.log`.
+Artifact pins are in their corresponding `build/frozen/*/manifest.md` files.
+Audit with `test_multidraw_lifetime.py RECEIPT --deferred[-control]`.
+Real-app performance remains pending; no SDK promotion or inherited CTS result.
+
+Next consumer case: reuse the unmodified ImGui 30-second TV profile with an
+isolated opt-in SDK. Require its two pixel probes, at least 60 post-warm-up
+frames, complete clear/draw/readback/swap wall-time accounting, real multi-draw
+chunks, and clean native teardown/health/unlock. No per-phase timing alone is a
+speedup: completion waits can move from drawing to swap. This is a short profile,
+not a long-run stability or general 3D performance claim.
 
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
