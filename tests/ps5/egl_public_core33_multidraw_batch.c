@@ -17,6 +17,12 @@ static const uint8_t colors[7][4] = {
    {255,0,0,255}, {0,255,0,255}, {0,0,255,255}, {255,255,0,255},
    {255,0,255,255}, {0,255,255,255}, {255,255,255,255}
 };
+#ifdef PS5_MULTIDRAW_TEXTURE_TEST
+static uint8_t texture_pixels[2][4][4] = {
+   {{255,255,255,255}, {0,255,255,255}, {255,0,255,255}, {255,255,0,255}},
+   {{255,255,255,255}, {255,0,255,255}, {0,255,255,255}, {255,255,0,255}}
+};
+#endif
 #ifdef PS5_NATIVE_MULTIDRAW_TEST
 extern int ps5_egl_current_draw_status(unsigned *);
 #endif
@@ -51,6 +57,13 @@ static int check_pixels(unsigned green, int band0_black)
          memcpy(expected, colors[(x / 8) % 7], 4);
          if (x < 8) memcpy(expected, colors[2], 4); /* Last subdraw overlaps band zero. */
          expected[1] *= green;
+#ifdef PS5_MULTIDRAW_TEXTURE_TEST
+         unsigned texel0 = (x % 8 >= 4) + 2 * (y % 16 >= 8);
+         unsigned texel1 = (x % 16 >= 8) + 2 * (y % 8 >= 4);
+         for (unsigned c = 0; c < 4; ++c)
+            expected[c] = expected[c] * (texture_pixels[0][texel0][c] / 255) *
+                                       (texture_pixels[1][texel1][c] / 255);
+#endif
          if (band0_black && x < 8) memset(expected, 0, 3);
          if (memcmp(pixels + 4 * (y * WIDTH + x), expected, 4)) {
             printf("[ps5-multidraw] pixel mismatch x=%u y=%u\n", x, y);
@@ -75,6 +88,9 @@ int main(void)
    EGLint count = 0;
    GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, ebo = 0;
    GLuint query = 0;
+#ifdef PS5_MULTIDRAW_TEXTURE_TEST
+   GLuint textures[2] = {0};
+#endif
    GLsync fence = NULL;
    int current = 0, passed = 0, clean = 1;
    unsigned completed = 0;
@@ -90,10 +106,19 @@ int main(void)
    if (context == EGL_NO_CONTEXT || surface == EGL_NO_SURFACE ||
        !eglMakeCurrent(display, surface, surface, context)) goto cleanup;
    current = 1;
+#ifdef PS5_MULTIDRAW_HOST_REFERENCE
+   glDrawBuffer(GL_FRONT); glReadBuffer(GL_FRONT);
+#endif
    vs = shader(GL_VERTEX_SHADER, "#version 330 core\nlayout(location=0) in vec2 p;"
       "layout(location=1) in vec4 c; out vec4 color; void main(){gl_Position=vec4(p,0,1); color=c;}");
    fs = shader(GL_FRAGMENT_SHADER, "#version 330 core\nin vec4 color; uniform vec4 tint;"
+#ifdef PS5_MULTIDRAW_TEXTURE_TEST
+      "uniform sampler2D image0; uniform sampler2D image1; out vec4 result;"
+      "void main(){result=color*tint*texture(image0,gl_FragCoord.xy/vec2(8,16))*"
+      "texture(image1,gl_FragCoord.xy/vec2(16,8));}");
+#else
       "out vec4 result; void main(){result=color*tint;}");
+#endif
    if (!vs || !fs) goto cleanup;
    program = glCreateProgram(); glAttachShader(program, vs); glAttachShader(program, fs); glLinkProgram(program);
    GLint linked = 0;
@@ -102,6 +127,21 @@ int main(void)
    glUseProgram(program);
    GLint tint = glGetUniformLocation(program, "tint");
    if (tint < 0) goto cleanup;
+#ifdef PS5_MULTIDRAW_TEXTURE_TEST
+   GLint image0 = glGetUniformLocation(program, "image0"), image1 = glGetUniformLocation(program, "image1");
+   if (image0 < 0 || image1 < 0) goto cleanup;
+   glUniform1i(image0, 0); glUniform1i(image1, 7);
+   glGenTextures(2, textures);
+   for (unsigned unit = 0; unit < 2; ++unit) {
+      glActiveTexture(unit ? GL_TEXTURE7 : GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, textures[unit]);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture_pixels[unit]);
+   }
+#endif
    for (unsigned band = 0; band <= BANDS; ++band) {
       const unsigned position = band == BANDS ? 0 : band;
       const float x0 = -1.0f + 2.0f * position / BANDS, x1 = -1.0f + 2.0f * (position + 1) / BANDS;
@@ -126,6 +166,14 @@ int main(void)
    glGenBuffers(1, &ebo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
    glViewport(0, 0, WIDTH, HEIGHT);
    for (unsigned mode = 0; mode < 4; ++mode) {
+#ifdef PS5_MULTIDRAW_TEXTURE_TEST
+      if (mode == 2) {
+         memcpy(texture_pixels[1][0], colors[4], 4);
+         glActiveTexture(GL_TEXTURE7); glBindTexture(GL_TEXTURE_2D, textures[1]);
+         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, texture_pixels[1][0]);
+         printf("[ps5-multidraw-texture] upload-after-batch=1 units=0,7\n");
+      }
+#endif
       const unsigned green = mode < 2;
       const GLenum type = mode == 2 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT;
       const unsigned index_size = mode == 2 ? 4 : 2;
@@ -179,11 +227,17 @@ int main(void)
    glDrawArrays(GL_TRIANGLES, 0, 6);
    if (!check_pixels(1, 1)) goto cleanup;
    printf("[ps5-multidraw] query_samples=%u fence=1 orphan=1 pixels=%u PASS\n", samples, 2 * WIDTH * HEIGHT);
+#ifdef PS5_MULTIDRAW_TEXTURE_TEST
+   printf("[ps5-multidraw-texture] sampled=2 uploads=1 pixels=%u PASS\n", 14 * WIDTH * HEIGHT);
+#endif
    passed = 1;
 cleanup:
    if (current) {
       if (fence) glDeleteSync(fence);
       if (query) glDeleteQueries(1, &query);
+#ifdef PS5_MULTIDRAW_TEXTURE_TEST
+      glDeleteTextures(2, textures);
+#endif
       glUseProgram(0);
       if (ebo) glDeleteBuffers(1, &ebo);
       if (vbo) glDeleteBuffers(1, &vbo);

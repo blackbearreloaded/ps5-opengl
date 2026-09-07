@@ -7455,7 +7455,7 @@ ps5_multidraw_eligible(const struct ps5_context *context,
        (info->index_size && info->index_size != 2 && info->index_size != 4) ||
        (info->index_size && !info->index.resource) ||
        !context->vs || !context->fs || context->gs ||
-       ps5_shader_texture_count(context->vs) || ps5_shader_texture_count(context->fs) ||
+       ps5_shader_texture_count(context->vs) ||
        context->stream_output_target_count || context->render_condition_query ||
        context->active_occlusion_query || context->active_primitives_generated_query ||
        context->active_primitives_emitted_query || !context->framebuffer_valid ||
@@ -7473,6 +7473,26 @@ ps5_multidraw_eligible(const struct ps5_context *context,
    for (unsigned i = 0; i < context->vertex_buffer_count; ++i)
       if (context->vertex_buffers[i].is_user_buffer)
          return false;
+   for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit) {
+      if (!ps5_texture_used(context, context->fs, NULL, unit))
+         continue;
+      const struct pipe_sampler_view *view = context->sampler_views[1][unit];
+      const struct ps5_resource *texture = view
+         ? (const struct ps5_resource *)view->texture : NULL;
+      /* Read-only linear color data needs no per-draw CPU staging. The optional
+       * render staging lives in the same retained allocation but is not used. */
+      if (!texture || !texture->data || !texture->size ||
+          texture == target || texture == depth ||
+          texture->base.target != PIPE_TEXTURE_2D || view->target != PIPE_TEXTURE_2D ||
+          texture->base.format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+          view->format != texture->base.format ||
+          texture->base.nr_samples > 1 || texture->base.nr_storage_samples > 1 ||
+          texture->base.last_level || (texture->base.bind & PIPE_BIND_DISPLAY_TARGET) ||
+          texture->depth_staging_size || !ps5_linear_sampled_layout(&texture->base) ||
+          view->u.tex.first_level || view->u.tex.last_level ||
+          view->u.tex.first_layer || view->u.tex.last_layer)
+         return false;
+   }
    return true;
 }
 
@@ -7489,7 +7509,7 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
       context->descriptor_storage[0], context->descriptor_storage[1]};
    struct pipe_resource *storage[PS5_MULTIDRAW_BATCH_CAPACITY][3] = {{0}};
    struct pipe_resource *retained[PIPE_MAX_ATTRIBS +
-      2 * PS5_MAX_CONSTANT_BUFFERS + 5] = {0};
+      2 * PS5_MAX_CONSTANT_BUFFERS + PS5_MAX_TEXTURE_UNITS + 5] = {0};
    unsigned retained_count = 0;
    unsigned slots = MIN2(num_draws, PS5_MULTIDRAW_BATCH_CAPACITY);
    bool handled = false, retired = true;
@@ -7522,6 +7542,9 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
    for (unsigned stage = 0; stage < 2; ++stage)
       for (unsigned i = 0; i < PS5_MAX_CONSTANT_BUFFERS; ++i)
          pipe_resource_reference(&retained[retained_count++], context->constants[stage][i].buffer);
+   for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit)
+      if (ps5_texture_used(context, context->fs, NULL, unit))
+         pipe_resource_reference(&retained[retained_count++], context->sampler_views[1][unit]->texture);
 
    ps5_screen_submit_lock(base->screen);
    handled = true;

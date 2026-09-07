@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 
-def audit(text, require_postchecks=False):
+def audit(text, require_postchecks=False, require_textures=False):
     """Pixel success alone cannot prove that the optimized path ran."""
     matches = list(re.finditer(r"\[ps5-multidraw\] mode=(\d+) serial_ns=(\d+) batch_ns=(\d+) pixels=6912 PASS", text))
     assert len(matches) == text.count("[ps5-multidraw] mode=") == 4, "Missing/duplicate mode results"
@@ -32,6 +32,10 @@ def audit(text, require_postchecks=False):
     if require_postchecks or "[ps5-multidraw] query_samples=" in text:
         assert text.count("[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS") == 1
         assert text.count("[ps5-multidraw] query_samples=") == 1
+    if require_textures or "[ps5-multidraw-texture]" in text:
+        assert text.count("[ps5-multidraw-texture]") == 2
+        assert text.count("[ps5-multidraw-texture] upload-after-batch=1 units=0,7") == 1
+        assert text.count("[ps5-multidraw-texture] sampled=2 uploads=1 pixels=32256 PASS") == 1
     for marker in ("[ps5-multidraw] completed=4 cleanup=1 result=0",
                    "[pss-opengl-native] gate completed status=0"):
         assert text.count(marker) == 1, "Missing/duplicate completion"
@@ -39,8 +43,9 @@ def audit(text, require_postchecks=False):
 
 
 if len(sys.argv) > 1:
-    assert len(sys.argv) == 2 or (len(sys.argv) == 3 and sys.argv[2] == "--postchecks")
-    print(json.dumps(audit(Path(sys.argv[1]).read_text(), len(sys.argv) == 3), indent=2))
+    assert len(sys.argv) == 2 or (len(sys.argv) == 3 and sys.argv[2] in ("--postchecks", "--textures"))
+    print(json.dumps(audit(Path(sys.argv[1]).read_text(), len(sys.argv) == 3,
+                           "--textures" in sys.argv), indent=2))
     raise SystemExit
 assert len(sys.argv) == 1
 sample = "".join(
@@ -52,6 +57,9 @@ sample = "".join(
 sample += "[ps5-multidraw] completed=4 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
 assert len(audit(sample)) == 4
 assert len(audit(sample + "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS\n", True)) == 4
+texture_markers = "[ps5-multidraw-texture] upload-after-batch=1 units=0,7\n" \
+                  "[ps5-multidraw-texture] sampled=2 uploads=1 pixels=32256 PASS\n"
+assert len(audit(sample + texture_markers, require_textures=True)) == 4
 try:
     audit(sample, True)
 except AssertionError:
@@ -61,7 +69,9 @@ else:
 for bad in (sample.replace("[ps5-multidraw-batch]", "[unused]"), sample.replace("attempted=7", "attempted=6", 1),
             sample.replace("waits=1", "waits=2000", 1), sample.replace("result=0", "result=1", 1),
             sample.replace("cleanup=1", "cleanup=0"), sample + "[ps5-multidraw-batch] malformed",
-            sample + "[ps5-multidraw] query_samples=2559 fence=1 orphan=1 pixels=4608 PASS"):
+            sample + "[ps5-multidraw] query_samples=2559 fence=1 orphan=1 pixels=4608 PASS",
+            sample + texture_markers.replace("units=0,7", "units=0,0"),
+            sample + texture_markers.replace("uploads=1", "uploads=0")):
     try:
         audit(bad)
     except AssertionError:
@@ -198,9 +208,11 @@ code = r'''
 #include <string.h>
 #include "ps5_screen.h"
 #define MIN2(a,b) ((a)<(b)?(a):(b))
-enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PIPE_BUFFER=1,
-       PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4 };
-struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs; };
+enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=16, PIPE_BUFFER=1,
+       PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4, PIPE_BIND_DISPLAY_TARGET=1 };
+struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind; };
+struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
+    union { struct { unsigned first_level, last_level, first_layer, last_layer; } tex; } u; };
 struct ps5_resource { struct pipe_resource base; unsigned render_staging_size, depth_staging_size; uint8_t *data; size_t size; };
 struct pipe_screen { struct pipe_resource *(*resource_create)(struct pipe_screen *, const struct pipe_resource *); };
 struct ps5_screen { struct pipe_screen base; struct pipe_resource *render_pool; };
@@ -220,6 +232,7 @@ struct ps5_context {
     struct { bool is_user_buffer; struct { struct pipe_resource *resource; } buffer; } vertex_buffers[PIPE_MAX_ATTRIBS];
     struct { struct pipe_resource *buffer; } constants[2][PS5_MAX_CONSTANT_BUFFERS];
     struct pipe_resource *vertex_descriptor_table, *descriptor_storage[2], *border_color_storage;
+    struct pipe_sampler_view *sampler_views[2][PS5_MAX_TEXTURE_UNITS];
     const struct pipe_depth_stencil_alpha_state *depth_stencil_alpha;
     int last_draw_status;
 };
@@ -232,6 +245,14 @@ static int fail_alloc, fail_begin, fail_end, fail_draw;
 static struct ps5_resource *pending[8][3];
 static unsigned expected_start[8], expected_id[8];
 static unsigned ps5_shader_texture_count(const unsigned *s) { return *s; }
+static bool ps5_texture_used(const struct ps5_context *c, const unsigned *s, const void *metadata, unsigned unit) {
+    (void)c; (void)metadata; return (*s & (1u << unit)) != 0;
+}
+static bool ps5_linear_sampled_layout(const struct pipe_resource *r) { return !(r->bind & 2); }
+static unsigned fragment_textures;
+static struct ps5_resource textures[PS5_MAX_TEXTURE_UNITS];
+static struct pipe_sampler_view views[PS5_MAX_TEXTURE_UNITS];
+static uint8_t texels[PS5_MAX_TEXTURE_UNITS][64];
 static struct pipe_resource *create(struct pipe_screen *s, const struct pipe_resource *r) {
     assert(s == &screen.base && r->target == PIPE_BUFFER && !locked);
     if ((int)allocated == fail_alloc) return NULL;
@@ -264,6 +285,8 @@ static int end(void) {
     }
     assert(borrowed.base.refs == 1+4+PIPE_MAX_ATTRIBS+2*PS5_MAX_CONSTANT_BUFFERS+
         !!context.framebuffer.zsbuf.texture);
+    for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit)
+        if (fragment_textures & (1u << unit)) assert(textures[unit].base.refs == 2);
     if (fail_end) return -1;
     staged=0;
     return 0;
@@ -289,7 +312,7 @@ static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_i
 }
 ''' + body + r'''
 static void reset(void) {
-    allocated=freed=begun=ended=staged=calls=locked=shader_textures=0;
+    allocated=freed=begun=ended=staged=calls=locked=shader_textures=fragment_textures=0;
     fail_alloc=fail_draw=-1; fail_begin=fail_end=0;
     borrowed=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=1, .refs=1}};
     screen=(struct ps5_screen){.base={create}, .render_pool=&borrowed.base};
@@ -305,6 +328,11 @@ static void reset(void) {
     for (unsigned i=0; i<PIPE_MAX_ATTRIBS; ++i) context.vertex_buffers[i].buffer.resource=&borrowed.base;
     for (unsigned s=0; s<2; ++s) for (unsigned i=0; i<PS5_MAX_CONSTANT_BUFFERS; ++i)
         context.constants[s][i].buffer=&borrowed.base;
+    for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) {
+        textures[unit]=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=1, .refs=1},
+            .data=texels[unit], .size=64, .render_staging_size=64};
+        views[unit]=(struct pipe_sampler_view){.texture=&textures[unit].base, .target=PIPE_TEXTURE_2D, .format=1};
+    }
 }
 int main(void) {
     struct pipe_draw_info info={.mode=4, .instance_count=1, .index_size=2, .index={&borrowed.base}};
@@ -354,6 +382,29 @@ int main(void) {
         dsa.stencil[face].enabled=false;
     }
     borrowed.depth_staging_size=1; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+    for (unsigned failure=0; failure<2; ++failure) {
+        reset(); fragment_textures=0xffff; context.fs=&fragment_textures; fail_end=failure;
+        for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) context.sampler_views[1][unit]=&views[unit];
+        assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,19));
+        for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) assert(textures[unit].base.refs == 1+failure);
+    }
+    reset(); context.fs=&fragment_textures; fragment_textures=1u << 7;
+    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19)); /* Used sparse unit missing. */
+    context.sampler_views[1][7]=&views[7];
+    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+    REJECT(sampler_views[1][7],NULL);
+#define REJECT_TEX(field,value) do { struct ps5_resource saved=textures[7]; textures[7].field=value; \
+    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19)); textures[7]=saved; } while(0)
+    REJECT_TEX(base.target,PIPE_BUFFER); REJECT_TEX(base.format,2); REJECT_TEX(base.nr_samples,4);
+    REJECT_TEX(base.nr_storage_samples,4); REJECT_TEX(base.last_level,1); REJECT_TEX(base.bind,1);
+    REJECT_TEX(base.bind,2); REJECT_TEX(depth_staging_size,1); REJECT_TEX(data,NULL); REJECT_TEX(size,0);
+#define REJECT_VIEW(field,value) do { struct pipe_sampler_view saved=views[7]; views[7].field=value; \
+    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19)); views[7]=saved; } while(0)
+    REJECT_VIEW(texture,&borrowed.base); REJECT_VIEW(texture,NULL); REJECT_VIEW(target,PIPE_BUFFER);
+    REJECT_VIEW(format,2); REJECT_VIEW(u.tex.first_level,1); REJECT_VIEW(u.tex.last_level,1);
+    REJECT_VIEW(u.tex.first_layer,1); REJECT_VIEW(u.tex.last_layer,1);
+    views[0].format=2; context.sampler_views[1][0]=&views[0]; /* Unused state cannot veto a batch. */
+    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,19));
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:
@@ -362,4 +413,17 @@ with tempfile.TemporaryDirectory() as tmp:
                     "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
                    input=code, text=True, check=True)
     subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
-print("PASS: descriptor isolation/uniform copy, chunk retirement, draw IDs, allocation rollback, failure pinning")
+    mutations = (
+        ("ps5_shader_texture_count(context->vs) ||",
+         "ps5_shader_texture_count(context->vs) || ps5_shader_texture_count(context->fs) ||"),
+        ("pipe_resource_reference(&retained[retained_count++], context->sampler_views[1][unit]->texture);",
+         "(void)0;"),
+    )
+    for before, after in mutations:
+        assert code.count(before) == 1
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                        "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
+                       input=code.replace(before, after), text=True, check=True)
+        failed = subprocess.run([str(exe)], cwd=tmp, text=True, capture_output=True)
+        assert failed.returncode != 0 and "Assertion" in failed.stderr
+print("PASS: descriptors/uniforms, chunk retirement, draw IDs, rollback, all 16 fragment texture refs and narrow eligibility")
