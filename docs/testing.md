@@ -87,3 +87,22 @@ captures local and milestones short.
 The [published results](validation.md) belong to one frozen candidate.
 `tools/export-published-validation.py` first reruns the strict raw audit, then
 exports allowlisted results/provenance without raw device logs or local paths.
+
+Export each accepted candidate into a **new** directory; do not replace historical
+evidence. Supply the exact audited manifest, result root, and three final renderer
+receipt prefixes (the common filename without `-opengl.log` / `-result.json`):
+
+```sh
+python3 tools/export-published-validation.py candidate.json \
+  --results results/release --destination validation/YYYY-MM-DD \
+  --renderer imgui=results/final-imgui/PPSA99005-TIMESTAMP \
+  --renderer nanovg=results/final-nanovg/PPSA99005-TIMESTAMP \
+  --renderer sokol=results/final-sokol/PPSA99005-TIMESTAMP
+python3 tools/verify-published-validation.py validation/YYYY-MM-DD
+```
+
+Record any eventful but otherwise accepted cycles in the manifest's
+`eventful_receipts` mapping, using exact receipt paths and concise review reasons.
+An empty mapping means no such incidents were observed. Export refuses incomplete
+coverage, damaged renderer oracles and existing destinations. Batch counts are
+derived from the receipts; test coverage and exclusion reviews remain strict.
