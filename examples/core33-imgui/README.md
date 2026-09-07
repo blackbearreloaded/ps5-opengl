@@ -1,5 +1,9 @@
 # Installed-SDK Dear ImGui renderer check
 
+The September 7 final SDK passes the six-frame oracle below. Its separate
+five-minute 1080p demo produces 5,997 frames (~19.99 FPS), 11 passing readbacks
+and 5,997 successful two-draw batches. See [current validation](../../docs/validation.md).
+
 Uses unmodified [Dear ImGui](https://github.com/ocornut/imgui/tree/v1.91.9b)
 v1.91.9b, commit `f5befd2d29e66809cd1110a152e375a7f1981f06` (MIT), including
 its upstream OpenGL3 backend. Source stays in the ignored dependency checkout.
@@ -94,10 +98,11 @@ require an explicit `-Ps5Host` and the [testing prerequisites](../../docs/testin
 Stop on any render/presentation error or uncertain console health.
 
 - 2026-09-06 | G10 | ca0dbf4 | 6.02 | pass: TV-confirmed animation, 2851 frames/300s (~9.5 FPS), clean teardown; controller connected, zero recorded widget changes.
+- 2026-09-07 | final SDK | 6.02 | pass: 5997 frames/300s, 11 readbacks, 5997 two-draw batches; clean teardown/health/unlock; no fresh visual or controller interaction claim.
 
-The [validation report](../../docs/validation.md) records the result; raw device
-receipts remain local. Both shape probes passed; runtime/SDK hashes stayed
-unchanged. Thirty FPS is a pacing ceiling, not the measured throughput. Hardware
-widget interaction is not independently verified by this receipt; the host
-navigation check passed. The user confirmed the TV demo worked. VideoOut again
-reported busy unregister followed by successful close and runtime-layer release.
+The [validation report](../../docs/validation.md) distinguishes the frozen runs;
+raw device receipts remain local. Thirty FPS is a pacing ceiling, not measured
+throughput. The user confirmed the earlier TV demo worked; the final campaign
+used numeric rendering/lifecycle checks and recorded no widget changes. Host
+navigation checks passed. VideoOut still reports busy unregister followed by
+successful close and runtime-layer release.

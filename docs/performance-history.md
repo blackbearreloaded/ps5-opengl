@@ -1,0 +1,764 @@
+# Performance development history
+
+Historical working record. References to pending work, defaults and candidates
+describe the corresponding development stage, not the current release.
+See [current performance](performance.md) and [release validation](validation.md).
+
+The accepted correctness campaign remains tied to the frozen identities in
+[Validation](validation.md). Performance candidates do not inherit its results.
+
+## Current candidate — 2026-09-07
+
+The draw baseline at runtime/compiler `2df7d88` passes the combined indexed/instanced/restart/base-vertex
+draw regression, mixed float/integer constant attributes, and the original
+textured/depth-tested cube benchmark. All three native cycles closed cleanly.
+The final 1080p cube rerun measured 21.89 / 6.00 / 1.76 FPS for 1 / 8 / 32 ordinary
+draws and approximately 20.06 FPS for each instanced workload (eight measured
+frames per cell). This is a small draw-overhead benchmark, not expected game FPS.
+
+PrimitiveID/flat/program-transition checks now pass; the corrected geometry CTS
+batch passes all 24 cases, including the five zero-input GS failures from the
+initial 51-case smoke run. These are separate frozen binaries, not a fresh 51/51
+or full-campaign acceptance result. The separate G6 SDK passes clean Make,
+CMake/pkg-config consumers and native ImGui, NanoVG and Sokol. Next: longer
+sessions, practical 3D application use and lifecycle/performance work, then freeze
+and complete the four-configuration release matrix. The default SDK and historical
+validation export have not been replaced. Batching
+remains opt-in; per-draw completion waits remain the main scaling limitation.
+
+Latest G7: presenter-error and submission-retirement guards pass host injection
+and normal native lifecycle/multi-draw controls. Latest G8: ordinary-call batching
+passes a paired native control/candidate with 41,472 pixel comparisons each,
+changing uniforms/scissors and pending texture/buffer updates, maps and fences.
+Four single-sample candidate timings were 150.1–167.6 ms forced serial versus
+33.2–33.8 ms grouped (4.52–4.99x); this is not a game-FPS estimate.
+The standalone installed SDK is still the previous default; no promotion or
+new complete CTS acceptance is implied. `PS5_DEFERRED_DRAW_BATCH=1` opts into
+ordinary-call staging with private descriptors, retained resources and explicit
+drain boundaries. Non-staged Z32/Z32-S8 depth testing is now included;
+unsupported, staged, stencil-tested and multisampled paths remain synchronous.
+Native RGBA8 vertex inputs now let the unchanged 1080p ImGui scene actually
+group its two draws: 50.049 ms/frame (~19.98 FPS), versus 66.732 ms (~14.99 FPS)
+before the format mapping, a 1.33x short-profile throughput ratio. Clear and
+swap still dominate; this is not a general 3D FPS estimate or final acceptance.
+
+Latest matched 1080p cubes (`0dbffb4`): ordinary 1/8/32 draws measured
+21.89/17.82/8.73 FPS with batching versus 21.89/6.00/1.76 FPS synchronously;
+instancing remains ~20.06 FPS. Both pass 668 depth/texture probes and 48 measured
+frames. The candidate proves all 108 retired chunks / 528 draws. These short
+full-frame measurements are not game performance; clear and swap still dominate
+small workloads. No default SDK promotion or final CTS acceptance yet.
+
+## Release sequence
+
+- 2026-09-07 | G9 | frozen CTS f09d39d1 | incomplete: 4,656 Pass + 239 reviewed NotSupported before the 1,410-second bound; no case failures, clean teardown/health/unlock | results/g9-release/config-0/013509 | excluded from acceptance
+
+The first G9 batch exposed a small-target performance regression: 1,447 varied
+packed-pixel cases took 1,136 s versus historical 289 s. Each repeats 46 clears;
+the new GPU clear's ~16 ms submission cost explains the increase. The successor
+keeps full RGBA8 clears below 16,384 pixels on the existing CPU path, preserving
+all ordering and fallback checks. This is a conservative tunable floor, not an
+optimal crossover claim. The GPU-clear oracle now uses 128x128 so it still tests
+the accelerated path. It passes 256 clears / 4,194,304 pixels, shader-state reuse
+and query exclusion. Twelve affected CTS cases pass on each of 64x64 and 113x47,
+taking 1.02 / 1.05 seconds; the same 64x64 set took 8.65 seconds before the cutoff.
+The successor SDK passes Make/CMake/pkg-config and 344 exports. G9 restarts with
+frozen CTS `7cad3274`, implementation `0a15d8f`; no incomplete or old-binary
+results become acceptance. Final renderers, cube and long-session apps have
+been rebuilt from that SDK, but are not yet new hardware acceptance.
+
+- 2026-09-06 | G7 | e678bbb | pass: presenter-error SDK, three EGL/ImGui sessions, 18 frames/180 probes; clean teardown/health/unlock | results/g7-present-errors-lifecycle/220742
+- 2026-09-06 | G7 | f7daf54 | pass: fail-stop host checks + native lifecycle and 32256-pixel multi-draw controls; clean teardown/health/unlock | results/g7-retirement-{lifecycle,multidraw}
+- 2026-09-06 | G8 | d0fb05c | pass: textured multi-draw, 32256 pixels + upload/query/fence/orphan; 4.16–4.99x workload ratio; clean teardown/health/unlock | results/g8-multidraw-textures/223705
+- 2026-09-06 | G8 | e140f34 | pass: ordinary-call control/candidate, 41472 pixels each; 4.52–4.99x candidate ratio; clean teardown/health/unlock | results/g8-deferred-{control,draws}-oracle
+
+Unconfirmed native submission retirement now terminates the application before
+cleanup or exit handlers can reuse GPU memory; see [consumer limits](consumer-build.md#unrecoverable-gpu-submission-errors).
+Normal regressions do not establish hardware device-loss recovery. Fragment
+textures are now covered in the existing bounded multi-draw path; vertex-texture,
+depth/MSAA and framebuffer-feedback exclusions remain. Audit the frozen receipt
+with `python3 tests/ps5/test_multidraw_lifetime.py RECEIPT --textures`.
+
+1. G5 correctness: PrimitiveID consumers/program switches, then affected CTS.
+2. G6 consumers: rebuild SDK; clean Make/CMake/pkg-config checks and native ImGui/NanoVG/Sokol.
+3. G7 practical use: an existing 3D application, longer sessions, repeated lifecycles and the VideoOut warning.
+4. G8 performance: measured synchronization/batching and fallback improvements, each with focused regressions.
+5. G9 acceptance: freeze the chosen runtime/SDK; one complete four-configuration CTS matrix and final consumer checks.
+
+G5 starts by extending the existing GLSL suite with four PrimitiveID cases plus
+live flat/smooth inputs and a return to the original math program. Reference:
+[OpenGL 3.3 core, section 3.9.2](https://registry.khronos.org/OpenGL/specs/gl/glspec33.core.pdf).
+`make test-glsl` checks the software-Mesa oracle and rejects deliberate ID, varying
+and omitted-draw faults. The native runtime is unchanged for this first case.
+The installed direct llvmpipe/softpipe paths fail this combined-input reference;
+unchanged GLSL and all four fault checks pass Zink over software Vulkan, which
+`test-glsl` selects by default. This does not count as PS5 evidence. The old
+suite's non-portable EGL profile query was replaced with the standard GL query.
+
+- 2026-09-06 | G5 | f86b1fd | failed: math/texture pass; first PrimitiveID saturates red, user inputs pass; healthy teardown/unlock | results/glsl-primitive-id/155220 | NIR/linkage trace
+- 2026-09-06 | G5 | be832e2 | failed: trace-only build returns ID 0 for the second primitive; healthy teardown/unlock | results/glsl-primitive-id-trace/155846
+
+The trace identifies missing built-in input/output semantics, an incorrect
+per-vertex input count for an implicit per-primitive export, and an inappropriate
+provoking-vertex rewrite. The successor fills the existing package metadata and
+keys the fragment variant by producer type; no submission path is changed.
+Host tests cover 18 producer and 20 consumer compilations, including mixed
+interpolation and first/last provoking vertices. Native acceptance is pending.
+
+- 2026-09-06 | G5 | 33b7f86 | failed: math/texture pass, first ID case 1,920/4,096 pixels; clean teardown/health/unlock | results/glsl-primitive-id-linkage-recovery/170047 | channel/linkage trace
+- 2026-09-06 | G5 | 107dc9b | failed: only ID corrupt; UV/tag/alpha pass, clean teardown/health/unlock | results/glsl-primitive-id-linkage-trace-recovery/171457 | per-vertex transport
+
+The diagnostic records the intended parameter counts and offsets, but ID values
+still vary within one primitive. The next candidate uses Mesa's existing NGG
+per-vertex LDS transport, including its barrier and provoking-vertex reuse rule;
+fragment linkage follows that producer. This is a compatibility candidate, not
+proof that the hardware cannot support per-primitive attributes. Native acceptance
+is pending; the submission path and GLSL oracle remain unchanged.
+
+- 2026-09-06 | G5 | 6df6a4f | failed: first ID draw times out; math/texture pass, title released/services healthy | results/glsl-primitive-id-pervertex/172848 | offline synchronization analysis
+
+The per-vertex candidate is **not accepted**: submission returned success but its
+completion marker was not reached in 2,000 polls. It must not be rerun unchanged
+or promoted. Post-run ports were healthy. A subsequently approved Remote Play
+check showed the live home screen and advancing clock, but two Right presses
+and Chiaki's local menu shortcut produced no visible response. Input health is
+inconclusive, not a confirmed soft lock. The owned Chiaki process and exact lock
+were released; establish input health before further tests.
+
+Offline follow-up found the package still overrides NGG vertex-index stride to
+4. Mesa's non-passthrough no-GS lowering consumes unscaled indices for primitive
+exports and LDS; passthrough ignores that register. The package now uses stride
+1 for NGG vertex shaders, leaving geometry packages, shader code and submission
+unchanged. The serialized-package regression fails before this fix and passes
+after it; compiler, host and GLSL checks pass. Hardware acceptance remains pending.
+The owner reports a restart and an idle, ready console; run a frozen known-good
+control before the changed candidate.
+
+- 2026-09-06 | G5 | 87502d0 | pass: restarted control + ID 0/1/reset/instances, 28,672 pixels; clean teardown/services/unlock | results/glsl-primitive-id-unit-stride/175934
+
+The unit-stride candidate completes without the earlier timeout; all four ID
+cases and surrounding math/texture checks pass. VideoOut unregister still reports
+the known busy warning (`80290009`), followed by successful close and layer release.
+Next: genuinely varying-dependent flat inputs, both provoking-vertex modes and
+explicit geometry-shader IDs, then the focused CTS batch. No SDK promotion yet.
+
+- 2026-09-06 | G5 | ad3f517 | failed: all 8 implicit-ID/flat cases pass; first GS case black, no timeout; clean teardown/services/unlock | results/glsl-primitive-id-mixed-gs/180727
+
+The first/last provoking-vertex path now has native varying-dependent flat-input
+coverage. Explicit GS ID plus user-varying transport remains unproven: its first
+readback is clear black; later GS and restored-program cases did not execute.
+Investigate the merged VS/GS output/linkage before CTS or release promotion.
+
+- 2026-09-06 | G5 | 7095c24 | diagnostic: GS draw-status=0, same black output; clean teardown/services/unlock | results/glsl-primitive-id-mixed-gs-trace/181433
+
+The trace exposes a live NGG LDS-layout argument that the runtime never supplies.
+RADV places GS outputs after the ES input ring; zero aliases those regions.
+The successor carries the compiler's final byte offset and user-data slot in
+metadata v8 and supplies it for every NGG draw, with bounds checks. A real merged
+NIR/ACO regression reproduces the unaccounted argument before the fix. Native
+acceptance of the corrected transport is pending; GLSL and submission are unchanged.
+
+- 2026-09-06 | G5 | 59334cc / c0529b0 | pass: 24 implicit/explicit GS ID, flat first/last, instance/reset and restored-program cases; 110,592 exact pixels; clean teardown/services/unlock | results/glsl-geometry-lds-layout/184021
+
+Supplying the LDS-layout argument fixes the black GS readback with unchanged
+GS machine code (`bf6bc6f4`, first-provoking variant). Compiler/runtime bounds
+regressions, the current capability audit and GLSL host fault checks pass.
+The optional legacy public-triangle text audit still names the removed
+`ps5_tiled_rgba8_offset` helper; its failure is not a native rendering result.
+Next: the focused CTS smoke batch, including geometry/transform-feedback routes.
+The installed SDK and historical acceptance remain unchanged.
+
+- 2026-09-06 | G5 | 68f0f50 | partial: focused CTS 46/51 Pass, five GS transform-feedback failures; complete ordered QPA, no device loss, clean teardown/services/unlock | results/cts-geometry-lds-smoke/185151
+
+All five are pre-submit `-10` rejections: their GS generates vertices without ES
+inputs, so RADV correctly assigns output base zero. The new nonzero guard was
+too strict. The successor accepts that valid value while retaining slot/range
+checks; a real zero-input GS reproduces the rejection offline. Compiler unchanged.
+
+- 2026-09-06 | G5 | b9214c2 | pass: 24/24 geometry CTS, including all five prior failures; zero NotSupported/device loss, clean teardown/services/unlock | results/cts-geometry-lds-zero-input/191349
+
+The scoped G5 blockers are resolved. This batch took 3.92 seconds of summed CTS
+case time and reused the verified CTS assets. Next: a separate candidate SDK and
+fresh installed-package consumers; retain the historical SDK and acceptance.
+
+- 2026-09-06 | G6 | 472bd33 | pass: isolated SDK, clean Make/CMake/pkg-config, 344 exports | .local/g6-sdk-verify.log
+- 2026-09-06 | G6 | 472bd33 | pass: ImGui six frames/60 probes, state/font/recreation; clean teardown/health/unlock | results/g6-imgui/192836
+- 2026-09-06 | G6 | 472bd33 | pass: NanoVG three frames/45 probes, cleared stencil/recreation; clean teardown/health/unlock | results/g6-nanovg/193104
+- 2026-09-06 | G6 | 472bd33 | pass: Sokol three frames/1,843,200 RGBA components, zero mismatches/logs; clean teardown/health/unlock | results/g6-sokol/193340
+
+Candidate SDK: `build/sdk/ps5-opengl-core33-g6-20260906`, manifest SHA-256
+`0e1306f99f21d8102592189c1b4998172f277cd8a81dfcffb9ff12a0823fec06`.
+Compiler archive exactly matches G5. The previous SDK remains intact; no release
+promotion. All three renderers still report busy VideoOut unregister followed by
+successful close. G7 starts with periodic readbacks throughout the five-minute TV
+demo; practical 3D application coverage and lifecycle hardening remain open.
+
+- 2026-09-06 | G7 | f339a4b | pass: 4,497 frames/300s (~14.99 FPS), 11 periodic shape probes; clean teardown/health/unlock | results/g7-imgui-periodic/194106
+
+The G6 SDK sustains the TV workload for five minutes; all ten progress intervals
+through 270 seconds have matching readbacks. No fresh screen/input observation
+was requested; zero widget changes were recorded. This is demo throughput, not
+3D game performance. Busy unregister remains, followed by successful close.
+Host failure injection separately exposes ignored presenter-close failures;
+retain ownership and propagate failure before further lifecycle testing.
+
+The shutdown successor preserves the VideoOut handle/allocation when close fails
+and makes both EGL destruction paths stop before releasing ownership. Its real
+runtime/EGL host regression is red before the fix and green afterward, including
+active/faulted/pending batch guards and simulated retry/idempotence. No hardware
+fault injection, blank flip, shader or submission change; busy unregister is not
+claimed fixed. The separate SDK passes clean consumer/link checks and two normal
+native ImGui launch/close cycles. This is not device-loss recovery or same-process
+EGL recreation; those are not implied by successful process restarts.
+
+- 2026-09-06 | G7 | 36ac25b | pass: shutdown-hardened SDK, ImGui 12 frames/120 probes across two clean launches; healthy teardown/unlock | results/g7-shutdown-imgui/195647 + relaunch/195831
+
+- 2026-09-06 | G7 | 0d7ed22 | failed: upstream cube aborts in GLSL built-in allocation before drawing; title released/services healthy/unlocked | results/g7-sokol-cube/202922
+
+The receipt reports internal allocation exhaustion and an IR-allocation assert;
+the local symbolized stack confirms built-in function construction, not a GPU
+timeout. No kernel panic appears in the captured log. The 8.3 MB full-image test
+buffer is unnecessary for its sparse oracle: the successor uses a 7.5 KiB scanline
+buffer with identical probe positions. This tests memory pressure without changing
+the SDK/renderer. Larger application allocations still need validation; this is
+not a demonstrated allocator-capacity limit or a general OOM fix. Resume hardware
+only after the owner confirms idle/input health following the app crash.
+
+- 2026-09-06 | G7 | a81c24d | pass: upstream cube 180 frames/2596 pose probes with 7.5 KiB checker; clean teardown/health/unlock | results/g7-sokol-cube-scanline/203807
+
+The owner confirmed return to the home screen before this run. Same SDK and
+shaders now pass all five poses, supporting test-buffer pressure as the trigger.
+No broad memory-capacity or TV/input claim. Next: same-process EGL recreation;
+larger application allocation and the VideoOut busy warning remain open.
+
+- 2026-09-06 | G7 | b0235c5 | pass: three full EGL/ImGui sessions in one process, 18 frames/180 probes; three close=0, healthy teardown/unlock | results/g7-imgui-lifecycle/204553
+
+Bounded same-process recreation is now covered on the unchanged G7 SDK. This
+does not establish leak-free long-term use, OOM recovery or suspend/resume.
+Address the newly observed application-memory constraint before broad release
+acceptance; per-draw synchronization and busy unregister remain separate work.
+
+- 2026-09-06 | G7 | 1c74dee | failed: mapped 8.3 MB caller buffer allows shader setup, but full-frame readback returns GL_OUT_OF_MEMORY; normal close/health/unlock | results/g7-sokol-cube-mapped/205933
+
+The caller mapping succeeds; the driver still allocates its full-image transfer
+staging on the heap. Investigate that shared color/depth allocation path next.
+No assertion, GPU timeout or kernel panic appears in this receipt. Mapping the
+caller alone is not a fix, and general application-heap robustness remains open.
+
+- 2026-09-06 | G7 | c53925e | pass: mapped full-frame cube, 180 frames/2596 pixels; driver staging fix eliminates readback OOM; clean teardown/health/unlock | results/g7-sokol-cube-transfer/211530
+
+The isolated transfer SDK passes consumer checks and this unchanged cube control.
+Color/depth staging >=64 KiB now uses owned anonymous CPU mappings; small and
+direct transfers are unchanged. Host fault injection covers both backing kinds,
+read/write, overflow and cleanup. Next: one framebuffer/depth-transfer CTS batch.
+Separately, the CTS app already links a 128 MiB app-owned mspace wrapper that the
+example builder omits. Reuse and validate that integration before inventing a
+new allocator; this readback result does not fix general application malloc.
+
+- 2026-09-06 | G7 | afeb36a | pass: 28 transfer CTS cases, 26 Pass + 2 reviewed Core-4.3 stencil-texturing exclusions; zero failure/loss, clean teardown/health/unlock | results/g7-cts-transfers/212737
+
+The next app-only control shares the existing CTS heap implementation with the
+native example builder and restores the original full-image malloc. It retains
+the transfer SDK/shaders. Host wrappers cover initialization/reentrancy/failure,
+owned versus foreign allocation routing, and OOM ownership. The shared helper
+also acquires initialization state before reading non-atomic metadata. Heap
+capacity remains 128 MiB for process lifetime; this is not a general OOM-recovery
+claim, a new allocator implementation, or a change to the standalone SDK ABI.
+
+- 2026-09-06 | G7 | dd8d228 | pass: shared app heap, original 8.3 MB malloc cube completes shader setup/180 frames/2596 probes; clean teardown/health/unlock | results/g7-sokol-cube-app-heap/214126
+
+Both observed memory failures now have passing controls: driver staging for
+full-frame readback, and missing native-example heap integration for the live
+large allocation during shader setup. Next: same-process ImGui/EGL recreation
+with this app integration, then return to synchronization/performance work.
+
+- 2026-09-06 | G7 | 1eff5c5 | pass: shared-heap ImGui/EGL recreation, three sessions/18 frames/180 probes plus font/state checks; clean teardown/health/unlock | results/g7-imgui-app-heap-lifecycle/214736
+
+Before timing changes, host-check two presenter error paths found in review:
+negative pending-status errors currently look idle, and failed acquisition cleanup
+discards a handle even if close fails. Normal VideoOut busy unregister remains a
+separate warning; no fault injection or unproven blank flip is planned on hardware.
+
+## G1: Measure the existing frame path
+
+Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
+Use the existing 1080p ImGui TV scene with an opt-in, 30-second profiling mode.
+Record CPU wall time for UI generation, clear, draw, readback and swap; exclude
+warm-up frames and disable only the example's artificial 30 FPS sleep. Swap
+still follows the existing presentation contract. These are not GPU timer values.
+
+Acceptance: both numeric readbacks, successful renderer/EGL cleanup, sufficient
+post-warm-up frames, and clean native-title teardown. Preserve exact build hashes.
+Build with `PS5_IMGUI_PROFILE=1 make imgui-demo`; run with the native runner's
+`-Headless` option. Audit the app receipt with
+`python3 tools/summarize-imgui-profile.py PATH_TO_RECEIPT`.
+First validate headless transport with the unchanged six-frame renderer oracle;
+only then run the profiling build. Both use the same installed graphics SDK.
+
+## G2: Accelerate the largest measured bottleneck
+
+Change one implementation path, retaining the existing CPU path for unsupported
+cases and comparison. Reuse Mesa's existing helpers where their state/lifetime
+contracts fit. Do not remove synchronization merely to improve a benchmark.
+Run focused host regressions, the same timed scene, and the existing external
+renderer oracle. Report timings and correctness independently.
+
+## G3: Broaden only after the first fast path is proven
+
+Profile the successor. Extend format/operation coverage in bounded batches;
+run affected CTS families after driver changes, then the full frozen release
+matrix when accepting a new release candidate. Keep uncommon-case fallbacks.
+
+## First GPU-clear result — 2026-09-06
+
+Full, unmasked, single-target/layer RGBA8 color clears now use Mesa's existing
+GPU blitter when eligible. Other formats, scissored/masked clears, multisampling,
+staging resources, active queries and stream output retain the existing path.
+The blitter's internal TGSI shaders use Mesa's TGSI-to-NIR conversion and IO
+lowering before the existing PS5 compiler. Application NIR handling is unchanged.
+No GPU synchronization was removed.
+
+One 30-second 1080p ImGui profile per build, excluding 30 warm-up frames:
+
+| Mean CPU wall time per frame | CPU-clear control | GPU-clear candidate |
+| --- | ---: | ---: |
+| UI generation | 0.069 ms | 0.034 ms |
+| Clear | 63.189 ms | 17.751 ms |
+| Draw | 24.818 ms | 32.802 ms |
+| Readback/error check | 0.001 ms | 0.001 ms |
+| Swap | 15.981 ms | 16.144 ms |
+| **Total** | **104.059 ms** | **66.732 ms** |
+| Measured frames | 257 | 421 |
+
+Clear time decreased **71.9%** (3.56x); total frame time decreased **35.9%**
+(1.56x equivalent throughput, approximately 9.61 to 14.99 frames/s). These are
+CPU-observed phase timings including waits, not GPU timestamps or measured TV
+refresh rates. This is one before/after sample of the same animated scene, not
+a multi-workload benchmark or confidence interval. Draw time increased, so the
+clear-only ratio must not be presented as the overall speedup.
+
+Focused native checks passed: 256 clear colors / 524,288 exact pixel comparisons;
+live uniform, program and viewport restoration; active-query clear exclusion;
+all six ImGui oracle frames; and 4,096 scissored/masked color, depth and stencil
+pixel checks. Both timed builds passed their readback and cleanup checks. Every
+accepted cycle reached exact-title teardown, healthy service checks and
+exact-token lock release. No routine screenshots or UI-input checks were used.
+Host state/IO/compiler regressions, ImGui checks and installed SDK consumers also
+passed.
+
+This remains a performance candidate: the earlier **39,544-result CTS campaign
+was not rerun on this runtime**, and its results do not transfer to this change.
+The next measured bottleneck is drawing (32.802 ms/frame). Profile submission,
+resource preparation and waits before changing them; then run affected CTS
+families and freeze the complete release matrix before promotion.
+
+### Reproducibility
+
+Control checkout: `71e048384aef1841fcde23079104e6d65973366f` (original runtime).
+Candidate runtime: `73949bc271bf8a6c7a03e179c5eb37c09b5cc7f6`; final app packages
+built at `58d4cb77b3f326184183ac7278103935a17ad8bd` (documentation/parser changes
+only after the runtime commit). Native boilerplate:
+`4e1d1277dd0531a9a9df8c780e446b9cc26534dd`; headless protocol:
+`7195c969e60735f158d46b5034cd53ae62ef0ebc`.
+
+Raw receipts remain local under `results/`; IDs below identify
+`PPSA99005-20260906-ID-opengl.log` and matching lifecycle/runner records.
+
+| Build/check | Receipt directory / ID | eboot.bin SHA-256 |
+| --- | --- | --- |
+| CPU-clear profile | perf-baseline / 082420 | `230665b6906b0d42460170533abd2e1abe80e90e53e6d41ba27b26f724b52ae8` |
+| GPU clear sweep/state/query | gpu-clear-io / 090704 | `6c165f422d68b5ffc18345a3d736182332ee0e3746e82c6192fb2b5e27085c81` |
+| GPU-clear profile | gpu-clear-profile / 092128 | `d2b0e424707f90eddc44861b253175800fad29df0d3a4fb0d46df204bd3a8c30` |
+| ImGui oracle | gpu-clear-imgui / 092403 | `27611ee14ff1c6429ac156d9569ae15ea231c82bf624a0f59eb939184450e1f0` |
+| Masked clear regression | gpu-clear-masked / 092542 | `3e07d941b2704000bbad534f9f3823e333f280710d1f1378ac18f6d67f5bc71b` |
+
+## Console boundary
+
+G3 instrumentation covers submission setup, display-pool flush, video setup,
+command construction/flush, submit+wait, and cleanup. Opt-in `PS5_DRAW_PROFILE=1`
+uses the same 30-frame warm-up as the ImGui profile and leaves submission/cache
+operations unchanged. Force-rebuild the native runtime when toggling this build
+flag. Require `summarize-imgui-profile.py --submit-profile` plus the usual pixel,
+cleanup, lifecycle and health checks; compare against the frozen G2 timing app.
+
+Batching diagnostic: `PS5_DRAW_BATCH_PROBE=1` is restricted to the
+`egl_public_core33_submit_batch` gate. It reuses the RGBA8 clear oracle for 36
+interleaved command buffers containing 1, 2 or 8 identical opaque GPU draws.
+Each submission retains both release operations, the completion marker, suspend
+point and bounded polling. This deliberately repeated work is **not a production
+GL path**. Audit with `python3 tests/ps5/test_submit_batch_probe.py RECEIPT`;
+discard three warm-up cycles and compare nine samples per size. Require 73,728
+exact pixel checks and clean title teardown/health. Force-rebuild without the
+diagnostic flag afterward; do not install its runtime into the distributable SDK.
+
+### Batching feasibility result — 2026-09-06
+
+The frozen probe passed all 36 submissions and 73,728 exact pixel comparisons.
+After discarding three warm-up cycles, nine samples per batch size gave:
+
+| Identical opaque draws per command buffer | Median submit/suspend/completion wait |
+| ---: | ---: |
+| 1 | 15.399 ms |
+| 2 | 15.432 ms |
+| 8 | 15.458 ms |
+
+For this small workload, additional draws barely changed the per-submission
+wait. This supports amortizing that cost through batching, **not an eightfold
+application-speedup claim**. These are CPU-observed waits, not GPU timestamps.
+The probe deliberately repeats identical draw state; batching different shaders,
+textures and geometry remains unvalidated. Production rendering is unchanged.
+
+App source: `75c0e196af33d0491d3d8ae055a3934aaac0c1a1`; eboot SHA-256:
+`a3359acefbb839febb616f808ebdffabc66014fbd4ad2803cbb5c6021522fe48`.
+Receipt and matching lifecycle records:
+`results/submit-batch-probe/PPSA99005-20260906-112328-opengl.log`.
+Runner: `8015523c5d3b677dd5c30ad81cdcb63c76ffab73`; exact-title teardown,
+post-health and exact-token release passed. Normal runtime/SDK remain free of
+diagnostic instrumentation. No full CTS campaign was rerun.
+
+Next implementation boundary: a bounded batch must own each draw's command and
+descriptor storage, retain referenced resources until the final fence completes,
+and drain before CPU read/write fallbacks, synchronization, presentation or
+teardown. Uploaded-index release currently follows each synchronous draw;
+descriptor storage is reused by subsequent draws. Simply deleting the wait is
+not safe. Validate distinct-state draw ordering and resource reuse first, then
+rerun the same ImGui profile and affected query/sync/resource tests.
+
+Use the owner-designated console and lock in ignored `.local/ENVIRONMENT.md`.
+Title: `PPSA99005`, deployed as a folder. Required owner-started services: FTP,
+klog and approved title control. Observe for at most 60 seconds per profile run.
+Stop on a rendering/lifecycle/health failure, uncertain foreground, or suspected
+panic. No routine screenshots, settings changes, service changes or raw app ELF
+submission. Release the exact token before offline analysis/building.
+
+### First real multi-draw candidate (opt-in, not promoted)
+
+`PS5_MULTIDRAW_BATCH=1` batches at most eight subdraws within one `glMultiDraw*`
+call and drains every chunk before returning. Each draw owns its native work
+allocation and cloned vertex/constant descriptors (including inline uniform
+bytes). Referenced buffers and targets stay retained until every attempted
+submission's unique marker completes. One shared bounded wait replaces per-draw
+waits; existing command construction, release operations and cache policy stay
+unchanged. This uses multiple existing submissions followed by one suspend,
+which is distinct from the earlier repeated-command-buffer diagnostic.
+
+Initial eligibility is direct triangle draws with native indices or no indices,
+initially no shader texture use, a single non-staged RGBA8 2D level-zero target, no enabled depth/stencil,
+geometry shader, query, conditional rendering or stream output. Other paths
+stay synchronous. G8 adds used linear RGBA8 level-zero fragment textures and
+retains their allocations. Submission/retirement errors now fail-stop the
+application; only post-retirement cleanup failures return with bounded resources
+quarantined. No speculative reset or replay.
+An unused, non-staged depth/stencil attachment is allowed and retained, since
+the EGL surface always supplies one. Staged depth remains excluded even when disabled.
+The default build and installed SDK remain unchanged. Force-rebuild when
+toggling this flag.
+
+Gate: `egl_public_core33_multidraw_batch`. Compare ordinary draws against four
+multi-draw modes (arrays, u16, u32, base vertex), with reverse vertex ranges,
+a zero-count entry, chunk rollover and a final overlapping quad. Require all
+27,648 exact pixel comparisons, immediate readback, ordinary-draw uniform
+restoration, native batch telemetry, cleanup, title teardown and healthy services.
+Host tests inject allocation/preparation/submit/suspend/retirement failures;
+software Mesa validates the pixel oracle. CPU call timings are preliminary
+single samples, not a benchmark. This does not yet accelerate separate ImGui
+draw calls or transfer the historical CTS results to this candidate.
+
+The first native gate used the default EGL pbuffer, which supplies an unused
+depth/stencil attachment and correctly excludes batching. Its 27,648 pixels
+passed but no batch ran. A color-only renderbuffer FBO also passed pixels but
+remained serial: Mesa marks it sampleable, requiring this driver's staging path.
+The successor instead allows and retains an inactive non-staged EGL depth/stencil
+attachment, with enabled depth/stencil still excluded. Audit with
+`python3 tests/ps5/test_multidraw_lifetime.py RECEIPT` to require native chunks as
+well as pixel success. Both earlier frozen apps remain exclusion controls.
+
+#### First real batching receipt — 2026-09-06
+
+Candidate `8eb024f971b5623266f47de1abe6f64604f6d7b6` passed all four modes,
+27,648 exact pixels and eight native chunks (7 + 3 draws per mode). Immediate
+readback, overlapping-draw ordering, uniform restoration and ordinary draws
+passed. Preliminary CPU call timings, one sample per mode:
+
+| Mode | Serial | Batched | Ratio |
+| --- | ---: | ---: | ---: |
+| Arrays | 150.149 ms | 32.735 ms | 4.59x |
+| u16 indices | 150.362 ms | 33.613 ms | 4.47x |
+| u32 indices | 165.164 ms | 33.106 ms | 4.99x |
+| Base vertex | 166.668 ms | 34.052 ms | 4.89x |
+
+This is a small synthetic workload, not an ImGui/application benchmark or
+release-wide result. Receipt: `results/multidraw-batch-egl/PPSA99005-20260906-121541-opengl.log`;
+eboot SHA-256: `ec594b209deea0e0be56b17d844686688606cab414c89f60c804ad3481dde634`.
+Exact-title teardown, post-health and exact-token release passed. No SDK promotion.
+
+The follow-up gate at `dd9905eac2067351ae8d437ff91702d823e3dcf5` also passed:
+active-query exclusion (2,560 samples), fence wait and VBO orphan/reuse;
+32,256 total exact pixel comparisons. Eight native chunks ran, with no extra
+batch during the active query. Timings repeated at 150–167 ms serial versus
+33–34 ms batched (4.44–5.09x); these remain preliminary small-workload samples.
+Receipt: `results/multidraw-postchecks/PPSA99005-20260906-122150-opengl.log`;
+eboot: `ab65f94bdde319cad4cad3ecd0b21bd83dbd7b75885d85f775620ee6f86ff453`.
+Exact-title teardown, post-health and exact-token release passed.
+Audit with `python3 tests/ps5/test_multidraw_lifetime.py RECEIPT --postchecks`.
+
+Next: handle staged targets/textures and resource/state changes before extending
+batching across ordinary draw calls (including ImGui). Then measure real workloads
+and run affected CTS families before release promotion. Keep batching opt-in;
+the installed SDK is unchanged and the default local runtime is rebuilt without
+batching or diagnostic flags after freezing these apps.
+
+## Milestones
+
+### Ordinary-call batching candidate — 2026-09-06
+
+`PS5_DEFERRED_DRAW_BATCH=1` also enables the existing multi-draw runtime. It
+stages at most eight ordinary draws, with private descriptor/inline-uniform
+copies and per-draw resource references. A drain submits and retires the whole
+chunk synchronously; there is no worker or GPU work left in flight afterward.
+CPU transfers, blits, clears, mipmaps, query boundaries, flush/fence creation,
+presentation, context switches and destruction drain first. Runtime ownership
+uses one process-wide mutex across screens. Unsupported draws and blitter meta
+draws keep the synchronous path; eligibility is otherwise the existing narrow
+read-only RGBA8 texture / non-staged color-target gate. Border entries remain
+append-only. No shader compiler, command encoder or polling policy changes.
+
+Host ownership/error checks and the software-Mesa oracle pass. The native gate
+`egl_public_core33_deferred_draw` reuses the four-mode pixel test, comparing
+ordinary calls with per-draw `glFinish` against ordinary calls finished once per
+group. Both change uniforms/scissors. It adds pending texture upload, buffer
+subdata/map-write and fence checks: 41,472 exact pixel comparisons in total.
+Both native configurations pass, including 65 matched candidate chunks and the
+8+2 grouping in every timed mode. Control receipt:
+`results/g8-deferred-control-oracle/PPSA99005-20260906-231703-opengl.log`;
+candidate: `results/g8-deferred-draws-oracle/PPSA99005-20260906-232007-opengl.log`.
+Artifact pins are in their corresponding `build/frozen/*/manifest.md` files.
+Audit with `test_multidraw_lifetime.py RECEIPT --deferred[-control]`.
+No SDK promotion or inherited CTS result.
+
+Consumer case: reuse the unmodified ImGui 30-second TV profile with an
+isolated opt-in SDK. Require its two pixel probes, at least 60 post-warm-up
+frames, complete clear/draw/readback/swap wall-time accounting, real multi-draw
+chunks, and clean native teardown/health/unlock. No per-phase timing alone is a
+speedup: completion waits can move from drawing to swap. This is a short profile,
+not a long-run stability or general 3D performance claim.
+
+- 2026-09-06 | G8 | 2c010ba | partial-pass: ImGui 421 measured + 30 warm-up frames, pixel probes/lifecycle pass; 66.732 ms/frame (~14.99 FPS), every chunk has one draw; healthy teardown/unlock | results/g8-deferred-imgui-profile/232919
+
+The synthetic speedup does not yet reach ImGui. Its normalized RGBA8 colors are
+not advertised as native vertex inputs, so Mesa's CPU format translation maps
+buffers and drains the pending queue. Next: add RGBA8 to the existing packed
+vertex/compiler format mapping, validate channel order/normalization and rerun
+the same profile. Keep the CPU-access synchronization guards unchanged.
+
+- 2026-09-07 | G8 | 45b711c | pass: native RGBA8 input, 41,472 pixels incl. intermediate RGB/alpha, 65 paired chunks and upload/map/query/fence/orphan checks; healthy teardown/unlock | results/g8-rgba8-vertex/235852
+
+RGBA8 now reuses the existing packed-format path (PSBC enum appended, no encoder
+or synchronization change). The next ImGui profile uses a separate opt-in SDK;
+`summarize-imgui-profile.py RECEIPT --deferred-batches` additionally rejects
+single-draw-only or failed batch receipts. Default SDK is unchanged.
+
+- 2026-09-07 | G8 | c4e455a | pass: unchanged ImGui profile, 571 measured frames, 601 two-draw chunks, pixel/lifecycle checks; 19.98 FPS vs 14.99, healthy services/unlock | results/g8-rgba8-imgui-profile/000526
+
+The format fix removes the observed CPU-conversion batching barrier. Mean frame
+time fell 66.732393 → 50.049060 ms (~25% less); clear is 17.748 ms, draw 4.000 ms,
+and swap 28.268 ms including deferred retirement. Both runs are single 30-second
+profiles. VideoOut still reports unregister `0x80290009` followed by close=0;
+this warning is not fixed. Next: clear/presentation synchronization and longer
+consumer/lifecycle checks, then freeze the chosen SDK for the G9 release matrix.
+No default-SDK promotion or new full CTS claim.
+
+G7 successor: drain pending VideoOut flips with the existing bounded helper
+before unregister/close. Drain errors/timeouts retain runtime and EGL ownership;
+host failure injection precedes a normal lifecycle run. This does not assume
+that draining removes the current-buffer busy warning, and introduces no blank
+flip, output-mode change or hardware fault injection.
+
+- 2026-09-07 | G7 | e6dc5ef | pass: three ImGui/EGL sessions, 18 frames/180 probes, all drain/close=0; unregister remains busy with idle queue; healthy teardown/unlock | results/g7-present-drain-lifecycle/001929
+
+G8 successor: permit depth tests/writes only on non-staged, single-sample,
+level/layer-zero Z32 or Z32/S8 targets with stencil tests disabled. Existing
+resource pins and synchronization remain; no compiler/encoder change. Reuse
+the four-mode gate with a far final draw that must be occluded, then disable
+depth for the existing hazards/query checks. Host oracle rejects missing depth
+tests/writes; paired native control/candidate must precede the unchanged cubes.
+
+- 2026-09-07 | G8 | c0659d4 | pass: paired depth control/batch, 41,472 pixels each, 65 matched chunks; 154.7–166.6 → 32.3–33.5 ms grouped (4.67–5.14x); healthy teardown/unlock | results/g8-depth-{control,batch}
+
+Cube successor moves the native draw-status query out of the per-object loop
+to after the existing frame `glFinish`: that query drains deferred work. Scene,
+shaders, 668 probes and 48 measured frames are unchanged. Require a matched
+synchronous control and `summarize-cubes.py --deferred-batches` candidate
+(108 chunks / 528 draws), not timing alone. The earlier `g8-depth-cubes` build
+was not run because offline inspection identified this measurement barrier.
+
+- 2026-09-07 | G8 | 0dbffb4 | pass: paired cubes, 668 probes each, exact 108 chunks; 8/32 ordinary draws 2.97x/4.95x full-frame throughput; healthy teardown/unlock | results/g8-cubes-frame-{control,batch}
+
+G7 release successor shares checked unmap/backing release across destruction
+and partial-allocation cleanup. Host mocks reproduced release of still-mapped
+memory before the fix. Failed ownership transfers now terminate before further
+cleanup; normal arena/primary/split-stencil behavior is retained. Native acceptance
+requires normal lifecycle and transfer/CTS checks, never hardware fault injection.
+
+- 2026-09-07 | G7 | 333aa4e | pass: checked-resource SDK, three EGL sessions/180 probes and combined CTS 70 Pass + 2 reviewed exclusions; healthy teardown/unlock | results/g7-resource-{ownership-lifecycle,batched-cts}
+
+The CTS builder now preserves the chosen runtime flags. Its runtime archive
+matches the installed SDK byte for byte; the 72-case batch ran with deferred
+batching enabled. G9 uses this runtime after the full-image Sokol and five-minute
+ImGui checks, then one complete four-configuration campaign and final consumers.
+Only selectors/observation budgets change between campaign runs. Historical
+timings schedule cases; they never fill acceptance coverage for the new binary.
+
+- 2026-09-07 | G9 | 333aa4e SDK | pass: Sokol full-image heap cube 180 frames/2596 probes; ImGui 300s/5996 frames, 11 probes and 5996 two-draw chunks; healthy teardown/unlock | results/g9-{sokol-cube-heap,imgui-long}
+
+G9 freeze: CTS eboot `f09d39d1f64e9af619bce0119c9069c6e947594ccf80f591fb2d50c0fdf4fdc1`,
+SDK manifest `e4f207bc2ab620f68cb62b3008b6b4ed6bf0331a7e51208aeb38610a1f68dc71`,
+implementation `333aa4e`, with native/multidraw/deferred enabled. Full matrix
+acceptance is still pending. Use measured 900-second case budgets, complete
+original test bodies and the managed runner's bounded observation/teardown;
+the initial prefix contains 5,630 cases. Preserve the frozen executable/SDK;
+change only selectors and time budgets. Final ImGui/NanoVG/Sokol apps are built
+against the same SDK for post-matrix checks. The original release remains intact.
+
+G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
+with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
+baseline; require six numerical oracles (334 probes), 24 measured frames and
+clean lifecycle/health. One 60-second headless PPSA99005 cycle, with the endpoint
+and lock from `.local/ENVIRONMENT.md`. Audit with `tools/summarize-cubes.py`.
+Optimize measured costs next, then affected CTS and longer real-app tests before
+promotion. No public release or repository visibility change is part of this case.
+
+Runtime configuration changes now invalidate local objects automatically,
+including switching experimental flags off; identical settings remain cached.
+This removes the manual force-rebuild requirement described by earlier cases.
+
+G4 baseline (`af98e68`): 334 probes and 24 measured frames passed. At 1080p,
+1/8/32 cubes measured 20.93/6.00/1.76 FPS (47.79/166.65/567.06 ms/frame).
+Clear was 18–20 ms and swap ~16 ms; drawing grew from 13 to 531 ms. Receipt:
+`results/cubes-control/PPSA99005-20260906-124439-opengl.log`; frozen artifact:
+`build/frozen/cubes-control/manifest.md`. Title teardown/health/unlock passed.
+The successor compares ordinary calls and standard instancing in the same app:
+six workloads, 668 probes and 48 measured frames. Both paths use identical
+shaders and two persistent texture bindings, unlike the earlier baseline's
+per-object texture bind. Compare the successor's paired results, not just old
+versus new binaries. This exercises existing instancing with no new driver
+behavior or experimental flags. The first native comparison failed one texture
+probe in the eight-instance scene after all ordinary workloads and one-instance
+checks passed. This is not an accepted instancing benchmark or speedup result.
+The diagnostic successor records all probe RGBA mismatches before stopping;
+it does not change rendering or relax the oracle. Root cause remains open.
+
+- 2026-09-06 | G4 | b6429a9 app / 356ea89 runner | failed: eight-instance texture probe; ordinary/one-instance pass, healthy teardown/unlock | results/cubes-instanced/130057 | classify full probe mismatches
+- 2026-09-06 | G4 | 6f1e1d6 | failed: five right-texel probes read left texel; healthy teardown/unlock | results/cubes-diagnostic/131120 | explicit-LOD fragment-shader control
+
+The next control changes only `texture` to `textureLod(..., 0.0)` in both
+material branches; textures are single-level nearest-filtered 2x2 images.
+This isolates implicit sampling from the existing geometry/instance inputs.
+It does not establish a driver fix or dismiss the original failure as undefined
+behavior. The explicit-LOD control reproduced the same five mismatches, with
+clean lifecycle/health/unlock. The next shader-only control uses integer
+`texelFetch` coordinates derived from the same interpolated UVs, equivalent to
+the intended nearest/clamp sampling for these 2x2 calibration textures. This
+separates normalized sampling from UV/geometry while retaining the oracle.
+
+- 2026-09-06 | G4 | 2570886 | failed: explicit LOD reproduces all five mismatches; healthy teardown/unlock | results/cubes-lod0/131824 | direct texel-fetch control
+- 2026-09-06 | G4 | 5862af1 | failed: direct texel fetch reproduces the same five mismatches; healthy teardown/unlock | results/cubes-fetch/132623 | first-provoking-vertex control
+
+The next control changes only the provoking-vertex convention to first.
+Material IDs are constant across every triangle, so expected output is unchanged;
+this exercises the alternate flat-input compiler path. It retains direct texel
+fetches to compare against the last frozen control. It reproduced the same five
+errors. The example is restored to ordinary implicit sampling/default last
+provoking vertex; frozen diagnostic artifacts retain each prior control.
+
+- 2026-09-06 | G4 | 35b0fad | failed: first provoking vertex reproduces five mismatches; healthy teardown/unlock | results/cubes-first/133413 | UV-coordinate diagnostic
+
+`egl_public_core33_cubes_uv` reuses the scene with a UV/material fragment output.
+Its oracle inverts projection at each probed pixel center, independently of the
+GPU's interpolated coordinates. It preserves normals/lighting and the flat
+material input. Use `summarize-cubes.py --uv`; its receipts are explicitly not
+accepted as texture validation. Host reference must pass before a native case.
+
+- 2026-09-06 | G4 | 249963d | failed: encoded U is zero on instances 1/5 (RGBA8 clamps negatives); V/material intact; ordinary pass, healthy teardown/unlock | results/cubes-uv/134227 | compiler IO/NIR trace
+
+UV output confirms the corruption precedes texture access. The trace successor
+changes diagnostics only, not shaders/rendering. Both native log streams now
+append after initial truncation: stdout previously could overwrite stderr's
+compiler diagnostics. A host test reproduces the old loss and verifies retention.
+
+- 2026-09-06 | G4 | ce9adb5 | failed: same UV probes, complete NIR/IO receipt; healthy teardown/unlock | results/cubes-trace/135443 | isolate unused implicit PrimitiveID export
+
+The standalone NGG compiler conservatively exports PrimitiveID with no fragment
+consumer attached. This scene does not read it. The next candidate omits only
+that implicit export when the bound FS proves it unused, includes that choice
+in the VS cache key, and preserves explicit outputs/unknown consumers. Real
+NIR/ACO host checks precede hardware. This is a hypothesis, not a confirmed fix;
+the original textured benchmark must still pass before accepting instancing.
+
+- 2026-09-06 | G4 | fc143fc | pass: 668 UV probes, six workloads/48 frames; trace confirms unused export removed; healthy teardown/unlock | results/cubes-unused-primitive/142524 | original texture oracle
+
+Removing that export eliminates all observed UV failures, including 32 instances.
+The driver keeps the conservative variant for unknown or PrimitiveID-reading
+fragment consumers. Their per-primitive linkage is not validated by this result.
+
+- 2026-09-06 | G4 | af19be8 | pass: 668 texture/depth probes, six workloads/48 frames; healthy teardown/unlock | results/cubes-textured-fixed/143002 | draw regressions and longer workload validation
+
+Original textured scene, 1920x1080, eight measured frames per cell:
+
+| Cubes (12 triangles each) | Ordinary calls, ms/frame (FPS) | One instanced call, ms/frame (FPS) |
+| --- | ---: | ---: |
+| 1 | 43.60 (22.93) | 49.86 (20.06) |
+| 8 | 166.64 (6.00) | 49.86 (20.06) |
+| 32 | 567.04 (1.76) | 49.85 (20.06) |
+
+Both paths use the same shaders and texture bindings. These are short,
+CPU-observed clear/draw/swap timings with completion waits, not game performance
+or maximum GPU throughput. One-cube medians are ~49.8 ms in both paths; the
+ordinary mean includes faster frames. At 32 cubes, instancing removes repeated
+per-draw waits and gives an 11.4x frame-throughput ratio. Approximately 20 ms of
+clear, 14 ms of draw/wait and 16 ms of swap still dominate the instanced frame.
+The previously failing instanced UV/texture scene is fixed; broader regressions,
+long runs, affected CTS and the final release matrix remain before promotion.
+
+- 2026-09-06 | G4 | fe1c604 | failed: indexed instancing passes; disabled/current attribute rejects VS compilation; healthy teardown/unlock | results/draw-matrix-unused-primitive/144258 | zero-stride compiler/descriptor fix
+
+Host reproduction confirms zero-stride rejection with either PrimitiveID option;
+the guard also exists in the original publication source. Mesa represents current
+attributes as zero-stride uploads. The successor permits this PS5 compiler input
+and selects byte-bounded RAW descriptors only for zero stride, preserving CPU
+range checks and the ordinary descriptor path. Both native attribute regressions
+and the unchanged cube benchmark now pass with this fix.
+
+- 2026-09-06 | G4 | 2df7d88 | pass: combined draw matrix, 256 pixels; clean teardown/health/unlock | results/draw-matrix-constant-input/150601
+- 2026-09-06 | G4 | 2df7d88 | pass: mixed float/uint constants, 1,024 pixels and queries; clean teardown/health/unlock | results/current-attrib-constant-input/150921
+- 2026-09-06 | G4 | 2df7d88 | pass: 668 texture/depth probes, six workloads/48 frames; ~20 FPS instanced; healthy teardown/unlock | results/cubes-constant-input/151315
+
+Final compiler tree: `267ff517bd902e4b35a1b40fd50ee984a118eb55`; native archive
+SHA-256: `4ac8aa5221eb24dd4492799808939d667b55268075162fc4d4e20e9e9557dc12`.
+The existing source/toolchain/archive guard verified reuse for the latter two
+builds. All experimental runtime flags were off. Final executable identities:
+
+| Check | eboot.bin SHA-256 |
+| --- | --- |
+| Combined draw matrix | `02d8247ff8538f80d214b3ab55168e2ecd8aeea04ee4b6f12cba71a7ec5d9f56` |
+| Mixed current attributes | `6345c81f70cbf16257116e6750b49491da14de28ad962772d38468c11e445d53` |
+| Textured cubes | `ffc6aeb35dff9755e2be5134485a2ad178ccc8571b4aefeef6d675827e3dcee0` |
+
+- 2026-09-06 | G1 | 71e0483 | headless six-frame control: pass; clean teardown | results/perf-control
+- 2026-09-06 | G1 | 71e0483 | 257 warm frames: clear 63.189, draw 24.818, swap 15.981, total 104.059 ms | results/perf-baseline
+- G2 scope: full single-target RGBA8 GPU clears via Mesa u_blitter; driver synchronization unchanged. Other cases retain CPU fallbacks.
+- 2026-09-06 | G2 | d0c55ef | failed before GPU submission: helper TGSI rejected; clean teardown/health | results/gpu-clear | add Mesa TGSI-to-NIR adapter
+- 2026-09-06 | G2 | 791574e | failed pixel check: helper IO lacked explicit color output; healthy teardown | results/gpu-clear-tgsi | normalize helper IO
+- 2026-09-06 | G2 | 73949bc | pass: 256 RGBA8 clears / 524,288 pixels, uniform+viewport restoration, query exclusion; clean teardown/health | results/gpu-clear-io
+- 2026-09-06 | G2 | 58d4cb7 | 1.56x demo throughput; six-frame ImGui and masked-clear regressions pass; all titles closed, healthy services, locks released | results/gpu-clear-profile, gpu-clear-imgui, gpu-clear-masked
+- 2026-09-06 | G3 | 0810d38 | 1,263 submissions: pool flush 0.360 ms, submit+wait 15.416 ms/call; clean pass | results/draw-profile-control | split wait timing; leave cache policy unchanged
+- 2026-09-06 | G3 | 6e36f33 | no-run: WSL preflight found 2121/3232/9021 closed; no upload/launch; exact lock released | build/frozen/draw-wait-control | owner service recovery required
+- 2026-09-06 | G3 | 9732033 | no-run: services recovered, fresh log lacks title lifecycle; home screen observed, background idle unconfirmed; locks released | results/draw-wait-control-recovery
+- 2026-09-06 | G3 | 8a3caa7 | no-run: owner confirmed idle, but log has PPSA02121 start without stop; no upload/launch, healthy services, exact lock released | results/draw-wait-owner-confirmed
+- 2026-09-06 | G3 | 6e36f33 app / 5ad81b4 runner | pass: 1,260 draws, poll 15.433 ms/call, ~14 sleeps/call; submit 0.007 ms, suspend 0.006 ms; clean teardown/health | results/draw-wait-owner-confirmed/105943
+- 2026-09-06 | G3 | 75c0e19 | batching probe built/host-tested; no-run: PPSA02121 restarted at 11:17:54; no upload/launch, healthy services, lock released | results/submit-batch-probe
+- 2026-09-06 | G3 | 75c0e19 | pass: 73,728 pixels; 1/2/8 draws wait 15.399/15.432/15.458 ms median; clean teardown/health, lock released | results/submit-batch-probe/112328
+- 2026-09-06 | G3 | 9fd90a5 | partial-pass: 27,648 pixels, clean teardown/health; EGL depth attachment excluded batching | results/multidraw-batch/120153 | use color-only FBO
+- 2026-09-06 | G3 | 82df5ab | partial-pass: FBO pixels pass, staged renderbuffer excluded batching; healthy teardown/unlock | results/multidraw-batch-fbo/120752 | retain inactive EGL depth
+- 2026-09-06 | G3 | 8eb024f | pass: real multi-draw, 27,648 pixels; 150–167 to 33–34 ms/call; healthy teardown/unlock | results/multidraw-batch-egl/121541 | query/fence/reuse regression
+- 2026-09-06 | G3 | dd9905e | pass: 32,256 pixels, query exclusion, fence/orphan; 4.44–5.09x small-workload ratio; healthy teardown/unlock | results/multidraw-postchecks/122150 | broader draw-state batching

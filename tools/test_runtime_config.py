@@ -24,11 +24,14 @@ class RuntimeConfigTest(unittest.TestCase):
             command = [arg.replace("$root", str(work)).replace("$sdk", str(work / "sdk"))
                        for arg in command[:-1]]
             command += ["--eval=probe:;@echo $(PS5_OPENGL_RUNTIME_DEFINES)", "probe"]
-            for enabled in ("0", "1", "0"):
-                output = subprocess.check_output(command, text=True, env=dict(os.environ,
-                    PS5_MULTIDRAW_BATCH="0", PS5_DEFERRED_DRAW_BATCH=enabled))
+            for enabled in (None, "0", "1", "0"):
+                environment = dict(os.environ, PS5_MULTIDRAW_BATCH="0")
+                environment.pop("PS5_DEFERRED_DRAW_BATCH", None)
+                if enabled is not None:
+                    environment["PS5_DEFERRED_DRAW_BATCH"] = enabled
+                output = subprocess.check_output(command, text=True, env=environment)
                 self.assertEqual(output.split(), ["-DPS5_NATIVE_TITLE_RUNTIME=1"] +
-                    (["-DPS5_MULTIDRAW_BATCH=1", "-DPS5_DEFERRED_DRAW_BATCH=1"] if enabled == "1" else []))
+                    (["-DPS5_MULTIDRAW_BATCH=1", "-DPS5_DEFERRED_DRAW_BATCH=1"] if enabled != "0" else []))
 
     def test_native_compiler_identity(self):
         root = Path(__file__).resolve().parents[1]

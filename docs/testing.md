@@ -19,15 +19,15 @@ behavioral evidence comes from CTS and native renderer oracles.
 
 `test-compiler` runs existing real NIR/ACO regressions for framebuffer exports,
 vertex inputs and geometry descriptors, including invalid-input rejection.
-Performance-branch checks also cover implicit PrimitiveID export liveness,
+Compiler checks also cover implicit PrimitiveID export liveness,
 zero-stride constant inputs and byte-bounded buffer descriptors. These host checks
 do not replace the native draw/current-attribute/cube regressions or affected CTS.
 `make test-glsl` exercises math, texture fetch, live PrimitiveID/flat/smooth inputs
 and program restoration, including seven deliberate fault checks. It needs the
 installed Zink and software Vulkan renderer; direct software GL failures for this
-case are recorded in [Performance](performance.md), not accepted as passing.
+case are recorded in [the development history](performance-history.md), not accepted as passing.
 The historical upstream `tests/verify_sb.py` still asserts metadata ABI 6; the frozen
-historical PS5 compiler uses ABI 7; the current performance candidate uses ABI 8.
+historical PS5 compiler uses ABI 7; the validated September 7 compiler uses ABI 8.
 That stale suite is retained in the pinned source for
 provenance, not silently patched or reported as passing. It is not invoked by
 the publication build. Current compiler checks and the Core capability audit
@@ -51,7 +51,7 @@ examples. The managed wrappers require access to it; they are not a standalone
 console setup tool. Folder deployment can use the owner's existing app workflow.
 The reference layout is `workspace/dev/ps5-opengl`, its sibling boilerplate, and
 `workspace/docs/ps5-homebrew-dev-protocol`. Supply the console host explicitly.
-The recorded protocol `8d9639c5` uses small owner-approved title launch/close
+The final campaign's protocol `7195c969` uses small owner-approved title launch/close
 controllers on 9021; the actual graphics app remains a native folder title.
 
 Each bounded cycle must own its exact lock token, establish idle foreground,

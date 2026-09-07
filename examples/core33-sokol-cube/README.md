@@ -4,6 +4,11 @@ Bounded native adaptation of [cube-glfw.c](https://github.com/floooh/sokol-sampl
 180 rotating, depth-tested and back-face-culled frames at 1920x1080.
 This is a small existing 3D sample, not a GLFW port or a game benchmark.
 
+The September 7 final SDK passes all 180 frames and 2,596 pixel checks with
+`PS5_SOKOL_HEAP_READBACK=1`, including the original large allocation before
+shader setup. The lower-memory scanline mode remains the default example.
+See [release validation](../../docs/validation.md); historical diagnosis follows.
+
 ```sh
 python3 tools/fetch-sources.py --sokol-samples
 make test-sokol-cube

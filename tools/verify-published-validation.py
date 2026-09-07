@@ -115,7 +115,7 @@ def verify(evidence):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("evidence", type=Path, nargs="?", default=ROOT / "validation/2026-09-06")
+    parser.add_argument("evidence", type=Path, nargs="?", default=ROOT / "validation/2026-09-07")
     verify(parser.parse_args().evidence)
 
 

@@ -10,12 +10,10 @@ The project completed its defined Core 3.3 validation campaign on a PS5. It is
 **not a Khronos-certified implementation**, a stock-console installation method,
 or a guarantee that every desktop application will run unchanged.
 
-**Performance-branch status:** the validation totals below describe the frozen
-publication baseline, not the newer runtime in this branch. GPU-clear changes
-have focused hardware validation, as do fixes for instanced varyings and constant
-vertex attributes. Experimental multi-draw batching is opt-in.
-The updated runtime still needs release-candidate validation before promotion.
-See [Performance](docs/performance.md) for measurements and remaining work.
+**Release validation: September 7, 2026.** The updated runtime completed a fresh
+four-configuration campaign and final installed-SDK renderer checks. Bounded
+draw batching is enabled by default. See [Performance](docs/performance.md)
+for measured results and remaining optimization work.
 
 ## What is included
 
@@ -36,17 +34,17 @@ See [Performance](docs/performance.md) for measurements and remaining work.
 | --- | --- | --- |
 | [Triangle](examples/core33-triangle/README.md) | Minimal public EGL/OpenGL consumer | Installed SDK compile/link checks |
 | [Dear ImGui](examples/core33-imgui/README.md) | Widgets, textures, fonts and blending | Six-frame hardware oracle |
-| [ImGui TV demo](examples/core33-imgui/README.md#g10-visible-tv-demo) | Readable 1080p UI, animated shapes, gamepad navigation | TV-confirmed; 2,851 frames over five minutes |
+| [ImGui TV demo](examples/core33-imgui/README.md#g10-visible-tv-demo) | Readable 1080p UI, animated shapes, gamepad navigation | 5,997 frames over five minutes; 11 readbacks; prior TV confirmation |
 | [NanoVG](examples/core33-nanovg/README.md) | Its upstream GL3 vector renderer | 45 pixel probes; zero dirty stencil pixels |
 | [Sokol](examples/core33-sokol/README.md) | Its GL backend through public OpenGL | 1,843,200 component comparisons; zero mismatches |
-| [Upstream Sokol cube](examples/core33-sokol-cube/README.md) | Adapted existing 3D sample: rotation, depth and culling | 180 native frames / 2,596 probes; bounded-memory adapter ([scope](examples/core33-sokol-cube/README.md)) |
+| [Upstream Sokol cube](examples/core33-sokol-cube/README.md) | Adapted existing 3D sample: rotation, depth and culling | 180 native frames / 2,596 probes; full-image heap readback ([scope](examples/core33-sokol-cube/README.md)) |
 | [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, ordinary versus instanced draws | Both paths pass; ~20 FPS instanced at 1080p in this small scene ([scope](docs/performance.md)) |
 
-The accepted baseline TV demo measured approximately **9.5 FPS**; the GPU-clear
-candidate measured approximately **15 FPS** in a separate short profile, not the
-five-minute baseline run. Its 30 FPS setting is a pacing ceiling, not achieved
-performance. Controller connection was recorded;
-hardware widget changes were not captured. Host navigation tests pass.
+The final TV demo measured approximately **20 FPS** for five minutes. Its 30 FPS
+setting is a pacing ceiling, not achieved performance. An earlier version was
+owner-confirmed on a TV; this campaign used numerical readbacks and lifecycle
+records. Fresh hardware widget interaction was not recorded. Host navigation
+tests pass. These small examples do not predict full-game FPS.
 
 ## Validation status
 
@@ -62,10 +60,10 @@ No gaps, duplicates, required-case failures, warnings, waivers, or incomplete
 results remain in the accepted set. Optional/inapplicable exclusions are reviewed
 individually: **39,544 accounted results does not mean 39,544 passes**. Full upstream
 swizzle and LOD-bias workloads ran in every configuration. The campaign includes
-20 uneventful CTS lifecycle cycles and three final external-renderer hardware checks.
+15 uneventful CTS lifecycle cycles and three final external-renderer hardware checks.
 
 See the [validation report](docs/validation.md) for adaptations, exceptions and
-limits, and the [machine-readable evidence](validation/2026-09-06/README.md).
+limits, and the [machine-readable evidence](validation/2026-09-07/README.md).
 
 ```sh
 make test

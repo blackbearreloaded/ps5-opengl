@@ -1,0 +1,53 @@
+{
+  "imgui": {
+    "eboot_sha256": "e7024a10e6315f710afc2292f386d1e6f0915bd53b10aafe562f3ca3f3f1801d",
+    "raw_log_sha256": "1b5a61a3e71279fbaf8a156cdbf8652113540ecaa053ac59b3ccfc15173ad37b",
+    "teardown": "runtime-layers-released",
+    "post_health": true,
+    "lock_released": true,
+    "output": [
+      "[ps5-imgui] ImGui 1.91.9b upstream=f5befd2d29e66809cd1110a152e375a7f1981f06 GL=3.3 (Core Profile) Mesa 26.2.0",
+      "[ps5-imgui] frame=0 scale=1 split=0 renderbuffer=0 vertices=286 indices=453 font-ink=209 partial=0 PASS",
+      "[ps5-imgui] frame=1 scale=1 split=1 renderbuffer=0 vertices=286 indices=453 font-ink=209 partial=0 PASS",
+      "[ps5-imgui] frame=2 scale=1 split=0 renderbuffer=1 vertices=286 indices=453 font-ink=209 partial=0 PASS",
+      "[ps5-imgui] frame=3 scale=2 split=0 renderbuffer=0 vertices=286 indices=453 font-ink=1446 partial=1446 PASS",
+      "[ps5-imgui] frame=4 scale=2 split=1 renderbuffer=0 vertices=286 indices=453 font-ink=1446 partial=1446 PASS",
+      "[ps5-imgui] frame=5 scale=2 split=0 renderbuffer=1 vertices=290 indices=459 font-ink=1446 partial=1446 PASS",
+      "[ps5-agc] present-shutdown unregister=80290009 close=00000000 frames=6",
+      "[ps5-imgui] finished status=0",
+      "[pss-opengl-native] gate completed status=0"
+    ]
+  },
+  "nanovg": {
+    "eboot_sha256": "38c1cd8faf46db22228016739e6849332a76ad11ef1a31534af6c28d106c543c",
+    "raw_log_sha256": "8c9432d1cee80f13ad25f1814778e252df44ba6e3c1b942c86f074db98d83055",
+    "teardown": "runtime-layers-released",
+    "post_health": true,
+    "lock_released": true,
+    "output": [
+      "[ps5-nanovg] upstream=ce3bf745eb2d2dbc14a50bf2446783f691ac4353 GL=3.3 (Core Profile) Mesa 26.2.0 GLSL=3.30 renderer=PS5 AGC",
+      "[ps5-nanovg] frame=0 scale=1 probes=15 dirty-stencil=0 PASS",
+      "[ps5-nanovg] frame=1 scale=2 probes=15 dirty-stencil=0 PASS",
+      "[ps5-nanovg] frame=2 scale=1 probes=15 dirty-stencil=0 PASS",
+      "[ps5-agc] present-shutdown unregister=80290009 close=00000000 frames=3",
+      "[ps5-nanovg] finished status=0",
+      "[pss-opengl-native] gate completed status=0"
+    ]
+  },
+  "sokol": {
+    "eboot_sha256": "6e3123b682a8adffb63c0df5c69080e4f052b915c4b8f32ed02fe70d684456a5",
+    "raw_log_sha256": "097b16708568d420ad212396498d4b89ac2ee6e838599feff86e5e667989beaf",
+    "teardown": "runtime-layers-released",
+    "post_health": true,
+    "lock_released": true,
+    "output": [
+      "[ps5-sokol] upstream=48c85905aeaa1350feb17515961aecb6c75447d8 GL=3.3 (Core Profile) Mesa 26.2.0 renderer=PS5 AGC",
+      "[ps5-sokol] frame=0 scale=1 components=307200 mismatches=0 logs=0 PASS",
+      "[ps5-sokol] frame=1 scale=2 components=1228800 mismatches=0 logs=0 PASS",
+      "[ps5-sokol] frame=2 scale=1 components=307200 mismatches=0 logs=0 PASS",
+      "[ps5-agc] present-shutdown unregister=80290009 close=00000000 frames=3",
+      "[ps5-sokol] finished status=0",
+      "[pss-opengl-native] gate completed status=0"
+    ]
+  }
+}

@@ -32,8 +32,9 @@ python3 tools/summarize-cubes.py results/your-cycle-opengl.log
 ```
 
 Require all probes, all 48 measured frames, cleanup, exact-title teardown and
-healthy post-run services. Experimental runtime flags remain off by default.
-The compiler fix makes this tested instanced path render correctly; it does not
-automatically merge ordinary draws. Applications must group compatible objects
-themselves to benefit from instancing.
+healthy post-run services. Eligible ordinary draws use bounded batching by
+default; see [Performance](../../docs/performance.md) for measured results and
+the synchronous diagnostic opt-out. This reduces submission overhead but does
+not convert ordinary draws into instancing. Applications must group compatible
+objects themselves to use the instanced path.
 The audit tool also accepts the original ordinary-only baseline receipts.

@@ -1,50 +1,38 @@
 # Known limitations
 
-The frozen Core 3.3 acceptance campaign is complete within its documented scope,
-not a proof of universal compatibility or production-grade stability. Later
-real-workload testing exposed an instanced-varying bug and rejection of constant
-vertex attributes. The performance branch fixes pass native UV/texture, combined
-draw and mixed float/integer current-attribute checks, but still need broader
-regressions and release-candidate revalidation. A corrected GPU PrimitiveID path
-passes ID 0/1, draw reset and instance reset with smooth and genuinely flat inputs
-in both provoking-vertex modes. Explicit geometry-shader IDs/user varyings and
-returning to the implicit program now also pass after supplying the missing
-NGG LDS-layout argument. The initial CTS smoke was 46/51 passing; the corrected
-runtime passes all 24 geometry cases, including the five prior zero-input GS
-transform-feedback failures. These separate binaries do not constitute a new
-full-campaign acceptance. A separate rebuilt SDK passes Make/CMake/pkg-config and
-native ImGui/NanoVG/Sokol checks and a five-minute TV session with periodic
-readbacks. Broader stress/lifecycle work and release acceptance remain pending. See
-[the current candidate and failure history](performance.md).
+The September 7 Core 3.3 campaign and final SDK consumer checks are complete
+within their [documented scope](validation.md). This is not proof of universal
+compatibility or production-grade stability. The updated runtime includes the
+instancing, constant-attribute, PrimitiveID/geometry, memory-ownership and batching
+fixes; its acceptance is a fresh complete matrix, not inherited baseline results.
+The [development history](performance-history.md) preserves the earlier failures.
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
   desktop installation model or compatibility-profile guarantee.
-- **Performance:** some transfers/format paths use CPU fallbacks. The accepted
-  1080p TV demo measured about 9.5 FPS for five minutes; a newer GPU-clear
-  candidate measured about 15 FPS in a short profile; the G6 SDK sustains about
-  15 FPS for five minutes with periodic shape checks. Ordinary draws still incur
-  substantial per-call synchronization cost. A short 1080p textured-cube test
-  measured about 20 FPS with 1/8/32 instanced cubes. Thirty FPS is only the demo's cap;
-  these measurements do not predict full-game FPS. See [Performance](performance.md).
-- **Input:** the demo has a minimal current-state pad adapter. Hardware logs show
-  connection but no widget changes; host navigation checks passed.
+- **Performance:** some transfers, formats, clears and other operations retain CPU
+  fallbacks. Eligible draw batching is enabled by default; other paths remain
+  synchronous. The final 1080p ImGui demo sustained ~20 FPS for five minutes;
+  thirty FPS is only its cap. Clear/presentation waits and broader workload
+  optimization remain. These measurements do not predict full-game FPS.
+  See [Performance](performance.md).
+- **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
+  earlier TV output was owner-confirmed; the final campaign used numerical
+  readbacks, with no recorded widget changes or fresh TV/shell input observation.
+  Host navigation checks passed.
 - **Lifecycle:** renderer runs report VideoOut unregister `80290009` (busy), then
-  successful close, EGL cleanup and runtime-layer release. Three full EGL/ImGui
-  sessions in one native process pass; the warning remains.
+  successful close, EGL cleanup and runtime-layer release. A targeted development
+  check passed three full EGL/ImGui sessions in one process; final renderer and
+  five-minute demo teardown also passed. The warning remains.
 - **Stress:** maximum-axis framebuffers were tested, not an 8192x8192 allocation
-  or deliberate hardware OOM exhaustion. Exhaustive long sessions, suspend/resume
-  and device-loss recovery are not established.
-- **Application memory:** the upstream cube's first native run aborted in CPU-side
-  GLSL built-in allocation with an additional 8.3 MB readback buffer live. The
-  7.5 KiB scanline-buffer control passes 180 frames with unchanged SDK/shaders,
-  supporting memory pressure as the trigger. A mapped caller buffer exposed a
-  second heap allocation in driver transfer staging; moving large staging to CPU
-  mappings makes full-frame readback pass all 180 frames/2,596 probes. Native
-  examples now share the existing CTS heap wrapper; the original 8.3 MB malloc
-  scenario also passes shader setup and the full cube oracle. This resolves the
-  two observed failures, not maximum capacity or graceful OOM recovery. The app
-  heap has a fixed 128 MiB process-lifetime budget; broader workloads remain open.
-- **Hardware:** the final campaign covers one research console, not every model
+  or deliberate hardware OOM exhaustion. Five-minute runs and bounded recreation
+  are tested, not exhaustive long sessions, suspend/resume or device-loss recovery.
+- **Application memory:** the final SDK passes the original 8.3 MB live-malloc
+  cube scenario through shader setup and 180 frames/2,596 pixel checks. Native
+  examples share a fixed 128 MiB process-lifetime heap; large transfer staging
+  uses owned mappings. The standalone graphics SDK does not replace the caller's
+  allocator. This resolves the observed failures, not maximum capacity or
+  graceful OOM recovery. See [the integration contract](consumer-build.md).
+- **Hardware:** the final campaign covers one firmware-6.02 research console, not every model
   or firmware. Earlier experiments do not expand the final candidate's scope.
 - **Builds:** source pins/patches are published. Historical executable hashes are
   not promised for another compiler/path. Fresh binaries need their own hardware
@@ -53,5 +41,5 @@ readbacks. Broader stress/lifecycle work and release acceptance remain pending. 
   the hardware origin of raw receipts retained privately. This is not formal
   Khronos certification.
 
-A complete existing 3D application port, performance profiling and long-session
-testing are the next practical milestones. See [Validation](validation.md).
+Larger application ports, performance profiling and broader recovery testing are
+the next practical work. They are not missing rows in the accepted CTS matrix.

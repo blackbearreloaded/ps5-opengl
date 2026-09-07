@@ -1,5 +1,8 @@
 # Published validation evidence
 
+Historical baseline. The [September 7 dataset](../2026-09-07/README.md) validates
+the updated runtime. This directory's original data and checksums are retained.
+
 This directory exports one strictly audited PS5 campaign. It contains **39,544
 accounted results: 37,404 Pass and 2,140 individually reviewed NotSupported**.
 
@@ -14,7 +17,7 @@ accounted results: 37,404 Pass and 2,140 individually reviewed NotSupported**.
 | [SHA256SUMS](SHA256SUMS) | Integrity of these exported data files |
 
 ```sh
-python3 tools/verify-published-validation.py    # from the repository root
+python3 tools/verify-published-validation.py validation/2026-09-06
 gzip -dc validation/2026-09-06/cases.csv.gz     # standard CSV, no custom format
 ```
 

@@ -47,14 +47,16 @@ make imgui-demo
 Source fetch checks immutable commits and the Mesa archive hash. Unexpected
 revisions or tracked edits are rejected, not reset. PSBC changes are supplied as
 one patch over public commit `a92a1228`; the resulting Git tree must match
-`psbc_patch.patched_tree` in `dependencies.json`. This performance branch includes
-a compiler candidate; it does not inherit the historical validation campaign.
-The local research commit `a11c1925` is provenance, not a remote prerequisite.
+`psbc_patch.patched_tree` in `dependencies.json`. The compiler and runtime changes
+are covered by the new frozen campaign in [Validation](validation.md); no private
+research commit is a build prerequisite.
 
 The Mesa patch is checked before application. `make sdk` builds host and PS5
 compiler libraries, Mesa, the native backend and the installed SDK. ImGui,
 NanoVG and Sokol consume that package without rebuilding the graphics stack.
 Rebuild the SDK after runtime changes before testing those consumers.
+Native builds enable bounded ordinary/multi-draw batching by default; see
+[Performance](performance.md) for its scope and the explicit synchronous opt-out.
 For an isolated candidate, pass its prefix to `tools/verify-installed-sdk.sh`
 (which installs and verifies it), then set `PS5_OPENGL_PREFIX` to that same
 absolute path when invoking `tools/build-native-test-app.sh`. This leaves the
