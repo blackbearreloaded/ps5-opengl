@@ -34,5 +34,13 @@ passes all 180 frames and 2,596 probes, EGL cleanup and title teardown. This sup
 test-buffer memory pressure as the trigger; larger application-memory robustness
 remains unvalidated. Busy VideoOut unregister followed by successful close remains.
 
+The optional `PS5_SOKOL_MAPPED_READBACK=1 make sokol-cube` control restores the
+full-frame readback using an anonymous CPU mapping, rounded to the native 16 KiB
+page size and released with `munmap`. It changes no GL/shader/driver path and does
+not replace `malloc`, expand the app's resource budget or access other memory.
+Run `bash tools/test-sokol-cube-host.sh --mapped` first; it also checks a simulated
+allocation failure exits before rendering and cleans up EGL. Native mapping
+acceptance is pending. The small scanline checker remains the default.
+
 The sample is MIT-licensed by Andre Weissflog; its bundled vecmath is used under
 Mattias Gustavsson's MIT option. See [notices](../../THIRD_PARTY_NOTICES.md).

@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#ifdef PS5_SOKOL_MAPPED_READBACK
+#include <sys/mman.h>
+#endif
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #define GL_GLEXT_PROTOTYPES 1
@@ -19,6 +22,9 @@ static EGLint width, height;
 static unsigned frame, probes, face_mask;
 static int failed;
 static unsigned char *pixels;
+#ifdef PS5_SOKOL_MAPPED_READBACK
+static size_t mapping_bytes;
+#endif
 static GLFWwindow window;
 
 static int check(int ok, const char *stage)
@@ -101,9 +107,14 @@ static void check_frame(void)
     }
 #endif
     unsigned mismatches = 0, foreground = 0, background = 0, checked = 0;
+#ifdef PS5_SOKOL_MAPPED_READBACK
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+#endif
     for (int gy = 1; gy <= 17; ++gy) {
         int y = height * gy / 18;
+#ifndef PS5_SOKOL_MAPPED_READBACK
         glReadPixels(0, y, width, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+#endif
         for (int gx = 1; gx <= 31; ++gx) {
             int x = width * gx / 32;
             int face = expected_face(inverse, x, y);
@@ -111,6 +122,9 @@ static void check_frame(void)
             if (face < 0) { ++background; face = 6; }
             else { ++foreground; face_mask |= 1u << face; }
             const unsigned char *actual = pixels + x * 4;
+#ifdef PS5_SOKOL_MAPPED_READBACK
+            actual += (size_t)y * width * 4;
+#endif
             for (int c = 0; c < 4; ++c) if (abs(actual[c] - colors[face][c]) > 2) {
                 if (mismatches < 4) printf("[ps5-sokol-cube] pixel=%d,%d face=%d c=%d got=%u expected=%u\n",
                     x, y, face, c, actual[c], colors[face][c]);
@@ -175,8 +189,23 @@ int main(void)
     glDrawBuffer(GL_FRONT);
     glReadBuffer(GL_FRONT);
 #endif
+#ifdef PS5_SOKOL_MAPPED_READBACK
+    // Separate CPU mapping, not a replacement for the process malloc/free ABI.
+    mapping_bytes = ((size_t)width * height * 4 + 0x3fff) & ~(size_t)0x3fff;
+    pixels = mmap(NULL, mapping_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (pixels == MAP_FAILED) pixels = NULL;
+#ifdef PS5_SOKOL_HOST_REFERENCE
+    if (pixels && getenv("PS5_CUBE_MAP_FAIL")) {
+        munmap(pixels, mapping_bytes);
+        pixels = NULL;
+    }
+#endif
+    printf("[ps5-sokol-cube] readback=mmap bytes=%zu\n", mapping_bytes);
+#else
     // The oracle samples only 17 rows; do not compete with GLSL setup for 8 MiB.
     pixels = malloc((size_t)width * 4);
+    printf("[ps5-sokol-cube] readback=scanline bytes=%zu\n", (size_t)width * 4);
+#endif
     if (!check(pixels != NULL, "readback allocation")) goto done;
     printf("[ps5-sokol-cube] upstream=8afa83928ce1870efeb0d513e7c4dce4f5db7b3e GL=%s renderer=%s\n",
         glGetString(GL_VERSION), glGetString(GL_RENDERER));
@@ -184,7 +213,11 @@ int main(void)
     check(frame == 180 && probes == 5 && (face_mask & (face_mask - 1)) != 0, "complete rotation coverage");
 done:
     glfwTerminate();
+#ifdef PS5_SOKOL_MAPPED_READBACK
+    if (pixels) check(munmap(pixels, mapping_bytes) == 0, "readback unmap");
+#else
     free(pixels);
+#endif
     printf("[ps5-sokol-cube] finished frames=%u probes=%u face_mask=0x%x status=%d\n", frame, probes, face_mask, failed);
     return failed;
 }

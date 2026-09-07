@@ -3,7 +3,14 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 python3 "$root/examples/core33-sokol-cube/prepare.py"
 mkdir -p "$root/build/sokol-cube-host"
+flags=()
+case ${1:-} in
+    '') ;;
+    --mapped) flags=(-DPS5_SOKOL_MAPPED_READBACK) ;;
+    *) echo 'usage: test-sokol-cube-host.sh [--mapped]' >&2; exit 2 ;;
+esac
 clang-18 -std=gnu11 -O2 -Wall -Werror=implicit-function-declaration \
+    "${flags[@]}" \
     -DPS5_SOKOL_HOST_REFERENCE -I"$root/build/sdk/ps5-opengl-core33/include" \
     -I"$root/examples/core33-sokol-cube" -I"$root/build/sokol-cube-source" \
     -I"$root/third_party/sokol" -I"$root/third_party/sokol-samples/libs/vecmath" \
@@ -21,4 +28,13 @@ if PS5_CUBE_CORRUPT=1 "$root/build/sokol-cube-host/check" > "$root/build/sokol-c
     exit 1
 fi
 grep -q 'FAIL rotation readback' "$root/build/sokol-cube-host/negative.log"
+if [[ ${1:-} == --mapped ]]; then
+    if PS5_CUBE_MAP_FAIL=1 "$root/build/sokol-cube-host/check" > "$root/build/sokol-cube-host/map-fail.log" 2>&1; then
+        echo 'Failed allocation control unexpectedly passed' >&2
+        exit 1
+    fi
+    grep -q 'FAIL readback allocation' "$root/build/sokol-cube-host/map-fail.log"
+    ! grep -q 'FAIL EGL cleanup' "$root/build/sokol-cube-host/map-fail.log"
+    grep -q 'finished frames=0 probes=0 face_mask=0x0 status=1' "$root/build/sokol-cube-host/map-fail.log"
+fi
 echo 'Sokol cube: five host rotation checks pass; erased-cube control fails as required'
