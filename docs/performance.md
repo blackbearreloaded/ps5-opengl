@@ -176,6 +176,13 @@ shaders now pass all five poses, supporting test-buffer pressure as the trigger.
 No broad memory-capacity or TV/input claim. Next: same-process EGL recreation;
 larger application allocation and the VideoOut busy warning remain open.
 
+- 2026-09-06 | G7 | b0235c5 | pass: three full EGL/ImGui sessions in one process, 18 frames/180 probes; three close=0, healthy teardown/unlock | results/g7-imgui-lifecycle/204553
+
+Bounded same-process recreation is now covered on the unchanged G7 SDK. This
+does not establish leak-free long-term use, OOM recovery or suspend/resume.
+Address the newly observed application-memory constraint before broad release
+acceptance; per-draw synchronization and busy unregister remain separate work.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

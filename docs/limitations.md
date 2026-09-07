@@ -29,7 +29,8 @@ readbacks. Broader stress/lifecycle work and release acceptance remain pending. 
 - **Input:** the demo has a minimal current-state pad adapter. Hardware logs show
   connection but no widget changes; host navigation checks passed.
 - **Lifecycle:** renderer runs report VideoOut unregister `80290009` (busy), then
-  successful close, EGL cleanup and runtime-layer release. The warning remains.
+  successful close, EGL cleanup and runtime-layer release. Three full EGL/ImGui
+  sessions in one native process pass; the warning remains.
 - **Stress:** maximum-axis framebuffers were tested, not an 8192x8192 allocation
   or deliberate hardware OOM exhaustion. Exhaustive long sessions, suspend/resume
   and device-loss recovery are not established.
