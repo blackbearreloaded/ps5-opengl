@@ -354,23 +354,29 @@ core33_runtime_defines = CORE33_MK.split(
     "PS5_OPENGL_CORE33_DEFINES :=", 1)[1].split(
         "PS5_OPENGL_RUNTIME_OBJECTS :=", 1)[0]
 core33_test_flags = {
-    word.split("=", 1)[0]
+    word
     for word in core33_build.split()
     if word.startswith("-DPS5_")
 }
 core33_runtime_flags = {
-    word.split("=", 1)[0]
+    word
     for word in core33_runtime_defines.split()
     if word.startswith("-DPS5_")
 }
-require(core33_test_flags == core33_runtime_flags,
+# The legacy standalone gate reserves a fixed 1080p pool. Native scanout
+# reserves the same arena after two resolution-sized buffers; test_scanout_config
+# compiles all three layouts. Compare every other define, including its value.
+require(core33_test_flags - {"-DPS5_RENDER_POOL_BYTES=0x4000000u"} ==
+        core33_runtime_flags - {"-DPS5_RENDER_ARENA_BYTES=0x2c00000u"},
         "standalone Core 3.3 driver flags differ from reusable runtime: "
         f"test-only={sorted(core33_test_flags - core33_runtime_flags)} "
         f"runtime-only={sorted(core33_runtime_flags - core33_test_flags)}")
 require("PS5_ENABLE_MSAA4_CANDIDATE" in core33_runtime_defines and
         "PS5_ENABLE_POINT_LINE_SIZE_CANDIDATE" in core33_runtime_defines and
         "PS5_ENABLE_POINT_COORD_CANDIDATE" in core33_runtime_defines and
-        "PS5_RENDER_POOL_BYTES=0x4000000u" in core33_runtime_defines and
+        "-DPS5_RENDER_POOL_BYTES=0x4000000u" in core33_test_flags and
+        "-DPS5_RENDER_ARENA_BYTES=0x2c00000u" in core33_runtime_flags and
+        "#define PS5_RENDER_POOL_BYTES (PS5_SCANOUT_POOL_BYTES + PS5_RENDER_ARENA_BYTES)" in SCREEN and
         "PS5_ENABLE_FAKE_SW_MSAA_CANDIDATE" not in core33_runtime_defines and
         "$(ps5_opengl_mk_self)" in CORE33_MK,
         "reusable Core 3.3 runtime lost pool capacity, native MSAA, or config invalidation")
@@ -1073,7 +1079,7 @@ require("-DHAVE_FUNC_ATTRIBUTE_PACKED=1" in PSBC_HOST_CONFIG,
         "host PSBC build lost the shared packed-NIR ABI")
 require('--verify-psbc' in PSBC_PS5_BUILD and
         json.loads((ROOT / 'dependencies.json').read_text())['psbc_patch']['patched_tree'] ==
-        '7bd3e7743ba8d9b44f378ee1236e749211ff843d',
+        '595822fc23fd4895e25f83f65acb40d615d813b0',
         "PS5 compiler archive is not pinned to the expected source tree")
 require("-DOPENGNM_PSBC_ORBIS=1" in PSBC_PS5_CONFIG and
         "defined(OPENGNM_PSBC_ORBIS)" in ACO_ISEL_HELPERS and
@@ -1537,7 +1543,9 @@ require("egl_public_core33_vertex_attrib_api.o:" in MAKEFILE and
         "glGetVertexAttribIiv" in VERTEX_ATTRIB_API,
         "Core 3.3 generic vertex-attribute API matrix regressed")
 
-require("draws retire in ps5_agc_gate2_run before returning" in SCREEN and
+flush_body = SCREEN.split("static void\nps5_flush(", 1)[1].split("\n}\n", 1)[0]
+require(flush_body.index("ps5_draw_batch_drain();") <
+        flush_body.index("fence = calloc(") and
         "egl_public_core33_sync.elf" in MAKEFILE and
         "glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0)" in TRIANGLE and
         "glClientWaitSync(sync, GL_SYNC_FLUSH_COMMANDS_BIT, 1)" in TRIANGLE and
@@ -1545,7 +1553,7 @@ require("draws retire in ps5_agc_gate2_run before returning" in SCREEN and
         "sync_wait == GL_ALREADY_SIGNALED" in TRIANGLE and
         "sync_status == GL_SIGNALED" in TRIANGLE and
         "sync_deleted" in TRIANGLE,
-        "serialized Core 3.3 sync contract or public discriminator regressed")
+        "Core 3.3 fence retirement boundary or public discriminator regressed")
 
 require("caps->texture_multisample = PS5_ENABLE_MSAA4_CANDIDATE" in SCREEN and
         "ps5_tiled_color_msaa4_offset" in SCREEN and

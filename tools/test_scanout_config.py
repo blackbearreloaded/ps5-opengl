@@ -10,6 +10,29 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ScanoutConfigTest(unittest.TestCase):
+    def test_capability_pool_inventory(self):
+        audit = (ROOT / "tests/ps5/verify_gl33_capability_audit.py").read_text()
+        body = audit[audit.index("core33_runtime_defines ="):audit.index('require("PS5_OPENGL_IMPORT_STUBS"')]
+        standalone = (ROOT / "tests/ps5/Makefile").read_text().split("ps5_screen_core33.o:", 1)[1].split("\n\n", 1)[0]
+        native = (ROOT / "toolchain/ps5-opengl-core33.mk").read_text()
+        screen = (ROOT / "src/gallium/ps5/ps5_screen.c").read_text()
+
+        def check(test=standalone, runtime=native, source=screen):
+            exec(body, {"core33_build": test, "CORE33_MK": runtime,
+                        "SCREEN": source, "require": self.assertTrue})
+
+        check()
+        for old, new in (("PS5_RENDER_ARENA_BYTES=0x2c00000u", "PS5_RENDER_ARENA_BYTES=0"),
+                         ("-DPS5_RENDER_ARENA_BYTES=0x2c00000u", ""),
+                         ("PS5_ENABLE_MSAA4_CANDIDATE=1", "PS5_ENABLE_MSAA4_CANDIDATE=0"),
+                         ("$(ps5_opengl_mk_self)", "")):
+            with self.subTest(old=old), self.assertRaises(AssertionError):
+                check(runtime=native.replace(old, new))
+        with self.assertRaises(AssertionError):
+            check(test=standalone.replace("PS5_RENDER_POOL_BYTES=0x4000000u", "PS5_RENDER_POOL_BYTES=0"))
+        with self.assertRaises(AssertionError):
+            check(source=screen.replace("PS5_SCANOUT_POOL_BYTES + PS5_RENDER_ARENA_BYTES", "0"))
+
     def test_layout(self):
         source = r'''
 #include <assert.h>

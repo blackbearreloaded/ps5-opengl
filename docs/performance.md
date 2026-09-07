@@ -559,31 +559,50 @@ directions against the original offset calculation on the host. Then measure
 the same native scene/pixels/completion/teardown. This remains CPU staging, not
 a claim of GPU-resident sampleable FBOs or predictable game performance.
 
-- 2026-09-07 | G7 | ee9a5b9 | pass: matched1080p FBO3.54→14.98FPS, pixels/retirement/close/health; below60FPS | results/g7-fbo-*-20260907
+- 2026-09-07 | G7 | ee9a5b9 | pass: matched 1080p FBO 3.54→14.98 FPS, pixels/retirement/close/health; below 60 FPS | results/g7-fbo-*-20260907
 
-The unchanged offscreen scene measured 3.538062FPS with the G6 runtime,
-11.842834FPS after reusing CPU address terms (`6a841a1`), and 14.977898FPS after
+The unchanged offscreen scene measured 3.538062 FPS with the G6 runtime,
+11.842834 FPS after reusing CPU address terms (`6a841a1`), and 14.977898 FPS after
 inlining four-byte copies (`ee9a5b9`). Mean completed render time fell from
-282.636110 to66.760823ms. Each case retained its30-second sample, both pixel
+282.636110 to 66.760823 ms. Each case retained its 30-second sample, both pixel
 probes, two retired draws/frame and checked preview/teardown. No full matrix,
 GPU-resident FBO or new CTS qualification is implied. Frozen identities and
 receipt hashes: `build/frozen/g7-fbo-{baseline,staging,inline}-20260907/manifest.md`.
 
 The following legacy layered-mip gate failed its final sampling oracle while
 both FBO readbacks and cleanup passed (`results/g7-layered-20260907`). Console
-testing stopped. Host Mesa reproduced the exact1024/1024/0 mismatch: the test
-requested mip1 with non-mipmapped `GL_NEAREST`, which selects the base image
-under [OpenGL3.3 §3.8.11](https://registry.khronos.org/OpenGL/specs/gl/glspec33.core.pdf#page=188).
+testing stopped. Host Mesa reproduced the exact 1024/1024/0 mismatch: the test
+requested mip 1 with non-mipmapped `GL_NEAREST`, which selects the base image
+under [OpenGL 3.3 §3.8.11](https://registry.khronos.org/OpenGL/specs/gl/glspec33.core.pdf#page=188).
 The test now initializes all images and selects `GL_NEAREST_MIPMAP_NEAREST`.
 `make test-layered-mip` passes the unchanged pixel oracle and rejects the
 original filter mistake. This is a test correction, not a driver workaround;
 the corrected native receipt remains required before that gate is accepted.
 
+- 2026-09-07 | G7 | runtime ee9a5b9 / test 62c8e72 | pass: corrected mip gate 3,072 pixels; original cube 668 probes / 48 frames / 108 batches; close/health/unlock | results/g7-{layered-fixed,cubes}-20260907
+
+The corrected native mip test passes with the same runtime binary. The original
+1080p cube workload measures 32.16/20.93/10.01 FPS for 1/8/32 ordinary draws, and
+about 20.06 FPS for each instanced workload. Each of six cells has only eight
+timed frames; these are short CPU-wall measurements, not sustained game FPS.
+It explicitly calls `glFinish` before every swap, retiring queued work before
+GPU-batched presentation. Next compare a distinctly labeled swap-completed
+profile; keep the old benchmark/results intact. Shader/scene simplification
+and unfinished submission timings must not be counted as throughput gains.
+Frozen evidence: `build/frozen/g7-gates-20260907.md` and
+`build/frozen/g7-layered-fixed-20260907/manifest.md`.
+
+The legacy static capability audit was updated for the already-validated
+resolution-aware arena, current pinned compiler tree and drain-before-fence
+contract. It now compares feature-define values as well as names; negative
+pool/feature tests supplement the compiled three-resolution layout checks.
+This repairs stale inventory checks; it is not a new hardware CTS campaign.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
-2. Investigate busy unregister independently; validate repeated creation/close,
-   allocation-failure handling and bounded endurance before claiming stability.
-   Suspend/resume and device-loss recovery remain separate, unvalidated features.
+2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
+   Exhaustive allocation pressure, suspend/resume and device-loss recovery
+   remain separate, unvalidated features.
 3. Use application findings from the separate Yamagi port as library bug reports;
    no game-specific changes belong in this repository's driver.
 4. Define the actual SDL/GLFW platform boundary from consumer requirements before
