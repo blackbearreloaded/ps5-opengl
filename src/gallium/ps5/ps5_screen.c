@@ -3032,6 +3032,24 @@ ps5_render_arena_allocate(struct ps5_screen *screen,
    return false;
 }
 
+static void
+ps5_release_resource_memory(void *address, size_t bytes, int64_t direct)
+{
+   int unmap_status = address ? munmap(address, bytes) : 0;
+   int32_t release_status = 0;
+
+   if (!unmap_status && direct >= 0)
+      release_status = sceKernelReleaseDirectMemory(direct, bytes);
+   if (unmap_status || release_status) {
+      /* ponytail: fail-stop until failed ownership transfers have a recovery
+       * owner; resource_destroy cannot report failure or safely permit reuse. */
+      fprintf(stderr, "[ps5-gallium] resource-release failed unmap=%08x release=%08x; terminating before cleanup\n",
+              (unsigned)unmap_status, (unsigned)release_status);
+      fflush(stderr);
+      _Exit(EXIT_FAILURE);
+   }
+}
+
 static struct pipe_resource *
 ps5_resource_create_unlocked(struct pipe_screen *screen,
                              const struct pipe_resource *templ)
@@ -3287,11 +3305,8 @@ ps5_resource_create_unlocked(struct pipe_screen *screen,
                 (unsigned long long)resource->stencil_direct_start,
                 resource->stencil_allocation_size, PS5_STENCIL_ALIGNMENT,
                 resource->stencil_data);
-         if (resource->stencil_data)
-            munmap(resource->stencil_data,
-                   resource->stencil_allocation_size);
-         sceKernelReleaseDirectMemory(resource->stencil_direct_start,
-                                      resource->stencil_allocation_size);
+         ps5_release_resource_memory(resource->stencil_data,
+            resource->stencil_allocation_size, resource->stencil_direct_start);
          free(resource);
          return NULL;
       }
@@ -3309,12 +3324,8 @@ ps5_resource_create_unlocked(struct pipe_screen *screen,
              allocation_alignment, (unsigned long long)direct_limit);
 #endif
 #ifdef PS5_PUBLIC_STENCIL_TEST
-      if (resource->stencil_data)
-         munmap(resource->stencil_data,
-                resource->stencil_allocation_size);
-      if (resource->stencil_direct_start >= 0)
-         sceKernelReleaseDirectMemory(resource->stencil_direct_start,
-                                      resource->stencil_allocation_size);
+      ps5_release_resource_memory(resource->stencil_data,
+         resource->stencil_allocation_size, resource->stencil_direct_start);
 #endif
       free(resource);
       return NULL;
@@ -3330,14 +3341,11 @@ ps5_resource_create_unlocked(struct pipe_screen *screen,
              (unsigned long long)resource->direct_start, allocation_size,
              allocation_alignment, resource->data);
 #endif
-      sceKernelReleaseDirectMemory(resource->direct_start, allocation_size);
+      ps5_release_resource_memory(resource->data, allocation_size,
+                                  resource->direct_start);
 #ifdef PS5_PUBLIC_STENCIL_TEST
-      if (resource->stencil_data)
-         munmap(resource->stencil_data,
-                resource->stencil_allocation_size);
-      if (resource->stencil_direct_start >= 0)
-         sceKernelReleaseDirectMemory(resource->stencil_direct_start,
-                                      resource->stencil_allocation_size);
+      ps5_release_resource_memory(resource->stencil_data,
+         resource->stencil_allocation_size, resource->stencil_direct_start);
 #endif
       free(resource);
       return NULL;
@@ -3478,13 +3486,11 @@ primary_ready:
 
 #ifndef PS5_PUBLIC_STENCIL_TEST
 fail_stencil:
-   if (resource->stencil_data)
-      munmap(resource->stencil_data, resource->stencil_allocation_size);
-   sceKernelReleaseDirectMemory(resource->stencil_direct_start,
-                                resource->stencil_allocation_size);
+   ps5_release_resource_memory(resource->stencil_data,
+      resource->stencil_allocation_size, resource->stencil_direct_start);
 fail_primary:
-   munmap(resource->data, allocation_size);
-   sceKernelReleaseDirectMemory(resource->direct_start, allocation_size);
+   ps5_release_resource_memory(resource->data, allocation_size,
+                               resource->direct_start);
    free(resource);
    return NULL;
 #endif
@@ -3582,8 +3588,6 @@ ps5_resource_destroy(struct pipe_screen *screen, struct pipe_resource *base)
 #ifdef PS5_PUBLIC_STENCIL_TEST
    const bool record_prior_depth =
       resource->base.format == PIPE_FORMAT_Z32_FLOAT;
-   int prior_depth_unmap_status = 0;
-   int32_t prior_depth_release_status = 0;
 #endif
 
    simple_mtx_lock(&ps5->resource_mutex);
@@ -3599,36 +3603,16 @@ ps5_resource_destroy(struct pipe_screen *screen, struct pipe_resource *base)
              sizeof(ps5->render_arena_bitmap));
    }
    simple_mtx_unlock(&ps5->resource_mutex);
-   if (resource->stencil_data)
-      munmap(resource->stencil_data, resource->stencil_allocation_size);
-   if (resource->stencil_direct_start >= 0)
-      sceKernelReleaseDirectMemory(resource->stencil_direct_start,
-                                   resource->stencil_allocation_size);
-   if (resource->data) {
-#ifdef PS5_PUBLIC_STENCIL_TEST
-      prior_depth_unmap_status =
-         munmap(resource->data, resource->allocation_size);
-#else
-      munmap(resource->data, resource->allocation_size);
-#endif
-   }
-   if (resource->direct_start >= 0) {
-#ifdef PS5_PUBLIC_STENCIL_TEST
-      prior_depth_release_status =
-         sceKernelReleaseDirectMemory(resource->direct_start,
-                                      resource->allocation_size);
-#else
-      sceKernelReleaseDirectMemory(resource->direct_start,
-                                   resource->allocation_size);
-#endif
-   }
+   ps5_release_resource_memory(resource->stencil_data,
+      resource->stencil_allocation_size, resource->stencil_direct_start);
+   ps5_release_resource_memory(resource->data, resource->allocation_size,
+                               resource->direct_start);
 #ifdef PS5_PUBLIC_STENCIL_TEST
    if (record_prior_depth)
       printf("[ps5-gallium] public-stencil-prior-depth-destroy format=%u address=%p bytes=%zu direct=%016llx unmap=%08x release=%08x\n",
              resource->base.format, resource->data, resource->allocation_size,
              (unsigned long long)resource->direct_start,
-             (unsigned)prior_depth_unmap_status,
-             (unsigned)prior_depth_release_status);
+             0u, 0u);
 #endif
    free(resource);
    if (render_pool_owner)

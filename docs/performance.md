@@ -574,6 +574,12 @@ was not run because offline inspection identified this measurement barrier.
 
 - 2026-09-07 | G8 | 0dbffb4 | pass: paired cubes, 668 probes each, exact 108 chunks; 8/32 ordinary draws 2.97x/4.95x full-frame throughput; healthy teardown/unlock | results/g8-cubes-frame-{control,batch}
 
+G7 release successor shares checked unmap/backing release across destruction
+and partial-allocation cleanup. Host mocks reproduced release of still-mapped
+memory before the fix. Failed ownership transfers now terminate before further
+cleanup; normal arena/primary/split-stencil behavior is retained. Native acceptance
+requires normal lifecycle and transfer/CTS checks, never hardware fault injection.
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and

@@ -64,6 +64,9 @@ buffers, or run application exit handlers. This is application fail-stop, not
 device-loss recovery or a console reset. Save important application state during
 normal operation; do not depend on exit handlers after a GPU failure. Fault-path
 tests run on the host; normal console regressions do not prove hardware recovery.
+The same fail-stop rule applies to failed resource unmap/backing release. Backing
+is never released after a failed unmap, including partial-allocation cleanup;
+the driver does not claim recovery from these ownership errors.
 
 ## Verify the interface
 
