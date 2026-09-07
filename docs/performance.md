@@ -438,6 +438,17 @@ case before optimizing scanout cache maintenance; then compare the successor at
 CPU writes/readbacks and retirement checks remain mandatory. No full matrix rerun
 or accepted-SDK promotion is implied by these focused experiments.
 
+- 2026-09-07 | G5d | 1aec3e2 | pass: diagnostic 4K120 baseline 59.942610 FPS, 5,397 preparations, clean lifecycle | results/g5d-profile2160-20260907
+
+The diagnostic attributes 1.153146 ms per draw (3.459438 ms per frame) to the
+native scanout flush, versus 0.014127 ms per draw for native setup. This does not
+account for all Gallium preparation costs. The first optimization keeps the full
+scanout flush for the first queued draw and skips repeats only in the existing
+GPU-present batch for the same registered pool. CPU accesses drain that batch;
+new batches, changed pools and the default path retain the flush. Submission,
+completion polling and lifetime guards are unchanged. Validate pixels, exact
+batch/flip counts, phase reduction and healthy teardown before claiming a gain.
+
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
 and retirement. Start with a focused matched 1080p FBO case and affected

@@ -148,3 +148,55 @@ egl_rule = make[make.index("$(PS5_OPENGL_BUILD)/ps5_egl.o:"):make.index("$(PS5_O
 assert "$(PS5_OPENGL_RUNTIME_DEFINES)" in egl_rule
 assert "if (runtime_gpu_present_buffer >= 0)\n        return -1; /* Unconfirmed presentation" in source
 print("PASS: bounded GPU-flip tail, post-tail marker, exact flip/idle completion, failures, CPU fallback")
+
+# Compile the actual scanout-flush gate, including the unchanged default path.
+start = source.rindex("    PS5_PROFILE_MARK(1);", 0, source.index("    /* The first queued draw flushes"))
+flush_gate = source[start:source.index("    PS5_PROFILE_MARK(2);", start)]
+code = r'''
+#include <assert.h>
+#include <stddef.h>
+#define PS5_PROFILE_MARK(i) ((void)0)
+static int flushes;
+static void flush_gpu_data(const void *p, size_t n) { assert(p && n); ++flushes; }
+static void run(int runtime_batch_active, unsigned runtime_batch_count,
+                int runtime_video_registered, void *framebuffer, size_t framebuffer_pool_bytes,
+                void *runtime_video_framebuffer, size_t runtime_video_framebuffer_size) {
+    (void)runtime_batch_active; (void)runtime_batch_count; (void)runtime_video_registered;
+    (void)runtime_video_framebuffer; (void)runtime_video_framebuffer_size;
+''' + flush_gate + r'''
+}
+int main(void) {
+    char pools[2];
+    for (unsigned state = 0; state < 32; ++state) {
+        int active = state & 1, queued = state & 2, registered = state & 4;
+        int same_pointer = state & 8, same_size = state & 16;
+        flushes = 0;
+        run(active, queued ? 2 : 0, registered, pools, 64,
+            pools + !same_pointer, same_size ? 64 : 32);
+#ifdef PS5_GPU_PRESENT_BATCH
+        assert(flushes == !(active && queued && registered && same_pointer && same_size));
+#else
+        assert(flushes == 1);
+#endif
+    }
+    /* CPU access drains/reset the queue: the first resumed draw flushes again. */
+    flushes = 0;
+    run(1, 0, 1, pools, 64, pools, 64);
+    run(1, 1, 1, pools, 64, pools, 64);
+    run(1, 2, 1, pools, 64, pools, 64);
+    run(1, 0, 1, pools, 64, pools, 64);
+#ifdef PS5_GPU_PRESENT_BATCH
+    assert(flushes == 2);
+#else
+    assert(flushes == 4);
+#endif
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    c, exe = Path(tmp) / "flush.c", Path(tmp) / "flush"
+    c.write_text(code)
+    for flags in ([], ["-DPS5_GPU_PRESENT_BATCH=1"]):
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags,
+                        str(c), "-o", str(exe)], check=True)
+        subprocess.run([str(exe)], check=True)
+print("PASS: scanout flush retained at batch/CPU-access/pool boundaries; default path unchanged")

@@ -2838,6 +2838,14 @@ int main(void)
     memset(framebuffer, 0, FRAMEBUFFER_POOL_BYTES);
 #endif
     PS5_PROFILE_MARK(1);
+#ifdef PS5_GPU_PRESENT_BATCH
+    /* The first queued draw flushes this pool. Later draws have not submitted
+     * any GPU work; Gallium drains the batch before CPU access to either slot.
+     * Keep the full flush for a new batch, pool, or nonbatched caller. */
+    if (!runtime_batch_active || !runtime_batch_count || !runtime_video_registered ||
+        framebuffer != runtime_video_framebuffer ||
+        framebuffer_pool_bytes != runtime_video_framebuffer_size)
+#endif
     flush_gpu_data(framebuffer, framebuffer_pool_bytes);
     PS5_PROFILE_MARK(2);
 #ifdef AGC_RUNTIME_PACKAGES
