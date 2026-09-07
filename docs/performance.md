@@ -658,6 +658,21 @@ The repeated cache experiment shifts CPU time into retirement waits again; its
 0.84% average change is not a convincing throughput improvement. Restore the
 validated 32-entry implementation and investigate remaining draw preparation.
 
+### G7 routine success tracing
+
+- 2026-09-07 | G7 | 6105672 | pass: routine traces opt-in, ordinary 4.57→11.99 FPS, instanced 59.94; 54230 draws/pixels/close/health | results/g7-trace-policy-cubes-20260907
+
+Three routine success traces now use the existing `AGC_RUNTIME_DIAGNOSTICS`
+switch. The control wrote 127,969 allocation/depth-state messages to the native
+app's unbuffered log. Removing that work from the default path lowers ordinary
+mean submission time from 199.35 to 64.03 ms and improves completed throughput
+2.62x to 11.988316 FPS; instanced throughput remains 59.940190 FPS. All 2,052
+probes and 54,230 draws in 3,791 batches pass, with clean close/teardown/health.
+Errors, allocation exhaustion, batch retirement and shutdown records remain
+enabled; logger buffering and GPU behavior are unchanged. This is not blanket
+quiet mode. Ordinary frame p99 is 84.26 ms: still far from 60 FPS. Frozen evidence:
+`build/frozen/g7-trace-policy-20260907.md`. Full release validation remains pending.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
