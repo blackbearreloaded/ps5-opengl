@@ -8220,8 +8220,8 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    union pipe_color_union quantized;
    util_format_pack_rgba(surface->format, packed, color->ui, 1);
    util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
-   /* Only this validated color-only operation may defer its internal fan.
-    * Mixed depth/stencil clears still finish before the CPU fallback touches them. */
+   /* Only this validated color operation may defer its internal fan. The
+    * caller has already completed any CPU depth/stencil part of a mixed clear. */
    context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0;
    util_blitter_clear(blitter, context->framebuffer.width, context->framebuffer.height,
                       1, PIPE_CLEAR_COLOR0, &quantized, 0, 0, false);
@@ -8237,14 +8237,12 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    return true;
 }
 
-static void
-ps5_clear(struct pipe_context *base, unsigned buffers,
-          uint32_t color_clear_mask, uint8_t stencil_clear_mask,
-          const struct pipe_scissor_state *scissor_state,
-          const union pipe_color_union *color, double depth,
-          unsigned stencil)
+static bool
+ps5_clear_depth_stencil(struct ps5_context *context, unsigned buffers,
+                         uint8_t stencil_clear_mask,
+                         const struct pipe_scissor_state *scissor_state,
+                         double depth, unsigned stencil)
 {
-   struct ps5_context *context = (struct ps5_context *)base;
    struct ps5_resource *resource;
    uint32_t clear_bits;
    uint32_t *words;
@@ -8255,7 +8253,6 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
    unsigned first_depth_layer = 0;
    unsigned last_depth_layer = 0;
 
-   ps5_draw_batch_drain();
    resource = context && context->framebuffer.zsbuf.texture
                  ? (struct ps5_resource *)context->framebuffer.zsbuf.texture
                  : NULL;
@@ -8269,7 +8266,191 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
       first_depth_layer = context->framebuffer.zsbuf.first_layer;
       last_depth_layer = context->framebuffer.zsbuf.last_layer;
    }
+   if (resource && resource->depth_staging_size &&
+       (buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL))) {
+      const struct pipe_surface *surface = &context->framebuffer.zsbuf;
+      unsigned width = ps5_surface_width(surface);
+      unsigned height = ps5_surface_height(surface);
+      unsigned min_x, min_y, max_x, max_y;
+
+      if (!context->framebuffer_valid ||
+          buffers != PIPE_CLEAR_DEPTH ||
+          resource->base.format != PIPE_FORMAT_Z32_FLOAT ||
+          first_depth_layer > last_depth_layer ||
+          last_depth_layer >= ps5_surface_layer_count(surface) ||
+          !(depth >= 0.0 && depth <= 1.0))
+         goto reject;
+
+      ps5_clear_bounds(scissor_state, width, height,
+                       &min_x, &min_y, &max_x, &max_y);
+      clear_bits = ps5_float_bits((float)depth);
+      for (unsigned layer = first_depth_layer;
+           layer <= last_depth_layer; ++layer) {
+         size_t layer_base = (size_t)layer * resource->layer_stride +
+                             resource->level_offset[surface->level];
+
+         for (unsigned y = min_y; y < max_y; ++y) {
+            for (unsigned x = min_x; x < max_x; ++x) {
+               size_t offset = layer_base +
+                  (size_t)y * resource->level_stride[surface->level] +
+                  (size_t)x * sizeof(clear_bits);
+
+               if (offset > resource->size ||
+                   resource->size - offset < sizeof(clear_bits))
+                  goto reject;
+               memcpy(resource->data + offset, &clear_bits,
+                      sizeof(clear_bits));
+            }
+         }
+      }
+      ps5_flush_gpu_data(resource->data, resource->size);
+      printf("[ps5-gallium] clear-depth-mip level=%u size=%ux%u layers=%u-%u depth=%.9g/%08x scissor=%u\n",
+             surface->level, width, height, first_depth_layer,
+             last_depth_layer, depth, clear_bits,
+             scissor_state != NULL);
+      return true;
+   }
+   if (!context || !context->framebuffer_valid ||
+       !resource || !(buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
+       (buffers & ~(PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
+       (resource->base.format != PIPE_FORMAT_Z32_FLOAT &&
+        resource->base.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) ||
+       !depth_layer_size || !stencil_layer_size ||
+       first_depth_layer > last_depth_layer ||
+       last_depth_layer >=
+          ps5_surface_layer_count(&context->framebuffer.zsbuf) ||
+       ((buffers & PIPE_CLEAR_STENCIL) &&
+        (resource->base.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ||
+         !resource->stencil_data ||
+         last_depth_layer >=
+            resource->stencil_allocation_size / stencil_layer_size)) ||
+       ((buffers & PIPE_CLEAR_DEPTH) &&
+        (last_depth_layer >= resource->allocation_size / depth_layer_size ||
+         depth_layer_size % sizeof(uint32_t) ||
+         !(depth >= 0.0 && depth <= 1.0)))) {
+reject:
+      printf("[ps5-gallium] reject-clear buffers=%08x scissor=%u format=%u depth=%.9g\n",
+             buffers, scissor_state != NULL,
+             resource ? resource->base.format : 0, depth);
+      return false;
+   }
+
+   clear_bits = ps5_float_bits((float)depth);
+   if (buffers & PIPE_CLEAR_DEPTH) {
+      for (unsigned layer = first_depth_layer;
+           layer <= last_depth_layer; ++layer) {
+         uint8_t *layer_data = resource->data + layer * depth_layer_size;
+
+         if (!scissor_state) {
+            words = (uint32_t *)layer_data;
+            count = depth_layer_size / sizeof(*words);
+            for (index = 0; index < count; ++index)
+               words[index] = clear_bits;
+         } else {
+            unsigned min_x, min_y, max_x, max_y;
+
+            ps5_clear_bounds(scissor_state, resource->base.width0,
+                             resource->base.height0,
+                             &min_x, &min_y, &max_x, &max_y);
+            for (unsigned y = min_y; y < max_y; ++y) {
+               for (unsigned x = min_x; x < max_x; ++x) {
+                  for (unsigned sample = 0;
+                       sample < MAX2(resource->base.nr_samples, 1); ++sample) {
+                     size_t offset = resource->base.nr_samples == 4
+                        ? ps5_tiled_depth_msaa4_offset(
+                             x, y, sample, resource->base.width0)
+                        : ps5_tiled_depth_offset(
+                             x, y, resource->base.width0);
+
+                     if (offset > depth_layer_size ||
+                         depth_layer_size - offset < sizeof(clear_bits))
+                        goto reject;
+                     memcpy(layer_data + offset, &clear_bits,
+                            sizeof(clear_bits));
+                  }
+               }
+            }
+         }
+         ps5_flush_gpu_data(layer_data, depth_layer_size);
+      }
+   }
+   if (buffers & PIPE_CLEAR_STENCIL) {
+      uint8_t value = (uint8_t)stencil;
+
+      for (unsigned layer = first_depth_layer;
+           layer <= last_depth_layer; ++layer) {
+         uint8_t *layer_data = resource->stencil_data +
+                               layer * stencil_layer_size;
+
+         if (!scissor_state) {
+            for (index = 0; index < stencil_layer_size; ++index)
+               layer_data[index] =
+                  (layer_data[index] & ~stencil_clear_mask) |
+                  (value & stencil_clear_mask);
+         } else {
+            unsigned min_x, min_y, max_x, max_y;
+
+            ps5_clear_bounds(scissor_state, resource->base.width0,
+                             resource->base.height0,
+                             &min_x, &min_y, &max_x, &max_y);
+            for (unsigned y = min_y; y < max_y; ++y) {
+               for (unsigned x = min_x; x < max_x; ++x) {
+                  for (unsigned sample = 0;
+                       sample < MAX2(resource->base.nr_samples, 1); ++sample) {
+                     size_t offset = resource->base.nr_samples == 4
+                        ? ps5_tiled_stencil_msaa4_offset(
+                             x, y, sample, resource->base.width0)
+                        : ps5_tiled_stencil_offset(
+                             x, y, resource->base.width0);
+
+                     if (offset >= stencil_layer_size)
+                        goto reject;
+                     layer_data[offset] =
+                        (layer_data[offset] & ~stencil_clear_mask) |
+                        (value & stencil_clear_mask);
+                  }
+               }
+            }
+         }
+         ps5_flush_gpu_data(layer_data, stencil_layer_size);
+      }
+   }
+   printf("[ps5-gallium] clear-depth-stencil buffers=%08x format=%u size=%ux%u layers=%u-%u samples=%u allocation=%zu/%zu depth=%.9g/%08x stencil=%02x/%02x scissor=%u\n",
+          buffers, resource->base.format, resource->base.width0,
+          resource->base.height0, first_depth_layer, last_depth_layer,
+          resource->base.nr_samples,
+          resource->allocation_size, resource->stencil_allocation_size,
+          depth, clear_bits, stencil & 0xffu, stencil_clear_mask,
+          scissor_state != NULL);
+   return true;
+}
+
+static void
+ps5_clear(struct pipe_context *base, unsigned buffers,
+          uint32_t color_clear_mask, uint8_t stencil_clear_mask,
+          const struct pipe_scissor_state *scissor_state,
+          const union pipe_color_union *color, double depth,
+          unsigned stencil)
+{
+   struct ps5_context *context = (struct ps5_context *)base;
+   struct ps5_resource *resource;
+
+   ps5_draw_batch_drain();
+   resource = context && context->framebuffer.zsbuf.texture
+                 ? (struct ps5_resource *)context->framebuffer.zsbuf.texture
+                 : NULL;
    if (context && !ps5_render_condition_passes(context))
+      return;
+   /* Finish CPU depth/stencil writes before a color clear can enter the GPU
+    * queue. No later CPU attachment clear may drain that new color/draw batch. */
+   unsigned depth_buffers = buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL);
+   if (depth_buffers) {
+      if (!ps5_clear_depth_stencil(context, depth_buffers, stencil_clear_mask,
+                                   scissor_state, depth, stencil))
+         return;
+      buffers &= ~depth_buffers;
+   }
+   if (!buffers)
       return;
    if (ps5_clear_gpu_color(context, buffers, color_clear_mask, scissor_state, color)) {
       buffers &= ~PIPE_CLEAR_COLOR;
@@ -8378,162 +8559,10 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
       if (!buffers)
          return;
    }
-   if (resource && resource->depth_staging_size &&
-       (buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL))) {
-      const struct pipe_surface *surface = &context->framebuffer.zsbuf;
-      unsigned width = ps5_surface_width(surface);
-      unsigned height = ps5_surface_height(surface);
-      unsigned min_x, min_y, max_x, max_y;
-
-      if (!context->framebuffer_valid ||
-          buffers != PIPE_CLEAR_DEPTH ||
-          resource->base.format != PIPE_FORMAT_Z32_FLOAT ||
-          first_depth_layer > last_depth_layer ||
-          last_depth_layer >= ps5_surface_layer_count(surface) ||
-          !(depth >= 0.0 && depth <= 1.0))
-         goto reject;
-
-      ps5_clear_bounds(scissor_state, width, height,
-                       &min_x, &min_y, &max_x, &max_y);
-      clear_bits = ps5_float_bits((float)depth);
-      for (unsigned layer = first_depth_layer;
-           layer <= last_depth_layer; ++layer) {
-         size_t layer_base = (size_t)layer * resource->layer_stride +
-                             resource->level_offset[surface->level];
-
-         for (unsigned y = min_y; y < max_y; ++y) {
-            for (unsigned x = min_x; x < max_x; ++x) {
-               size_t offset = layer_base +
-                  (size_t)y * resource->level_stride[surface->level] +
-                  (size_t)x * sizeof(clear_bits);
-
-               if (offset > resource->size ||
-                   resource->size - offset < sizeof(clear_bits))
-                  goto reject;
-               memcpy(resource->data + offset, &clear_bits,
-                      sizeof(clear_bits));
-            }
-         }
-      }
-      ps5_flush_gpu_data(resource->data, resource->size);
-      printf("[ps5-gallium] clear-depth-mip level=%u size=%ux%u layers=%u-%u depth=%.9g/%08x scissor=%u\n",
-             surface->level, width, height, first_depth_layer,
-             last_depth_layer, depth, clear_bits,
-             scissor_state != NULL);
-      return;
-   }
-   if (!context || !context->framebuffer_valid ||
-       !resource || !(buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
-       (buffers & ~(PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
-       (resource->base.format != PIPE_FORMAT_Z32_FLOAT &&
-        resource->base.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) ||
-       !depth_layer_size || !stencil_layer_size ||
-       first_depth_layer > last_depth_layer ||
-       last_depth_layer >=
-          ps5_surface_layer_count(&context->framebuffer.zsbuf) ||
-       ((buffers & PIPE_CLEAR_STENCIL) &&
-        (resource->base.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ||
-         !resource->stencil_data ||
-         last_depth_layer >=
-            resource->stencil_allocation_size / stencil_layer_size)) ||
-       ((buffers & PIPE_CLEAR_DEPTH) &&
-        (last_depth_layer >= resource->allocation_size / depth_layer_size ||
-         depth_layer_size % sizeof(uint32_t) ||
-         !(depth >= 0.0 && depth <= 1.0)))) {
 reject:
-      printf("[ps5-gallium] reject-clear buffers=%08x scissor=%u format=%u depth=%.9g\n",
-             buffers, scissor_state != NULL,
-             resource ? resource->base.format : 0, depth);
-      return;
-   }
-
-   clear_bits = ps5_float_bits((float)depth);
-   if (buffers & PIPE_CLEAR_DEPTH) {
-      for (unsigned layer = first_depth_layer;
-           layer <= last_depth_layer; ++layer) {
-         uint8_t *layer_data = resource->data + layer * depth_layer_size;
-
-         if (!scissor_state) {
-            words = (uint32_t *)layer_data;
-            count = depth_layer_size / sizeof(*words);
-            for (index = 0; index < count; ++index)
-               words[index] = clear_bits;
-         } else {
-            unsigned min_x, min_y, max_x, max_y;
-
-            ps5_clear_bounds(scissor_state, resource->base.width0,
-                             resource->base.height0,
-                             &min_x, &min_y, &max_x, &max_y);
-            for (unsigned y = min_y; y < max_y; ++y) {
-               for (unsigned x = min_x; x < max_x; ++x) {
-                  for (unsigned sample = 0;
-                       sample < MAX2(resource->base.nr_samples, 1); ++sample) {
-                     size_t offset = resource->base.nr_samples == 4
-                        ? ps5_tiled_depth_msaa4_offset(
-                             x, y, sample, resource->base.width0)
-                        : ps5_tiled_depth_offset(
-                             x, y, resource->base.width0);
-
-                     if (offset > depth_layer_size ||
-                         depth_layer_size - offset < sizeof(clear_bits))
-                        goto reject;
-                     memcpy(layer_data + offset, &clear_bits,
-                            sizeof(clear_bits));
-                  }
-               }
-            }
-         }
-         ps5_flush_gpu_data(layer_data, depth_layer_size);
-      }
-   }
-   if (buffers & PIPE_CLEAR_STENCIL) {
-      uint8_t value = (uint8_t)stencil;
-
-      for (unsigned layer = first_depth_layer;
-           layer <= last_depth_layer; ++layer) {
-         uint8_t *layer_data = resource->stencil_data +
-                               layer * stencil_layer_size;
-
-         if (!scissor_state) {
-            for (index = 0; index < stencil_layer_size; ++index)
-               layer_data[index] =
-                  (layer_data[index] & ~stencil_clear_mask) |
-                  (value & stencil_clear_mask);
-         } else {
-            unsigned min_x, min_y, max_x, max_y;
-
-            ps5_clear_bounds(scissor_state, resource->base.width0,
-                             resource->base.height0,
-                             &min_x, &min_y, &max_x, &max_y);
-            for (unsigned y = min_y; y < max_y; ++y) {
-               for (unsigned x = min_x; x < max_x; ++x) {
-                  for (unsigned sample = 0;
-                       sample < MAX2(resource->base.nr_samples, 1); ++sample) {
-                     size_t offset = resource->base.nr_samples == 4
-                        ? ps5_tiled_stencil_msaa4_offset(
-                             x, y, sample, resource->base.width0)
-                        : ps5_tiled_stencil_offset(
-                             x, y, resource->base.width0);
-
-                     if (offset >= stencil_layer_size)
-                        goto reject;
-                     layer_data[offset] =
-                        (layer_data[offset] & ~stencil_clear_mask) |
-                        (value & stencil_clear_mask);
-                  }
-               }
-            }
-         }
-         ps5_flush_gpu_data(layer_data, stencil_layer_size);
-      }
-   }
-   printf("[ps5-gallium] clear-depth-stencil buffers=%08x format=%u size=%ux%u layers=%u-%u samples=%u allocation=%zu/%zu depth=%.9g/%08x stencil=%02x/%02x scissor=%u\n",
-          buffers, resource->base.format, resource->base.width0,
-          resource->base.height0, first_depth_layer, last_depth_layer,
-          resource->base.nr_samples,
-          resource->allocation_size, resource->stencil_allocation_size,
-          depth, clear_bits, stencil & 0xffu, stencil_clear_mask,
-          scissor_state != NULL);
+   printf("[ps5-gallium] reject-clear buffers=%08x scissor=%u format=%u depth=%.9g\n",
+          buffers, scissor_state != NULL,
+          resource ? resource->base.format : 0, depth);
 }
 
 static bool

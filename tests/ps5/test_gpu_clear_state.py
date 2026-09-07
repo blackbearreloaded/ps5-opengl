@@ -159,3 +159,75 @@ with tempfile.TemporaryDirectory() as temporary:
                     "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], check=True)
 print("PASS: GPU-clear size boundary/eligibility, uniform snapshot bounds, guarded TGSI adapter, NIR unchanged")
+
+# Compile the actual shared callback through its GPU/fallback dispatch boundary.
+# The unchanged CPU pixel loops are covered by native mixed/masked/depth gates.
+start = source.index("static void\nps5_clear(")
+dispatch = source[start:source.index("   if (PS5_ENABLE_MSAA4_CANDIDATE", start)]
+code = r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+#define PIPE_CLEAR_DEPTH 1u
+#define PIPE_CLEAR_STENCIL 2u
+#define PIPE_CLEAR_COLOR0 4u
+#define PIPE_CLEAR_COLOR 0x3fcu
+struct pipe_context { int unused; };
+struct ps5_resource { struct { unsigned format; } base; };
+struct ps5_context { struct pipe_context base; int last_draw_status;
+    struct { struct { struct ps5_resource *texture; } zsbuf; } framebuffer; };
+struct pipe_scissor_state { unsigned unused; };
+union pipe_color_union { float f[4]; };
+static char order[16];
+static unsigned used, pending, expected_depth;
+static bool condition = true, depth_ok = true, gpu_ok = true;
+static int gpu_status;
+static void record(char stage) { assert(used < 15); order[used++] = stage; }
+static void ps5_draw_batch_drain(void) { record('D'); pending = 0; }
+static bool ps5_render_condition_passes(struct ps5_context *c)
+{ assert(c); record('R'); return condition; }
+static bool ps5_clear_depth_stencil(struct ps5_context *c, unsigned buffers,
+    uint8_t mask, const struct pipe_scissor_state *scissor, double depth, unsigned stencil)
+{
+    assert(c && !pending && buffers == expected_depth && mask == 0x5a && !scissor);
+    assert(depth == .25 && stencil == 0x73); record('Z'); return depth_ok;
+}
+static bool ps5_clear_gpu_color(struct ps5_context *c, unsigned buffers,
+    uint32_t mask, const struct pipe_scissor_state *scissor, const union pipe_color_union *color)
+{
+    assert(c && !pending && buffers && !(buffers & 3) && mask == 15 && !scissor && color);
+    record('C'); c->last_draw_status = gpu_status;
+    if (gpu_ok) pending = 1;
+    return gpu_ok;
+}
+''' + dispatch + r'''
+    (void)resource; record('F'); /* Existing CPU color fallback follows here. */
+}
+static void run(unsigned buffers, const char *expected, unsigned queued)
+{
+    struct ps5_context c = {0};
+    union pipe_color_union color = {{0}};
+    memset(order, 0, sizeof(order)); used = 0; expected_depth = buffers & 3;
+    ps5_clear(&c.base, buffers, 15, 0x5a, NULL, &color, .25, 0x73);
+    assert(!strcmp(order, expected) && pending == queued);
+}
+int main(void)
+{
+    run(4, "DRC", 1);
+    run(1, "DRZ", 0); /* Prior GPU work must retire before this CPU access. */
+    run(2, "DRZ", 0); run(3, "DRZ", 0); run(0, "DR", 0);
+    for (unsigned buffers = 5; buffers <= 7; ++buffers) run(buffers, "DRZC", 1);
+    condition = false; run(7, "DR", 0); condition = true;
+    depth_ok = false; run(7, "DRZ", 0); depth_ok = true;
+    gpu_ok = false; run(7, "DRZCF", 0); gpu_ok = true;
+    gpu_status = -30; run(7, "DRZC", 1); /* No CPU replay after attempted GPU failure. */
+}
+'''
+with tempfile.TemporaryDirectory() as temporary:
+    executable = str(Path(temporary) / "mixed-clear-order")
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                    "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
+    subprocess.run([executable], check=True)
+print("PASS: shared mixed-clear dispatch drains prior work, completes CPU depth/stencil before GPU color, preserves failure/fallback ordering")
