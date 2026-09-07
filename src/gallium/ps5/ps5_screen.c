@@ -7782,7 +7782,7 @@ ps5_draw_batch_drain_buffer(struct pipe_resource *base)
    const struct ps5_resource *buffer = (const struct ps5_resource *)base;
    simple_mtx_lock(&ps5_deferred_mutex);
    if (ps5_deferred.owner) {
-      /* ponytail: whole allocations, at most eight slots. Range tracking only
+      /* ponytail: whole allocations, bounded by the batch capacity. Range tracking only
        * if conservative alias/arena overlap becomes a measured bottleneck. */
       bool hazard = !base || base->target != PIPE_BUFFER;
       for (unsigned slot = 0; !hazard && slot < ps5_deferred.count; ++slot) {

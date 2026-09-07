@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Compile the actual batch retirement code with deterministic failure injection."""
 from pathlib import Path
+import argparse
 import json
 import re
 import subprocess
-import sys
 import tempfile
 
 
-def audit(text, require_postchecks=False, require_textures=False):
+def audit(text, require_postchecks=False, require_textures=False, capacity=8):
     """Pixel success alone cannot prove that the optimized path ran."""
     matches = list(re.finditer(r"\[ps5-multidraw\] mode=(\d+) serial_ns=(\d+) batch_ns=(\d+) pixels=6912 PASS", text))
     assert len(matches) == text.count("[ps5-multidraw] mode=") == 4, "Missing/duplicate mode results"
@@ -18,16 +18,16 @@ def audit(text, require_postchecks=False, require_textures=False):
         assert actual_mode == mode and serial > 0 and batch > 0
         section = text[start:match.start()]
         chunks = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=(\d+)", section)
-        assert len(chunks) == section.count("[ps5-multidraw-batch]") == 2, "Two native chunks required per mode"
+        assert len(chunks) == section.count("[ps5-multidraw-batch]") == (11 + capacity - 1) // capacity, "Wrong native chunk count"
         assert sum(int(c[0]) for c in chunks) == 10, "Every nonzero subdraw must be submitted"
         for draws, attempted, waits, status in chunks:
-            assert 0 < int(draws) <= 8 and draws == attempted and int(waits) < 2000 and status == "0"
+            assert 0 < int(draws) <= capacity and draws == attempted and int(waits) < 2000 and status == "0"
         assert len(re.findall(r"\[ps5-gallium\] multi-draw-batched draws=(?:10|11) result=0", section)) == 1
         assert section.count("multi-draw-batched") == 1
         result.append({"mode": mode, "serial_ms": serial / 1e6, "batch_ms": batch / 1e6,
                        "single_sample_ratio": serial / batch})
         start = match.end()
-    assert text.count("[ps5-multidraw-batch]") == 8 and text.count("multi-draw-batched") == 4
+    assert text.count("[ps5-multidraw-batch]") == 4 * ((11 + capacity - 1) // capacity) and text.count("multi-draw-batched") == 4
     # The original four-mode receipt is retained; the successor adds postchecks.
     if require_postchecks or "[ps5-multidraw] query_samples=" in text:
         assert text.count("[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS") == 1
@@ -42,27 +42,28 @@ def audit(text, require_postchecks=False, require_textures=False):
     return result
 
 
-def audit_deferred(text, control=False, require_uploads=False):
+def audit_deferred(text, control=False, require_uploads=False, capacity=8):
     """Require real coalescing, complete pixels/hazards and inclusive wait timing."""
     matches = list(re.finditer(r"\[ps5-multidraw\] mode=(\d+) serial_ns=(\d+) batch_ns=(\d+) pixels=6912 PASS", text))
     assert len(matches) == text.count("[ps5-multidraw] mode=") == 4
     start, result = 0, []
+    group = [min(capacity, 10 - i) for i in range(0, 10, capacity)]
     for mode, match in enumerate(matches):
         actual, serial, batched = map(int, match.groups())
         assert actual == mode and serial > 0 and batched > 0
         chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text[start:match.start()])
-        assert list(map(int, chunks)) == ([] if control else [1] * 11 + [8, 2, 1]), chunks
+        assert list(map(int, chunks)) == ([] if control else [1] * 11 + group + [1]), chunks
         result.append({"mode": mode, "serial_ms": serial / 1e6,
                        "group_ms": batched / 1e6, "single_sample_ratio": serial / batched})
         start = match.end()
     chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
     tail = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text[start:])
-    assert list(map(int, tail)) == ([] if control else [8, 2] * 4 + [1]), tail
+    assert list(map(int, tail)) == ([] if control else group * 4 + [1]), tail
     native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=(\d+)", text)
     assert len(chunks) == text.count("[ps5-deferred-batch]") == len(native) == text.count("[ps5-multidraw-batch]")
     assert not control or not chunks
     for count, (draws, attempted, waits, status) in zip(chunks, native):
-        assert count == draws == attempted and 0 < int(count) <= 8 and int(waits) < 2000 and status == "0"
+        assert count == draws == attempted and 0 < int(count) <= capacity and int(waits) < 2000 and status == "0"
     for marker in (
         "[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=9216 PASS",
         "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS",
@@ -75,16 +76,27 @@ def audit_deferred(text, control=False, require_uploads=False):
     return result
 
 
-if len(sys.argv) > 1:
-    assert len(sys.argv) == 2 or (len(sys.argv) == 3 and sys.argv[2] in
-        ("--postchecks", "--textures", "--deferred", "--deferred-control", "--deferred-uploads"))
-    receipt = Path(sys.argv[1]).read_text()
-    result = audit_deferred(receipt, sys.argv[2] == "--deferred-control", sys.argv[2] == "--deferred-uploads") \
-        if len(sys.argv) == 3 and sys.argv[2].startswith("--deferred") else \
-        audit(receipt, len(sys.argv) == 3, "--textures" in sys.argv)
+root = Path(__file__).resolve().parents[2]
+capacity = int(re.search(r"#define PS5_MULTIDRAW_BATCH_CAPACITY (\d+)u",
+                        (root / "src/gallium/ps5/ps5_screen.h").read_text())[1])
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("receipt", nargs="?")
+parser.add_argument("--capacity", type=int, choices=sorted({8, capacity}), default=8,
+                    help="Frozen runtime capacity; default preserves historical receipts")
+modes = parser.add_mutually_exclusive_group()
+for mode in ("postchecks", "textures", "deferred", "deferred-control", "deferred-uploads"):
+    modes.add_argument("--" + mode, dest="mode", action="store_const", const=mode)
+args = parser.parse_args()
+if args.receipt:
+    receipt = Path(args.receipt).read_text()
+    result = audit_deferred(receipt, args.mode == "deferred-control",
+                            args.mode == "deferred-uploads", args.capacity) \
+        if args.mode and args.mode.startswith("deferred") else \
+        audit(receipt, bool(args.mode), args.mode == "textures", args.capacity)
     print(json.dumps(result, indent=2))
     raise SystemExit
-assert len(sys.argv) == 1
+if args.mode or args.capacity != 8:
+    parser.error("receipt required with audit options")
 sample = "".join(
     "[ps5-multidraw-batch] draws=7 attempted=7 waits=1 result=0\n"
     "[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0\n"
@@ -115,29 +127,42 @@ for bad in (sample.replace("[ps5-multidraw-batch]", "[unused]"), sample.replace(
         continue
     raise AssertionError("Invalid or unbatched receipt accepted")
 print("PASS: receipt audit rejects unbatched, incomplete and failed runs")
+if capacity > 11:
+    wide_sample = sample.replace(
+        "[ps5-multidraw-batch] draws=7 attempted=7 waits=1 result=0\n"
+        "[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0\n",
+        "[ps5-multidraw-batch] draws=10 attempted=10 waits=1 result=0\n")
+    assert len(audit(wide_sample, capacity=capacity)) == 4
+    try:
+        audit(wide_sample)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("Wide receipt accepted under historical capacity")
 
 def batch_receipt(count):
     return f"[ps5-multidraw-batch] draws={count} attempted={count} waits=1 result=0\n" \
            f"[ps5-deferred-batch] draws={count} result=0\n"
 
 
-for control in (False, True):
+for receipt_capacity, control in ((8, False), (8, True), (capacity, False), (capacity, True)):
+    group = [min(receipt_capacity, 10 - i) for i in range(0, 10, receipt_capacity)]
     deferred_sample = "".join(
-        ("" if control else "".join(batch_receipt(n) for n in [1] * 11 + [8, 2, 1])) +
+        ("" if control else "".join(batch_receipt(n) for n in [1] * 11 + group + [1])) +
         f"[ps5-multidraw] mode={mode} serial_ns=2000000 batch_ns=1000000 pixels=6912 PASS\n"
         for mode in range(4))
     if not control:
-        deferred_sample += "".join(batch_receipt(n) for n in [8, 2] * 4 + [1])
+        deferred_sample += "".join(batch_receipt(n) for n in group * 4 + [1])
     deferred_sample += "[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=9216 PASS\n" \
         "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS\n" \
         "[ps5-multidraw] completed=4 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
-    assert len(audit_deferred(deferred_sample, control)) == 4
+    assert len(audit_deferred(deferred_sample, control, capacity=receipt_capacity)) == 4
     upload_marker = "[ps5-deferred] unrelated-buffer subdata=1 map=1 explicit-flush=1 unmap=1 read=1 PASS\n"
-    assert len(audit_deferred(deferred_sample + upload_marker, control, True)) == 4
+    assert len(audit_deferred(deferred_sample + upload_marker, control, True, receipt_capacity)) == 4
     for bad in (deferred_sample, deferred_sample + upload_marker * 2,
                 deferred_sample + upload_marker.replace("unmap=1", "unmap=0")):
         try:
-            audit_deferred(bad, control, True)
+            audit_deferred(bad, control, True, receipt_capacity)
         except AssertionError:
             continue
         raise AssertionError("Missing or failed unrelated-upload oracle accepted")
@@ -145,13 +170,12 @@ for control in (False, True):
                 deferred_sample.replace("cleanup=1", "cleanup=0"),
                 deferred_sample + batch_receipt(1)):
         try:
-            audit_deferred(bad, control)
+            audit_deferred(bad, control, capacity=receipt_capacity)
         except AssertionError:
             continue
         raise AssertionError("Invalid deferred receipt accepted")
 print("PASS: ordinary-draw receipt audit requires matching native chunks and every hazard oracle")
 
-root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
 start = source.index("static void runtime_require_retirement(")
 guard = source[start:source.index("\n}\n", start) + 3]
@@ -248,25 +272,26 @@ int main(void) {
     agc_submit_description_t d = {memory[0], 1, 0, {0}};
     assert(runtime_batch_queue(&api, &d, memory[0], 0, 64, &markers[0], 101) != 0);
     assert(ps5_agc_gate2_batch_end() == 0);
-    for (int failure = 0; failure < 5; ++failure) {
-        reset(); queue(8);
+    for (int failure = 0; failure < 6; ++failure) {
+        reset(); queue(PS5_MULTIDRAW_BATCH_CAPACITY);
         if (failure == 0) fail_submit = 0;
         if (failure == 1) fail_submit = 3;
-        if (failure == 2) fail_suspend = -1;
-        if (failure == 3) { delay = 1; wrong_marker = 1; }
-        if (failure == 4) fail_unmap = -1;
+        if (failure == 2) fail_submit = PS5_MULTIDRAW_BATCH_CAPACITY - 1;
+        if (failure == 3) fail_suspend = -1;
+        if (failure == 4) { delay = 1; wrong_marker = 1; }
+        if (failure == 5) fail_unmap = -1;
         int stopped = setjmp(exit_jump);
         if (!stopped) {
             assert(ps5_agc_gate2_batch_end() != 0);
-            assert(failure == 4); /* Only a post-retirement unmap error returns. */
+            assert(failure == 5); /* Only a post-retirement unmap error returns. */
         } else {
-            assert(failure < 4);
+            assert(failure < 5);
         }
-        assert(!releases && (runtime_batch_faulted != 0) == (failure == 4));
-        assert(unmaps == (failure == 4 ? 1u : 0u));
-        assert(submits == (failure == 0 ? 1u : failure == 1 ? 4u : 8u));
+        assert(!releases && (runtime_batch_faulted != 0) == (failure == 5));
+        assert(unmaps == (failure == 5 ? 1u : 0u));
+        assert(submits == (failure == 0 ? 1u : failure == 1 ? 4u : PS5_MULTIDRAW_BATCH_CAPACITY));
         assert(suspends == 1 && sleeps <= 2000);
-        if (failure == 3) assert(sleeps == 2000); /* One shared timeout, not eight. */
+        if (failure == 4) assert(sleeps == 2000); /* One shared timeout for the whole batch. */
         assert(ps5_agc_gate2_batch_begin() != 0 && ps5_agc_gate2_batch_end() != 0);
     }
 }
@@ -278,7 +303,7 @@ with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags,
                         "-I" + str(root / "src/gallium/ps5"), str(c), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
-print("PASS: staged ownership, 1..8 draws, all-marker retirement, shared timeout, fail-stop before cleanup")
+print(f"PASS: staged ownership, 1..{capacity} draws, all-marker retirement, shared timeout, fail-stop before cleanup")
 
 # Exercise the real Gallium wrapper too: ownership must survive command staging.
 source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
@@ -327,19 +352,21 @@ struct ps5_context {
     const struct pipe_depth_stencil_alpha_state *depth_stencil_alpha;
     int last_draw_status;
 };
-static struct ps5_resource original[3], copies[128], borrowed, depth_buffer;
-static uint8_t original_bytes[3][64], copy_bytes[128][64];
+enum { TEST_DRAWS = 2 * PS5_MULTIDRAW_BATCH_CAPACITY + 3,
+       TEST_COPIES = 3 * TEST_DRAWS, SNAPSHOTS = 3 * PS5_MULTIDRAW_BATCH_CAPACITY };
+static struct ps5_resource original[3], copies[TEST_COPIES], borrowed, depth_buffer;
+static uint8_t original_bytes[3][64], copy_bytes[TEST_COPIES][64];
 static uint8_t borrowed_bytes[64], depth_bytes[64];
 static struct ps5_context context;
 static struct ps5_screen screen;
 static unsigned shader_textures, allocated, freed, begun, ended, staged, calls, locked;
 static int fail_alloc, fail_begin, fail_end, fail_draw;
-static struct ps5_resource *pending[8][3];
-static unsigned expected_start[8], expected_id[8];
+static struct ps5_resource *pending[PS5_MULTIDRAW_BATCH_CAPACITY][3];
+static unsigned expected_start[PS5_MULTIDRAW_BATCH_CAPACITY], expected_id[PS5_MULTIDRAW_BATCH_CAPACITY];
 static bool deferred_mode;
 static unsigned retained_draws;
 static unsigned unindexed_draws;
-static uint8_t expected_uniform[8][3];
+static uint8_t expected_uniform[PS5_MULTIDRAW_BATCH_CAPACITY][3];
 static unsigned ps5_shader_texture_count(const unsigned *s) { return *s; }
 static bool ps5_texture_used(const struct ps5_context *c, const unsigned *s, const void *metadata, unsigned unit) {
     (void)c; (void)metadata; return (*s & (1u << unit)) != 0;
@@ -353,7 +380,7 @@ static struct pipe_resource *create(struct pipe_screen *s, const struct pipe_res
     assert(s == &screen.base && r->target == PIPE_BUFFER && (deferred_mode || !locked));
     if ((int)allocated == fail_alloc) return NULL;
     unsigned i = allocated++;
-    assert(i < 128);
+    assert(i < TEST_COPIES);
     copies[i] = (struct ps5_resource){.base=*r, .data=copy_bytes[i], .size=64, .allocation_size=64};
     copies[i].base.refs=1;
     return &copies[i].base;
@@ -400,7 +427,7 @@ static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_i
     ++retained_draws;
     if (!info->index_size) ++unindexed_draws;
     if ((int)calls++ == fail_draw) { drawing->last_draw_status=-9; return; }
-    assert(staged < 8);
+    assert(staged < PS5_MULTIDRAW_BATCH_CAPACITY);
     pending[staged][0]=(struct ps5_resource *)drawing->vertex_descriptor_table;
     pending[staged][1]=(struct ps5_resource *)drawing->descriptor_storage[0];
     pending[staged][2]=(struct ps5_resource *)drawing->descriptor_storage[1];
@@ -442,32 +469,32 @@ static void reset(void) {
 }
 int main(void) {
     struct pipe_draw_info info={.mode=4, .instance_count=1, .index_size=2, .index={&borrowed.base}};
-    struct pipe_draw_start_count_bias draws[19];
-    for (unsigned i=0; i<19; ++i) draws[i]=(struct pipe_draw_start_count_bias){i, i==3 ? 0 : 6, 0};
+    struct pipe_draw_start_count_bias draws[TEST_DRAWS];
+    for (unsigned i=0; i<TEST_DRAWS; ++i) draws[i]=(struct pipe_draw_start_count_bias){i, i==3 ? 0 : 6, 0};
     for (unsigned increment=0; increment<2; ++increment) {
         reset(); info.increment_draw_id=increment;
-        assert(ps5_try_multi_draw_batch(&context.base, &info, 20, NULL, draws, 19));
-        assert(allocated==24 && freed==24 && begun==3 && ended==3 && calls==18 && !locked);
+        assert(ps5_try_multi_draw_batch(&context.base, &info, 20, NULL, draws, TEST_DRAWS));
+        assert(allocated==SNAPSHOTS && freed==SNAPSHOTS && begun==3 && ended==3 && calls==TEST_DRAWS-1 && !locked);
         assert(borrowed.base.refs==1 && !context.last_draw_status);
         for (unsigned s=0; s<3; ++s) for (unsigned byte=0; byte<64; ++byte)
             assert(original_bytes[s][byte]==0xa0+s);
     }
-    for (int i=0; i<24; ++i) {
+    for (int i=0; i<SNAPSHOTS; ++i) {
         reset(); fail_alloc=i;
-        assert(!ps5_try_multi_draw_batch(&context.base, &info, 20, NULL, draws, 19));
+        assert(!ps5_try_multi_draw_batch(&context.base, &info, 20, NULL, draws, TEST_DRAWS));
         assert(freed==allocated && !begun && borrowed.base.refs==1);
     }
     for (int failure=0; failure<3; ++failure) {
         reset(); fail_begin=failure==0 ? -1:0; fail_draw=failure==1 ? 4:-1; fail_end=failure==2;
-        assert(ps5_try_multi_draw_batch(&context.base, &info, 20, NULL, draws, 19));
+        assert(ps5_try_multi_draw_batch(&context.base, &info, 20, NULL, draws, TEST_DRAWS));
         assert(context.last_draw_status && !locked && begun==1);
         if (failure==1) assert(calls==5 && ended==1); /* No replay after partial preparation. */
-        assert(freed==(failure==2 ? 0:24));
+        assert(freed==(failure==2 ? 0:SNAPSHOTS));
         assert((borrowed.base.refs==1)==(failure!=2));
     }
     reset();
 #define REJECT(field,value) do { struct ps5_context c=context; c.field=value; \
-    assert(!ps5_multidraw_eligible(&c,&info,NULL,draws,19)); } while(0)
+    assert(!ps5_multidraw_eligible(&c,&info,NULL,draws,TEST_DRAWS)); } while(0)
     REJECT(gs,&shader_textures); REJECT(active_occlusion_query,1); REJECT(render_condition_query,1);
     REJECT(active_primitives_generated_query,1); REJECT(active_primitives_emitted_query,1);
     REJECT(stream_output_target_count,1); REJECT(framebuffer.zsbuf.texture,&borrowed.base);
@@ -475,7 +502,7 @@ int main(void) {
     REJECT(framebuffer.cbufs[0].first_layer,1); REJECT(framebuffer.cbufs[0].last_layer,1);
     REJECT(framebuffer.nr_cbufs,2); REJECT(framebuffer_valid,false);
     REJECT(vertex_buffers[0].is_user_buffer,true); REJECT(vertex_buffer_count,PIPE_MAX_ATTRIBS+1);
-    shader_textures=1; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+    shader_textures=1; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
     reset();
     struct pipe_depth_stencil_alpha_state dsa={0};
     for (unsigned format=77; format<=78; ++format) for (unsigned enabled=0; enabled<2; ++enabled) {
@@ -483,15 +510,15 @@ int main(void) {
         context.depth_stencil_alpha=&dsa;
         depth_buffer.base.format=format;
         context.framebuffer.zsbuf=(struct pipe_surface){.texture=&depth_buffer.base, .format=format};
-        assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,19));
-        assert(borrowed.base.refs==1 && depth_buffer.base.refs==1 && freed==24 && !context.last_draw_status);
+        assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,TEST_DRAWS));
+        assert(borrowed.base.refs==1 && depth_buffer.base.refs==1 && freed==SNAPSHOTS && !context.last_draw_status);
     }
     for (unsigned face=0; face<2; ++face) {
-        dsa.stencil[face].enabled=true; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+        dsa.stencil[face].enabled=true; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
         dsa.stencil[face].enabled=false;
     }
 #define REJECT_DEPTH(field,value) do { struct ps5_resource saved=depth_buffer; depth_buffer.field=value; \
-    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19)); depth_buffer=saved; } while(0)
+    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); depth_buffer=saved; } while(0)
     REJECT_DEPTH(depth_staging_size,1); REJECT_DEPTH(base.target,PIPE_BUFFER);
     REJECT_DEPTH(base.format,1); REJECT_DEPTH(base.nr_samples,4); REJECT_DEPTH(base.nr_storage_samples,4);
     REJECT(framebuffer.zsbuf.format,1); REJECT(framebuffer.zsbuf.level,1);
@@ -499,26 +526,26 @@ int main(void) {
     for (unsigned failure=0; failure<2; ++failure) {
         reset(); fragment_textures=0xffff; context.fs=&fragment_textures; fail_end=failure;
         for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) context.sampler_views[1][unit]=&views[unit];
-        assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,19));
+        assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,TEST_DRAWS));
         for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) assert(textures[unit].base.refs == 1+failure);
     }
     reset(); context.fs=&fragment_textures; fragment_textures=1u << 7;
-    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19)); /* Used sparse unit missing. */
+    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); /* Used sparse unit missing. */
     context.sampler_views[1][7]=&views[7];
-    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
     REJECT(sampler_views[1][7],NULL);
 #define REJECT_TEX(field,value) do { struct ps5_resource saved=textures[7]; textures[7].field=value; \
-    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19)); textures[7]=saved; } while(0)
+    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); textures[7]=saved; } while(0)
     REJECT_TEX(base.target,PIPE_BUFFER); REJECT_TEX(base.format,2); REJECT_TEX(base.nr_samples,4);
     REJECT_TEX(base.nr_storage_samples,4); REJECT_TEX(base.last_level,1); REJECT_TEX(base.bind,1);
     REJECT_TEX(base.bind,2); REJECT_TEX(depth_staging_size,1); REJECT_TEX(data,NULL); REJECT_TEX(size,0);
 #define REJECT_VIEW(field,value) do { struct pipe_sampler_view saved=views[7]; views[7].field=value; \
-    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,19)); views[7]=saved; } while(0)
+    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); views[7]=saved; } while(0)
     REJECT_VIEW(texture,&borrowed.base); REJECT_VIEW(texture,NULL); REJECT_VIEW(target,PIPE_BUFFER);
     REJECT_VIEW(format,2); REJECT_VIEW(u.tex.first_level,1); REJECT_VIEW(u.tex.last_level,1);
     REJECT_VIEW(u.tex.first_layer,1); REJECT_VIEW(u.tex.last_layer,1);
     views[0].format=2; context.sampler_views[1][0]=&views[0]; /* Unused state cannot veto a batch. */
-    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,19));
+    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:
@@ -655,7 +682,7 @@ int main(void) {
     arena.data=(uint8_t *)(4096u+PS5_RENDER_ARENA_OFFSET-1);
     ps5_draw_batch_drain_buffer(&arena.base);
     idle(); assert(ended==1); /* Overlap with either scanout slot still drains. */
-    for (unsigned depth=0; depth<2; ++depth) for (unsigned n=1;n<=8;++n) {
+    for (unsigned depth=0; depth<2; ++depth) for (unsigned n=1;n<=PS5_MULTIDRAW_BATCH_CAPACITY;++n) {
         reset();
         struct pipe_depth_stencil_alpha_state dsa={.depth_enabled=true};
         if (depth) {
@@ -667,11 +694,18 @@ int main(void) {
             draw.start=i;
             assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
             assert(!locked && !context.last_draw_status && begun==1);
-            assert(ended==(i==7)); /* CPU staging, not a hidden wait per draw. */
+            assert(ended==(i+1==PS5_MULTIDRAW_BATCH_CAPACITY)); /* CPU staging, not a hidden wait per draw. */
             for (unsigned s=0;s<3;++s) assert(original_bytes[s][0]==0x40+i+s);
         }
         drain(); idle(); assert(ended==1 && calls==n);
     }
+    reset();
+    for (unsigned i=0;i<TEST_DRAWS;++i) {
+        draw.start=i;
+        assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+        assert(ended==(i+1)/PS5_MULTIDRAW_BATCH_CAPACITY);
+    }
+    drain(); idle(); assert(ended==3 && calls==TEST_DRAWS);
     reset(); fragment_textures=0xffff; context.fs=&fragment_textures;
     for (unsigned u=0;u<16;++u) context.sampler_views[1][u]=&views[u];
     for (unsigned i=0;i<3;++i) assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
@@ -755,4 +789,4 @@ function = source[start:source.index("\n}\n", start)]
 assert function.index("ps5_draw_batch_drain();") < function.index("if (!out_fence)")
 start = source.index("\nps5_screen_submit_lock(")
 assert "ps5_draw_batch_flush_locked();" in source[start:source.index("\n}\n", start)]
-print("PASS: deferred 1..8 draw snapshots, resource pins, owner/fallback drains, OOM/no replay, fail-stop and boundary wiring")
+print(f"PASS: deferred 1..{capacity} snapshots and {2 * capacity + 3} cross-boundary draws, resource pins, owner/fallback drains, OOM/no replay and fail-stop")

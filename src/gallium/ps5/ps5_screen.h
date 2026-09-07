@@ -11,7 +11,8 @@ struct pipe_resource;
 #define PS5_RENDER_WIDTH PS5_SCANOUT_WIDTH
 #define PS5_RENDER_HEIGHT PS5_SCANOUT_HEIGHT
 #define PS5_MAX_RENDER_SIZE 8192u
-#define PS5_MULTIDRAW_BATCH_CAPACITY 8u
+/* Bounded descriptor snapshots; every entry must retire before slot reuse. */
+#define PS5_MULTIDRAW_BATCH_CAPACITY 32u
 
 struct pipe_screen *ps5_screen_create(void);
 void ps5_screen_submit_lock(struct pipe_screen *screen);
