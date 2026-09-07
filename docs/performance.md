@@ -152,7 +152,11 @@ and makes both EGL destruction paths stop before releasing ownership. Its real
 runtime/EGL host regression is red before the fix and green afterward, including
 active/faulted/pending batch guards and simulated retry/idempotence. No hardware
 fault injection, blank flip, shader or submission change; busy unregister is not
-claimed fixed. Normal native lifecycle regression is pending on a separate SDK.
+claimed fixed. The separate SDK passes clean consumer/link checks and two normal
+native ImGui launch/close cycles. This is not device-loss recovery or same-process
+EGL recreation; those are not implied by successful process restarts.
+
+- 2026-09-06 | G7 | 36ac25b | pass: shutdown-hardened SDK, ImGui 12 frames/120 probes across two clean launches; healthy teardown/unlock | results/g7-shutdown-imgui/195647 + relaunch/195831
 
 ## G1: Measure the existing frame path
 
