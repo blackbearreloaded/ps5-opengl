@@ -45,6 +45,18 @@ GL/setup/presentation errors stop immediately.
 This is one renderer integration, not CTS coverage, a complete input backend,
 or a claim that every existing OpenGL application is compatible.
 
+## Same-process EGL lifecycle check
+
+`bash tools/test-imgui-host.sh --lifecycle` runs the complete six-frame example
+three times in one process. The native target is
+`bash tools/build-native-test-app.sh egl_public_core33_imgui_lifecycle`.
+It reuses the existing oracle without changing the renderer or driver: each
+session initializes EGL, creates its surface/context, renders six checked frames,
+destroys everything and terminates EGL. Host acceptance is 18 frames/180 probes;
+native acceptance is pending. Stop observation only on
+`[ps5-imgui-lifecycle] finished`, not an inner session's completion marker.
+This is bounded recreation coverage, not exhaustive leak or device-loss testing.
+
 ## G10: visible TV demo
 
 ```sh
