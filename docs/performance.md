@@ -132,7 +132,7 @@ unchanged, and neither candidate inherits its full CTS campaign. Next: affected
 release validation before promotion. Remaining presentation time is a separate
 profiling target, not justification to remove waits without lifecycle evidence.
 
-### Current target: sustained 60 FPS in the same demo
+### Achieved: sustained ~60 FPS in the same 1080p demo
 
 - G1: split batched submit/suspend/completion-poll/cleanup timing, with unchanged
   synchronization and the frozen 33.366 ms run as control.
@@ -151,8 +151,8 @@ CPU-flip path. Its first 30-second hardware run passed 1,795 frames, two pixel
 checks and 1,793 confirmed GPU flips: **16.683 ms/frame (~59.94 FPS)** after warm-up.
 Presentation took 0.008 ms; the GPU completion poll still took 10.334 ms, but the
 separate CPU flip no longer added another refresh interval. Clean teardown and
-service checks passed; busy unregister remains. This is not yet sustained-run
-evidence or an accepted release default.
+service checks passed; busy unregister remains. This is not an accepted release
+default.
 
 For the five-minute check, keep the same frozen SDK and add
 `PS5_IMGUI_PROFILE_SOAK=1` to the profiled demo build. Audit with
@@ -160,12 +160,43 @@ For the five-minute check, keep the same frozen SDK and add
 all eleven pixel probes, ten 30-second windows at 59–60.5 FPS, matching GPU/CPU
 flip coverage, frame accounting and clean lifecycle must pass.
 
+The five-minute successor (`13b2db9`, unchanged frozen runtime from `18c4d65`)
+passed **17,970 total frames**, all 11 pixel probes and 17,970 clear+two-draw
+groups. Its 17,940 post-warm-up frames averaged **16.691 ms (~59.91 FPS)**;
+whole-run throughput was **59.90 FPS**. All ten 30-second windows stayed between
+59.87 and 59.93 FPS. The receipt confirmed 17,959 GPU flips; the eleven
+readback-drained frames used the existing CPU-flip path. Title teardown and
+post-run service checks passed, and the exact lock token was released.
+Busy unregister `80290009` remains with successful close. This establishes the
+60 FPS target for this 1080p ImGui workload, not arbitrary applications, a fresh
+TV/controller check or promotion of the opt-in runtime into the accepted SDK.
+
 - 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
 - 2026-09-07 | clear batching | fe337eb | pass: RGBA sweep, state/query/mixed-clear checks and teardown | results/deferred-clear-20260907
 - 2026-09-07 | ImGui coalescing | fe337eb | pass: 899 clear+two-draw groups, pixels, ~29.97 FPS, healthy teardown | results/deferred-clear-imgui-20260907
 - 2026-09-07 | batch profile | f5e2a03 | pass: 869 warm frames, poll 11.247 ms/~10 sleeps, submit+suspend 0.017 ms; healthy teardown | results/batch-profile-20260907
 - 2026-09-07 | submit mode | 34e4fc1 | pass: pixels/lifecycle; no speedup (~29.97 FPS), opt-in probe removed | results/submit-mode-20260907
 - 2026-09-07 | GPU presentation | 18c4d65 | pass: ~59.94 FPS, 1,793 GPU flips, pixels, healthy teardown | results/gpu-present-20260907
+- 2026-09-07 | sustained GPU presentation | 13b2db9 | pass: 300 s/~59.90 FPS, 11 pixel probes, ten cadence windows, healthy teardown | results/gpu-present-soak-20260907
+
+### Follow-up benchmark matrix
+
+Measure **1920x1080, 2560x1440 and 3840x2160**, each targeting **30, 60, 90 and
+120 FPS**: twelve combinations. Use a short excluded warm-up followed by
+**30 seconds of measurement per combination**, not five minutes. That is six
+minutes of measured time per workload, plus setup, warm-up and teardown.
+The completed five-minute run is the presentation change's stability check,
+not a requirement for every matrix entry.
+
+Reuse the native test app and receipt auditing; batch compatible cases within
+bounded, protocol-compliant console windows. Freeze the build and scene for
+comparisons. Start with the lightweight UI, then repeat separately for textured
+3D and heavier workloads. Report achieved FPS, frame-time percentiles, missed
+frame budgets, correctness and lifecycle results. Keep render resolution and
+render throughput separate from actual output resolution, display refresh and
+presentation cadence. Higher resolutions and 90/120 FPS are unverified targets;
+record unsupported display modes explicitly instead of counting repeated or
+dropped frames as successful presentation.
 
 ## OpenGL-only follow-up order
 
