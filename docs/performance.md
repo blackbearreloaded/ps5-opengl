@@ -540,6 +540,12 @@ this warning is not fixed. Next: clear/presentation synchronization and longer
 consumer/lifecycle checks, then freeze the chosen SDK for the G9 release matrix.
 No default-SDK promotion or new full CTS claim.
 
+G7 successor: drain pending VideoOut flips with the existing bounded helper
+before unregister/close. Drain errors/timeouts retain runtime and EGL ownership;
+host failure injection precedes a normal lifecycle run. This does not assume
+that draining removes the current-buffer busy warning, and introduces no blank
+flip, output-mode change or hardware fault injection.
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and

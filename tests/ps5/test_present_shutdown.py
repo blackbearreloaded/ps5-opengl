@@ -75,6 +75,7 @@ static int pending(int32_t handle) {
     return pending_error ? pending_error : (waits < pending_until);
 }
 static int vblank(int32_t handle) { assert(handle == 7); ++waits; return wait_error; }
+static int runtime_video_wait_idle(void);
 ''' + shutdown + acquire_wait + r'''
 #define EGLAPI
 #define EGLAPIENTRY
@@ -146,8 +147,19 @@ static void inject(int failure) {
     runtime_batch_active = failure == 2;
     runtime_batch_faulted = failure == 3;
     runtime_batch_count = failure == 4;
+    pending_error = failure == 5 ? -21 : 0;
+    wait_error = failure == 6 ? -22 : 0;
+    pending_until = failure == 7 ? 121 : failure == 6 ? waits + 1 : 0;
 }
 int main(void) {
+    for (unsigned n = 0; n <= 121; ++n) {
+        setup(); pending_until = n;
+        assert((ps5_agc_gate2_shutdown_present() == 0) == (n <= 120));
+        assert(waits == (n > 120 ? 120 : n));
+        assert(closes == (n <= 120) && unregisters == (n <= 120));
+        if (n > 120)
+            assert(runtime_video_handle == 7 && runtime_video_registered && runtime_video_framebuffer == scanout);
+    }
     setup(); pending_error = -21;
     assert(runtime_video_wait_idle() != 0 && !waits && pending_calls == 1);
     for (int error = -22; error <= 22; error += 44) {
@@ -200,7 +212,7 @@ int main(void) {
         assert(unregisters == 1 + busy && closes == 2);
         assert(ps5_agc_gate2_shutdown_present() == 0 && closes == 2); /* Idempotent. */
     }
-    for (int failure = 1; failure <= 4; ++failure) {
+    for (int failure = 1; failure <= 7; ++failure) {
         setup(); inject(failure);
         assert(!eglDestroySurface(&ps5_display, &surface));
         assert(egl_error == EGL_BAD_ACCESS && !releases && !locked);
@@ -222,6 +234,7 @@ int main(void) {
     }
     puts("present-shutdown: PASS close errors/batch guards retain runtime, surface and display ownership");
     puts("present-acquire/wait: PASS failed acquisition retains close ownership; errors stop; 120 waits bounded");
+    puts("present-drain: PASS pending/error/timeout drains precede unregister/close; failures retain EGL resources");
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

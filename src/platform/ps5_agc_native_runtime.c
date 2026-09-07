@@ -908,6 +908,8 @@ static int64_t runtime_next_render_marker(void)
     return (int64_t)marker;
 }
 
+static int runtime_video_wait_idle(void);
+
 int ps5_agc_gate2_shutdown_present(void)
 {
     int unregister_rc = 0;
@@ -921,6 +923,10 @@ int ps5_agc_gate2_shutdown_present(void)
     runtime_profile_report();
 #endif
     if (runtime_video_registered) {
+        int drain_rc = runtime_video_wait_idle();
+        printf("[ps5-agc] present-drain result=%08" PRIx32 "\n", (uint32_t)drain_rc);
+        if (drain_rc != 0)
+            return drain_rc; /* Preserve scanout ownership if retirement is unknown. */
         unregister_rc = runtime_video_api.unregister_buffers(
             runtime_video_handle, 0);
         if (unregister_rc == 0)
