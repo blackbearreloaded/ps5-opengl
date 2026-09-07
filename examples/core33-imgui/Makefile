@@ -33,6 +33,12 @@ tv_main.o: main.cpp tv_demo.h
 egl_public_core33_imgui_tv.o: tv_main.o $(filter-out main.o,$(objects))
 	ld.lld-18 -r -o $@ $^
 
+benchmark.o: main.cpp benchmark.h
+	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_BENCHMARK -c -o $@ $<
+
+egl_public_core33_imgui_benchmark.o: benchmark.o $(filter-out main.o,$(objects))
+	ld.lld-18 -r -o $@ $^
+
 imgui_impl_opengl3.o: $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 	$(CXX) $(flags) -c -o $@ $<
 

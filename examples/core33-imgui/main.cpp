@@ -15,7 +15,9 @@ static bool check(bool ok, const char* stage)
     return ok;
 }
 
-#ifdef PS5_IMGUI_TV_DEMO
+#ifdef PS5_IMGUI_BENCHMARK
+#include "benchmark.h"
+#elif defined(PS5_IMGUI_TV_DEMO)
 #include "tv_demo.h"
 #else
 static bool pixel(const unsigned char* pixels, int width, int height, int scale,

@@ -12,8 +12,9 @@ case ${1:-} in
     '') ;;
     --tv-demo) demo_flags=(-DPS5_IMGUI_TV_DEMO) ;;
     --profile) demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_PROFILE) ;;
+    --benchmark) demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_BENCHMARK) ;;
     --lifecycle) main_source="$root/examples/core33-imgui/lifecycle.cpp" ;;
-    *) echo 'usage: test-imgui-host.sh [--tv-demo|--profile|--lifecycle]' >&2; exit 2 ;;
+    *) echo 'usage: test-imgui-host.sh [--tv-demo|--profile|--benchmark|--lifecycle]' >&2; exit 2 ;;
 esac
 clang++-18 -std=c++11 -O2 -Wall -Wextra -Werror \
     "${demo_flags[@]}" \
@@ -31,6 +32,9 @@ EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 \
 if [[ ${1:-} == --lifecycle ]]; then
     test "$(grep -cE '^\[ps5-imgui-lifecycle\] session=[012] PASS$' "$root/build/imgui-host/check.log")" = 3
     test "$(grep -cE '^\[ps5-imgui\] frame=.* PASS$' "$root/build/imgui-host/check.log")" = 18
+fi
+if [[ ${1:-} == --benchmark ]]; then
+    python3 "$root/tools/summarize-imgui-benchmark.py" "$root/build/imgui-host/check.log" --host
 fi
 if [[ ${1:-} == --tv-demo ]]; then
     python3 - "$root/build/imgui-host/check.log" <<'PY'

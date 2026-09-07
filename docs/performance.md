@@ -198,6 +198,21 @@ presentation cadence. Higher resolutions and 90/120 FPS are unverified targets;
 record unsupported display modes explicitly instead of counting repeated or
 dropped frames as successful presentation.
 
+G4 first measures completed **offscreen** ImGui rendering using the unchanged
+frozen GPU-presentation SDK. The EGL window is still fixed at 1080p, so the
+matrix uses RGBA8 FBOs, a fixed logical UI scaled to each resolution, 30 warm-up
+frames and 30 measured seconds per case. Every measured frame calls `glFinish`;
+CPU pacing is included in achieved FPS but excluded from render-stage timing.
+Pixels are checked before/after each case, outside timing. All twelve cases
+share one bounded title cycle; only an unmeasured preview is presented per case.
+This workload is distinct from the interactive TV demo. No runtime, metadata,
+display mode or accepted SDK changes are needed. Report mean throughput and
+nearest-rank p50/p95/p99 frame/render times; frame-budget misses allow 0.25 ms
+pacing jitter, render-budget misses use the exact target budget. A missed FPS
+target is a benchmark result, not a rendering failure. Stop the batch on any
+correctness, completion, allocation or lifecycle failure. Actual higher-resolution
+and high-refresh scanout remains a separate, unvalidated integration step.
+
 ## OpenGL-only follow-up order
 
 1. Profile the accepted workload; change one measured bottleneck at a time with

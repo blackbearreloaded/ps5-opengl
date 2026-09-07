@@ -8,7 +8,7 @@ template=${PS5_NATIVE_APP_TEMPLATE:-"$root/../ps5-native-app-boilerplate"}
 requested_test=${1:-core33-texture-rectangle}
 
 if [[ $requested_test == --list ]]; then
-    printf 'egl_public_core33_imgui.o\negl_public_core33_imgui_tv.o\negl_public_core33_imgui_lifecycle.o\negl_public_core33_nanovg.o\negl_public_core33_sokol.o\negl_public_core33_sokol_cube.o\n'
+    printf 'egl_public_core33_imgui.o\negl_public_core33_imgui_tv.o\negl_public_core33_imgui_benchmark.o\negl_public_core33_imgui_lifecycle.o\negl_public_core33_nanovg.o\negl_public_core33_sokol.o\negl_public_core33_sokol_cube.o\n'
     grep -oE '^egl_public_[A-Za-z0-9_]+\.o' "$root/tests/ps5/Makefile" |
         sort -u
     exit 0
@@ -36,7 +36,7 @@ case "$requested_test" in
         ;;
 esac
 
-[[ $gate_object =~ ^egl_public_core33_(imgui(_tv|_lifecycle)?|nanovg|sokol(_cube)?)\.o$ ]] || grep -qxF "${gate_object}:" < <(
+[[ $gate_object =~ ^egl_public_core33_(imgui(_tv|_lifecycle|_benchmark)?|nanovg|sokol(_cube)?)\.o$ ]] || grep -qxF "${gate_object}:" < <(
     grep -oE '^egl_public_[A-Za-z0-9_]+\.o:' "$root/tests/ps5/Makefile"
 ) || {
     printf 'unknown public OpenGL test object: %s\n' "$gate_object" >&2
@@ -58,11 +58,12 @@ boilerplate_commit=$(git -c safe.directory="$template" -C "$template" \
     rev-parse HEAD)
 
 sdk="$template/.deps/native/ps5-payload-sdk"
-if [[ $gate_object =~ ^egl_public_core33_(imgui(_tv|_lifecycle)?|nanovg|sokol(_cube)?)\.o$ ]]; then
+if [[ $gate_object =~ ^egl_public_core33_(imgui(_tv|_lifecycle|_benchmark)?|nanovg|sokol(_cube)?)\.o$ ]]; then
     renderer=${gate_object#egl_public_core33_}
     renderer=${renderer%.o}
     renderer=${renderer%_tv}
     renderer=${renderer%_lifecycle}
+    renderer=${renderer%_benchmark}
     renderer=${renderer//_/-}
     prefix=$(realpath -m -- "${PS5_OPENGL_PREFIX:-$root/build/sdk/ps5-opengl-core33}")
     (cd "$prefix" && sha256sum --check --strict manifest.sha256 >/dev/null)

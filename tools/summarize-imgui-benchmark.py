@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Audit completed offscreen work separately from preview/display throughput."""
+import argparse
+import json
+import math
+from pathlib import Path
+import re
+
+
+def summarize(text, host=False):
+    def require(ok, message):
+        if not ok:
+            raise ValueError(message)
+
+    def records(kind):
+        lines = re.findall(rf"^\[ps5-imgui-bench\] {kind} (.+)$", text, re.M)
+        parsed = []
+        for line in lines:
+            pairs = [token.split("=", 1) for token in line.split()]
+            require(all(len(pair) == 2 for pair in pairs), "malformed fields")
+            row = dict(pairs)
+            require(len(row) == len(pairs), "duplicate fields")
+            parsed.append(row)
+        return parsed
+
+    begins, results, probes = records("begin"), records("result"), records("probe")
+    require(len(begins) == len(results) == 12 and len(probes) == 24, "incomplete/duplicate matrix")
+    expected = [(w, h, fps) for w, h in ((1920, 1080), (2560, 1440), (3840, 2160))
+                for fps in (30, 60, 90, 120)]
+    timings = ["render_mean_ms", "render_p50_ms", "render_p95_ms", "render_p99_ms",
+               "frame_p50_ms", "frame_p95_ms", "frame_p99_ms"]
+    report, rendered = [], 0
+    for i, (begin, result, (width, height, target)) in enumerate(zip(begins, results, expected)):
+        require(begin == dict(case=str(i), width=str(width), height=str(height), target=str(target),
+                              mode="offscreen-completed"), "wrong matrix order or workload")
+        require(set(result) == set(timings + ["case", "warmup", "frames", "seconds", "fps",
+                                            "render_misses", "frame_misses", "status"]), "unexpected fields")
+        require(result["case"] == str(i) and result["status"] == "0", "failed/wrong case")
+        count, warmup = int(result["frames"]), int(result["warmup"])
+        require(warmup == (2 if host else 30) and 2 <= count <= 8192, "invalid sample count")
+        seconds, fps = float(result["seconds"]), float(result["fps"])
+        require(math.isfinite(seconds) and math.isfinite(fps) and seconds > 0 and fps > 0,
+                "invalid sample duration/throughput")
+        # Both values are printed to six decimal places (host samples are very short).
+        require(abs(fps * seconds - count) <= (fps + seconds) * 0.00000051 + 0.000001,
+                "FPS accounting mismatch")
+        require((count == 6) if host else (30 <= seconds <= 32 and fps <= target * 1.002),
+                "wrong measurement window or pacing")
+        values = {key: float(result[key]) for key in timings}
+        require(all(math.isfinite(v) and v > 0 for v in values.values()), "invalid timing")
+        for prefix in ("render", "frame"):
+            require(values[f"{prefix}_p50_ms"] <= values[f"{prefix}_p95_ms"] <= values[f"{prefix}_p99_ms"],
+                    "unordered percentiles")
+        require(values["render_mean_ms"] <= seconds * 1000 / count + 0.001,
+                "render time exceeds measured wall time")
+        misses = {key: int(result[key]) for key in ("render_misses", "frame_misses")}
+        require(all(0 <= v <= count for v in misses.values()), "invalid missed-budget count")
+        require(probes[i * 2:i * 2 + 2] == [dict(case=str(i), phase=phase, samples="3", status="0")
+                                          for phase in ("warmup", "final")], "missing/failed pixels")
+        rendered += count + warmup + 1  # One unmeasured preview per case.
+        report.append(dict(width=width, height=height, target_fps=target, frames=count, seconds=seconds,
+                           achieved_fps=fps, target_met=fps >= target * 0.99,
+                           frame_budget_tolerance_ms=0.25, **values, **misses))
+    require(records("finished") == [dict(cases="12", status="0")], "matrix cleanup failed")
+    require(re.findall(r"^\[ps5-imgui\] finished status=(\d+)$", text, re.M) == ["0"], "EGL cleanup failed")
+    require(not re.search(r"^\[ps5-imgui\] FAIL|^\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))",
+                          text, re.M), "failed rendering operation")
+    if not host:
+        require(re.findall(r"^\[pss-opengl-native\] gate completed status=(\d+)$", text, re.M) == ["0"],
+                "native gate incomplete")
+        native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
+        deferred = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
+        require(len(native) == len(deferred) == text.count("[ps5-multidraw-batch]") ==
+                text.count("[ps5-deferred-batch]") and len(native) >= rendered,
+                "missing/failed native retirement")
+        require(all(n == d == attempted and 0 < int(n) <= 8 and int(waits) < 2000
+                    for n, (d, attempted, waits) in zip(deferred, native)), "batch accounting mismatch")
+        require(re.findall(r"\[ps5-agc\] present-shutdown unregister=([0-9a-f]+) close=([0-9a-f]+) frames=(\d+)",
+                           text) in [[("80290009", "00000000", "12")], [("00000000", "00000000", "12")]],
+                "preview lifecycle mismatch")
+        require(re.findall(r"\[ps5-gpu-present\] frames=(\d+)", text) == ["12"], "preview flip coverage mismatch")
+    return dict(mode="host-reference" if host else "PS5", workload="imgui-offscreen-completed",
+                display_fps_measured=False, cases=report)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("receipt", type=Path)
+    parser.add_argument("--host", action="store_true")
+    args = parser.parse_args()
+    print(json.dumps(summarize(args.receipt.read_text(), args.host), indent=2))

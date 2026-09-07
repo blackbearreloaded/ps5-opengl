@@ -106,3 +106,27 @@ throughput. The user confirmed the earlier TV demo worked; the final campaign
 used numeric rendering/lifecycle checks and recorded no widget changes. Host
 navigation checks passed. VideoOut still reports busy unregister followed by
 successful close and runtime-layer release.
+
+## Bounded offscreen performance matrix
+
+```sh
+bash tools/test-imgui-host.sh --benchmark
+# Select a separately frozen SDK via PS5_OPENGL_PREFIX; do not replace the accepted SDK.
+bash tools/build-native-test-app.sh egl_public_core33_imgui_benchmark
+python3 tools/summarize-imgui-benchmark.py RECEIPT
+```
+
+The distinct lightweight UI workload measures 1080p, 1440p and 2160p at target
+rates of 30/60/90/120 FPS in one launch. Each case has 30 warm-up frames and
+30 measured seconds; `glFinish` confirms GPU completion per frame. Three pixels
+(clear, opaque geometry, alpha overlap) are checked before and after measurement.
+The host check shortens each case to two warm-up and six measured frames without
+pacing; its timing is not a PS5 performance prediction.
+
+Only a static 1080p preview is presented between cases. The measured rendering
+uses offscreen RGBA8 buffers: **no 1440p/4K or 90/120 Hz display claim** follows
+from these results. See the [measurement scope](../../docs/performance.md).
+Use the locked native-folder runner with gate `egl_public_core33_imgui_benchmark.o`,
+`-Headless -Incremental -ObservationSeconds 450` and its normal commit/hash pins.
+No screenshots or controller input are required. Stop on correctness, retirement
+or lifecycle failure; missing an FPS target alone is an ordinary benchmark result.
