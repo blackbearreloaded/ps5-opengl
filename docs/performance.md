@@ -3,7 +3,7 @@
 The accepted correctness campaign remains tied to the frozen identities in
 [Validation](validation.md). Performance candidates do not inherit its results.
 
-## Current candidate — 2026-09-06
+## Current candidate — 2026-09-07
 
 The draw baseline at runtime/compiler `2df7d88` passes the combined indexed/instanced/restart/base-vertex
 draw regression, mixed float/integer constant attributes, and the original
@@ -32,6 +32,10 @@ The standalone installed SDK is still the previous default; no promotion or
 new complete CTS acceptance is implied. `PS5_DEFERRED_DRAW_BATCH=1` opts into
 ordinary-call staging with private descriptors, retained resources and explicit
 drain boundaries. Unsupported/staged/depth-tested paths remain synchronous.
+Native RGBA8 vertex inputs now let the unchanged 1080p ImGui scene actually
+group its two draws: 50.049 ms/frame (~19.98 FPS), versus 66.732 ms (~14.99 FPS)
+before the format mapping, a 1.33x short-profile throughput ratio. Clear and
+swap still dominate; this is not a general 3D FPS estimate or final acceptance.
 
 ## Release sequence
 
@@ -525,6 +529,16 @@ RGBA8 now reuses the existing packed-format path (PSBC enum appended, no encoder
 or synchronization change). The next ImGui profile uses a separate opt-in SDK;
 `summarize-imgui-profile.py RECEIPT --deferred-batches` additionally rejects
 single-draw-only or failed batch receipts. Default SDK is unchanged.
+
+- 2026-09-07 | G8 | c4e455a | pass: unchanged ImGui profile, 571 measured frames, 601 two-draw chunks, pixel/lifecycle checks; 19.98 FPS vs 14.99, healthy services/unlock | results/g8-rgba8-imgui-profile/000526
+
+The format fix removes the observed CPU-conversion batching barrier. Mean frame
+time fell 66.732393 → 50.049060 ms (~25% less); clear is 17.748 ms, draw 4.000 ms,
+and swap 28.268 ms including deferred retirement. Both runs are single 30-second
+profiles. VideoOut still reports unregister `0x80290009` followed by close=0;
+this warning is not fixed. Next: clear/presentation synchronization and longer
+consumer/lifecycle checks, then freeze the chosen SDK for the G9 release matrix.
+No default-SDK promotion or new full CTS claim.
 
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
