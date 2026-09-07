@@ -1,9 +1,16 @@
 # Performance
 
-The September 7 release completes the [frozen Core 3.3 validation campaign](validation.md).
+The September 7 baseline completes the [frozen Core 3.3 validation campaign](validation.md).
 Correctness coverage does not imply desktop-driver performance or predictable game FPS.
 
-## Measured results
+The later opt-in candidate `610e6a3` averages **119.88 FPS at 1080p, 1440p and 4K**
+in the original windowed ImGui scene, over 30 measured seconds per size.
+See [G5d results and limits](#g5d-verified-high-resolution-120-fps-candidate) and
+[build instructions](../examples/core33-imgui/README.md#high-refresh-window-benchmark-opt-in).
+These source changes have focused regressions, not a new full CTS campaign or
+versioned binary SDK release. The measurements below retain their original candidates.
+
+## Frozen validation-baseline measurements
 
 The final SDK's 1080p ImGui demo rendered **5,997 frames in 300 seconds (~19.99 FPS)**.
 All 11 periodic shape readbacks passed. Its receipts contain 5,997 successful

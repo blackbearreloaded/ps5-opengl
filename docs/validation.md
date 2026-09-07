@@ -58,10 +58,17 @@ host navigation checks exercise widget changes. See [Performance](performance.md
 
 ## Frozen identity and defaults
 
-Runtime implementation: `0a15d8fa82f3f96cf071be927ad11422964a16ba`. Later release
-changes update documentation, verification and build defaults, not the tested
-runtime implementation. Native, multi-draw and deferred batching were enabled
-throughout this matrix. The GPU-clear minimum is 16,384 pixels.
+Runtime implementation: `0a15d8fa82f3f96cf071be927ad11422964a16ba`. Release changes
+through `aba12655b3459335f445fba3e6edb5c7c0c11f04` update documentation, verification
+and build defaults, not that tested implementation. Native, multi-draw and
+deferred batching were enabled throughout this matrix. The GPU-clear minimum
+is 16,384 pixels.
+
+Subsequent [performance changes](performance.md) modify the runtime and have
+their own host checks and focused hardware regressions. **Current source does
+not inherit this full CTS acceptance.** The 120 FPS windowed measurements use
+an opt-in configuration; neither they nor a new local SDK build update the
+frozen evidence below. This publication includes source, not a new binary SDK release.
 
 ```text
 CTS eboot  7cad32744b80e5eeafbc6d6188686c10ef9c0bfc882b4a001972b5eecdccf077

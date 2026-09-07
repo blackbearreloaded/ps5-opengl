@@ -10,10 +10,16 @@ The project completed its defined Core 3.3 validation campaign on a PS5. It is
 **not a Khronos-certified implementation**, a stock-console installation method,
 or a guarantee that every desktop application will run unchanged.
 
-**Release validation: September 7, 2026.** The updated runtime completed a fresh
-four-configuration campaign and final installed-SDK renderer checks. Bounded
-draw batching is enabled by default. See [Performance](docs/performance.md)
-for measured results and remaining optimization work.
+**Validation baseline: September 7, 2026.** A frozen runtime completed the
+four-configuration campaign and installed-SDK renderer checks. Later performance
+changes have focused regressions, not a new full CTS campaign; see the
+[frozen identity](docs/validation.md#frozen-identity-and-defaults).
+
+**Latest performance:** the opt-in windowed ImGui benchmark averages **119.88 FPS
+at 1080p, 1440p and 4K**, measured for 30 seconds per size. See the
+[results and limits](docs/performance.md#g5d-verified-high-resolution-120-fps-candidate)
+and [benchmark build instructions](examples/core33-imgui/README.md#high-refresh-window-benchmark-opt-in).
+This is small-scene throughput, not a guarantee of game FPS or perfect frame pacing.
 
 ## What is included
 
@@ -40,10 +46,12 @@ for measured results and remaining optimization work.
 | [Upstream Sokol cube](examples/core33-sokol-cube/README.md) | Adapted existing 3D sample: rotation, depth and culling | 180 native frames / 2,596 probes; full-image heap readback ([scope](examples/core33-sokol-cube/README.md)) |
 | [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, ordinary versus instanced draws | Both paths pass; ~20 FPS instanced at 1080p in this small scene ([scope](docs/performance.md)) |
 
-The final TV demo measured approximately **20 FPS** for five minutes. Its 30 FPS
-setting is a pacing ceiling, not achieved performance. An earlier version was
-owner-confirmed on a TV; this campaign used numerical readbacks and lifecycle
-records. Fresh hardware widget interaction was not recorded. Host navigation
+The frozen validation-baseline TV demo measured approximately **20 FPS** for
+five minutes. Its 30 FPS setting is a pacing ceiling, not achieved performance;
+the later 120 FPS measurements above use a separately built performance candidate.
+An earlier version was owner-confirmed on a TV; the baseline campaign used
+numerical readbacks and lifecycle records. Fresh hardware widget interaction
+was not recorded. Host navigation
 tests pass. These small examples do not predict full-game FPS.
 
 ## Validation status

@@ -6,6 +6,9 @@ compatibility or production-grade stability. The updated runtime includes the
 instancing, constant-attribute, PrimitiveID/geometry, memory-ownership and batching
 fixes; its acceptance is a fresh complete matrix, not inherited baseline results.
 The [development history](performance-history.md) preserves the earlier failures.
+Later source changes have [focused performance/regression evidence](performance.md),
+not a rerun of that complete campaign. Keep the frozen baseline and current source
+distinct when reporting compatibility.
 
 - **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
   desktop installation model or compatibility-profile guarantee.
@@ -15,7 +18,9 @@ The [development history](performance-history.md) preserves the earlier failures
   thirty FPS is only its cap. Clear/presentation waits and broader workload
   optimization remain. These measurements do not predict full-game FPS.
   See [Performance](performance.md).
-  The later performance candidate reaches ~60 FPS in the windowed TV demo, but
+  The opt-in performance candidate averages ~119.88 FPS at 1080p, 1440p and 4K
+  in 30-second windowed ImGui runs. Frame-time variation and busy unregister remain;
+  this is not a long-session or full-game result. In contrast,
   sampleable offscreen render targets still copy linear/tiled surfaces on the
   CPU around each draw. Initial high-resolution ImGui FBO measurements are much
   slower; window throughput must not be generalized to render-to-texture workloads.

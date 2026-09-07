@@ -3,6 +3,9 @@
 The September 7 final SDK passes the six-frame oracle below. Its separate
 five-minute 1080p demo produces 5,997 frames (~19.99 FPS), 11 passing readbacks
 and 5,997 successful two-draw batches. See [current validation](../../docs/validation.md).
+The later opt-in windowed candidate reaches ~119.88 FPS at 1080p, 1440p and 4K
+in 30-second runs; see [high-refresh builds](#high-refresh-window-benchmark-opt-in)
+and [measurement limits](../../docs/performance.md#g5d-verified-high-resolution-120-fps-candidate).
 
 Uses unmodified [Dear ImGui](https://github.com/ocornut/imgui/tree/v1.91.9b)
 v1.91.9b, commit `f5befd2d29e66809cd1110a152e375a7f1981f06` (MIT), including
@@ -138,11 +141,42 @@ render dimensions and display-buffer strides. The scene stays logically
 1920x1080 and scales to the queried surface. Host checks select the same size
 with `PS5_IMGUI_HOST_HEIGHT`; the auditor uses `--window-height`.
 Profiled native SDKs additionally support `--output-status`, requiring matching
-registration/offset receipts and two raw VideoOut status snapshots. No output
-reconfiguration is requested; hardware support must be measured, not inferred.
-90/120 FPS remains rejected pending high-refresh integration.
+registration/offset receipts and two raw VideoOut status snapshots. The default
+60 Hz build requests no output reconfiguration; high-refresh builds are separate.
 No independent physical output-mode or GPU-timer claim follows from the
 application timing. The accepted release SDK remains unchanged.
+
+### High-refresh window benchmark (opt-in)
+
+After the [normal dependency and SDK build](../../docs/building.md), build a
+separate runtime and native app; do not overwrite a frozen validation SDK:
+
+```sh
+PS5_DRAW_PROFILE=1 PS5_GPU_PRESENT_BATCH=1 \
+  PS5_SCANOUT_HEIGHT=2160 PS5_SCANOUT_FPS=120 \
+  bash toolchain/install-ps5-opengl-core33.sh build/sdk/ps5-opengl-core33-2160p120
+PS5_OPENGL_PREFIX="$PWD/build/sdk/ps5-opengl-core33-2160p120" \
+  PS5_IMGUI_PROFILE=1 PS5_IMGUI_WINDOW_BENCHMARK=1 PS5_IMGUI_WINDOW_TARGET=120 \
+  bash tools/build-native-test-app.sh egl_public_core33_imgui_tv
+python3 tools/summarize-imgui-profile.py RECEIPT \
+  --window-target 120 --window-height 2160 --prepare-profile
+```
+
+Use the same locked native-folder protocol, `PPSA99005` and 60-second observation
+cap as above. The builder supplies the benchmark's high-refresh title metadata;
+the runtime checks output support, requests fixed 120 Hz and restores normal
+output at shutdown. Do not change console Settings or retry an unsupported mode.
+For 1080p or 1440p, change the runtime height, separate prefix and auditor height
+together. Every rebuild creates a new candidate requiring its own verified run.
+
+The original scene averages ~119.88 FPS at all three render sizes on the recorded
+firmware-6.02 console; frame intervals still vary. Both VideoOut APIs report
+3840x2160 at 119.88 Hz even for the lower render sizes. These are not three
+independently verified HDMI modes. No fresh physical display/input check is claimed.
+Target 90 changes only the app flag to `PS5_IMGUI_WINDOW_TARGET=90` and the auditor
+target to 90, retaining the 120 Hz SDK. It uses application pacing, not VRR or
+native 90 Hz. The latest 4K90 candidate has not been measured; do not infer a
+completed twelve-target matrix from the three new 120 FPS results.
 
 ## Bounded offscreen performance matrix
 
