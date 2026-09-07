@@ -143,10 +143,17 @@ profiling target, not justification to remove waits without lifecycle evidence.
   then sustained cadence and clean teardown before declaring 60 FPS achieved.
   Other release work waits; accepted SDK remains unchanged.
 
+The opt-in `PS5_GPU_PRESENT_BATCH=1` candidate uses Mesa's existing before-flush
+callback to append a flip to the final deferred batch. A completion marker after
+the flip preserves command ownership; the exact flip marker and empty queue are
+required before returning from swap. Readback-drained/empty batches retain the
+CPU-flip path. This is pending hardware evidence, not an accepted release default.
+
 - 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
 - 2026-09-07 | clear batching | fe337eb | pass: RGBA sweep, state/query/mixed-clear checks and teardown | results/deferred-clear-20260907
 - 2026-09-07 | ImGui coalescing | fe337eb | pass: 899 clear+two-draw groups, pixels, ~29.97 FPS, healthy teardown | results/deferred-clear-imgui-20260907
 - 2026-09-07 | batch profile | f5e2a03 | pass: 869 warm frames, poll 11.247 ms/~10 sleeps, submit+suspend 0.017 ms; healthy teardown | results/batch-profile-20260907
+- 2026-09-07 | submit mode | 34e4fc1 | pass: pixels/lifecycle; no speedup (~29.97 FPS), opt-in probe removed | results/submit-mode-20260907
 
 ## OpenGL-only follow-up order
 

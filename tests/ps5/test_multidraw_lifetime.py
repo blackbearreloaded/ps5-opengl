@@ -546,11 +546,18 @@ print("PASS: descriptors/uniforms, chunk retirement, draw IDs, rollback, all 16 
 
 # Reuse the same Gallium mocks, but exercise the actual cross-call queue too.
 start = source.index("static struct {\n   struct ps5_context *owner;")
-deferred = source[start:source.index("\n#endif", start)]
+deferred = source[start:source.index("\n#endif\n\nstatic void\nps5_draw_vbo(", start)]
 deferred_code = code[:code.index("int main(void) {")] + r'''
 static unsigned ps5_deferred_mutex;
 static void simple_mtx_lock(unsigned *m) { assert(m == &ps5_deferred_mutex && !locked); locked=1; }
 static void simple_mtx_unlock(unsigned *m) { assert(m == &ps5_deferred_mutex && locked); locked=0; }
+#ifdef PS5_GPU_PRESENT_BATCH
+static unsigned gpu_present_requests;
+static int gpu_present_error;
+int ps5_agc_gate2_batch_present(unsigned index) {
+    assert(locked && staged && index == 1); ++gpu_present_requests; return gpu_present_error;
+}
+#endif
 static jmp_buf exit_jump;
 static _Noreturn void check_exit(int status) {
     assert(status == EXIT_FAILURE && locked && staged && !freed);
@@ -573,6 +580,7 @@ int main(void) {
     struct pipe_draw_start_count_bias draw={0,6,0};
     deferred_mode=true;
     reset();
+    ps5_context_queue_present(&context.base, 1); /* Empty queue: unchanged CPU fallback. */
     struct pipe_draw_info fan={.mode=MESA_PRIM_TRIANGLE_FAN,.instance_count=1};
     struct pipe_draw_start_count_bias quad={0,4,0};
     assert(!ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
@@ -597,6 +605,13 @@ int main(void) {
     context.deferred_color_clear=false; blitter.running=false;
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     assert(staged==2 && !ended); /* Internal clear and ordinary draw share one retirement. */
+#ifdef PS5_GPU_PRESENT_BATCH
+    struct ps5_context other_present = context;
+    ps5_context_queue_present(&other_present.base, 1);
+    assert(!gpu_present_requests && !locked && !ended);
+    ps5_context_queue_present(&context.base, 1);
+    assert(gpu_present_requests == 1 && !locked && !ended && staged == 2);
+#endif
     drain(); idle(); assert(ended==1);
     assert(!ps5_memory_overlaps((void *)100, 10, (void *)110, 10));
     assert(!ps5_memory_overlaps((void *)110, 10, (void *)100, 10));
@@ -697,18 +712,23 @@ int main(void) {
     reset(); draw.count=6;
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     fail_end=1;
+#ifdef PS5_GPU_PRESENT_BATCH
+    gpu_present_error=1;
+    if (!setjmp(exit_jump)) { ps5_context_queue_present(&context.base, 1); assert(!"queue error returned"); }
+#else
     if (!setjmp(exit_jump)) { drain(); assert(!"cleanup failure returned"); }
+#endif
     assert(!freed && borrowed.base.refs>1); /* Simulated process exit retains ownership. */
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:
     exe = Path(tmp) / "deferred"
-    for mutate in (False, True):
+    for mutate, flags in ((False, []), (True, []), (False, ["-DPS5_GPU_PRESENT_BATCH=1"])):
         candidate = deferred_code
         if mutate:
             candidate = candidate.replace("if (ps5_deferred.owner && ps5_deferred.owner != context)", "if (false)")
             assert candidate != deferred_code
-        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", *flags,
                         "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
                        input=candidate, text=True, check=True)
         run = subprocess.run([str(exe)], cwd=tmp, capture_output=True, text=True)

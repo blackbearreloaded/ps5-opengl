@@ -126,6 +126,14 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
                 abs(sum(timings[p] for p in phases) - timings["total_ms"]) <= 0.000004,
                 "invalid batch phase accounting")
         report["batch_per_call"] = dict(calls=calls, sleeps=sleeps, **timings)
+    gpu_present = re.findall(r"^\[ps5-gpu-present\] frames=(\d+)$", text, re.M)
+    if gpu_present:
+        require(not host and len(gpu_present) == text.count("[ps5-gpu-present]") == 1,
+                "expected one GPU-presentation summary")
+        # Frames 0/10 read back before swap and must use the CPU-flip fallback.
+        require(int(gpu_present[0]) == frames + warmup - 2,
+                "missing GPU-present frames or readback fallback")
+        report["gpu_present_frames"] = int(gpu_present[0])
     return report
 
 
@@ -140,6 +148,14 @@ def self_test():
     assert summarize(text)["cpu_wall_ms"] == 10
     assert summarize(text.replace("\n", "\r\n"))["frames"] == 100
     batch = "[ps5-multidraw-batch] draws=2 attempted=2 waits=1 result=0\n[ps5-deferred-batch] draws=2 result=0\n"
+    gpu_present = "[ps5-gpu-present] frames=128\n"
+    assert summarize(text + gpu_present)["gpu_present_frames"] == 128
+    for bad in (gpu_present * 2, gpu_present.replace("128", "127"), gpu_present.replace("128", "130")):
+        try:
+            summarize(text + bad)
+        except ValueError:
+            continue
+        raise AssertionError("Invalid GPU-present coverage accepted")
     batch_perf = ("[ps5-batch-perf] calls=100 failures=0 warmup_frames=30 sleeps=100 "
                   "submit_ms=0.1 suspend_ms=0.2 poll_ms=2.4 cleanup_ms=0.3 total_ms=3\n")
     assert summarize(text + batch_perf)["batch_per_call"]["poll_ms"] == 2.4

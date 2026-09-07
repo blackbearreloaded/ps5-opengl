@@ -7670,6 +7670,24 @@ static struct {
    } slots[PS5_MULTIDRAW_BATCH_CAPACITY];
 } ps5_deferred;
 
+void
+ps5_context_queue_present(struct pipe_context *base, unsigned buffer_index)
+{
+#ifdef PS5_GPU_PRESENT_BATCH
+   extern int ps5_agc_gate2_batch_present(unsigned);
+   simple_mtx_lock(&ps5_deferred_mutex);
+   if (ps5_deferred.owner == (struct ps5_context *)base && ps5_deferred.count &&
+       ps5_agc_gate2_batch_present(buffer_index) != 0) {
+      fputs("[ps5-gallium] queued presentation failed; terminating before resource release\n", stderr);
+      _Exit(EXIT_FAILURE);
+   }
+   simple_mtx_unlock(&ps5_deferred_mutex);
+#else
+   (void)base;
+   (void)buffer_index;
+#endif
+}
+
 static void
 ps5_draw_batch_flush_locked(void)
 {

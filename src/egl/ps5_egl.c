@@ -874,6 +874,17 @@ eglMakeCurrent(EGLDisplay display, EGLSurface draw_handle,
    return EGL_TRUE;
 }
 
+static void
+ps5_before_swap_flush(void *data)
+{
+#ifdef PS5_GPU_PRESENT_BATCH
+   const struct ps5_egl_surface *surface = data;
+   ps5_context_queue_present(ps5_current_context->st->pipe, surface->buffer_index);
+#else
+   (void)data;
+#endif
+}
+
 EGLAPI EGLBoolean EGLAPIENTRY
 eglSwapBuffers(EGLDisplay display, EGLSurface surface_handle)
 {
@@ -897,7 +908,7 @@ eglSwapBuffers(EGLDisplay display, EGLSurface surface_handle)
    }
    st_context_flush(ps5_current_context->st,
                     ST_FLUSH_FRONT | ST_FLUSH_END_OF_FRAME | ST_FLUSH_WAIT,
-                    &fence, NULL, NULL);
+                    &fence, surface->window ? ps5_before_swap_flush : NULL, surface);
    if (!surface->window)
       return EGL_TRUE;
    if (ps5_agc_gate2_present) {

@@ -47,6 +47,7 @@ test:
 	python3 -m unittest discover -s tools -p 'test_*.py'
 	python3 tests/ps5/test_gpu_clear_state.py
 	python3 tests/ps5/test_draw_profile.py
+	python3 tests/ps5/test_gpu_present.py
 	python3 tests/ps5/test_submit_batch_probe.py
 	python3 tests/ps5/test_multidraw_lifetime.py
 	python3 tests/ps5/test_submit_retirement.py

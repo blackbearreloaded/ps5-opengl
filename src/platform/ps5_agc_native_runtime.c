@@ -24,8 +24,8 @@
 #if defined(PS5_MULTIDRAW_BATCH) && (!defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT) || defined(PS5_DRAW_BATCH_PROBE))
 #error "Multi-draw batching requires the native runtime without the repeat probe"
 #endif
-#if defined(PS5_SUBMIT_MODE_PROBE) && (!defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(PS5_DRAW_PROFILE))
-#error "Submit-mode probe requires the profiled native application"
+#if defined(PS5_GPU_PRESENT_BATCH) && !defined(PS5_DEFERRED_DRAW_BATCH)
+#error "GPU presentation batching requires the deferred native draw queue"
 #endif
 #ifdef PS5_DRAW_BATCH_PROBE
 #if !defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT)
@@ -742,6 +742,9 @@ typedef struct video_api {
     int (*get_flip_status)(int32_t, void *);
 } video_api_t;
 
+static volatile unsigned out_of_space;
+static uint8_t command_out_of_space(agc_command_buffer_t *, uint32_t, void *);
+
 #if defined(AGC_RUNTIME_PACKAGES)
 static void flush_gpu_data(const void *address, size_t bytes);
 
@@ -753,6 +756,11 @@ static int runtime_video_registered;
 static uint64_t runtime_render_marker = (uint64_t)RENDER_MARKER;
 static unsigned runtime_present_count;
 static int runtime_agc_initialized;
+#ifdef PS5_GPU_PRESENT_BATCH
+static int runtime_gpu_present_buffer = -1;
+static uint64_t runtime_gpu_present_marker;
+static unsigned runtime_gpu_present_count;
+#endif
 
 #ifdef PS5_NATIVE_TITLE_RUNTIME
 static void runtime_require_retirement(int completed)
@@ -1001,10 +1009,83 @@ static int64_t runtime_next_render_marker(void)
 
 static int runtime_video_wait_idle(void);
 
+#ifdef PS5_GPU_PRESENT_BATCH
+int ps5_agc_gate2_batch_present(unsigned buffer_index)
+{
+    if (buffer_index > 1 || runtime_gpu_present_buffer >= 0 ||
+        !runtime_video_registered || runtime_video_handle < 0 ||
+        !runtime_batch_active || !runtime_batch_count || runtime_batch_faulted ||
+        !runtime_batch_api.set_flip || !runtime_batch_api.release_mem ||
+        !runtime_video_api.get_flip_status || runtime_video_wait_idle() != 0)
+        return -1;
+    struct runtime_batch_entry *entry = &runtime_batch_entries[runtime_batch_count - 1];
+    uint32_t *words = entry->submit.words;
+    if (!words || (uintptr_t)words < (uintptr_t)entry->memory ||
+        (uintptr_t)words - (uintptr_t)entry->memory > entry->bytes ||
+        entry->bytes - ((uintptr_t)words - (uintptr_t)entry->memory) < COMMAND_BYTES ||
+        entry->submit.word_count > COMMAND_BYTES / sizeof(*words) - 128)
+        return -1;
+    agc_command_buffer_t command = {0};
+    command.bottom = words;
+    command.top = words + COMMAND_BYTES / sizeof(*words);
+    command.up = words + entry->submit.word_count;
+    command.down = command.top;
+    command.callback = (uintptr_t)command_out_of_space;
+    uint64_t marker = (uint64_t)runtime_next_render_marker();
+    out_of_space = 0;
+    /* Queue the flip after all frame draws; a new completion marker after it
+     * keeps this command allocation alive until the GPU consumed the tail. */
+    if (!runtime_batch_api.set_flip(&command, (uint32_t)runtime_video_handle,
+                                    (int)buffer_index, 1, (int64_t)marker) ||
+        !runtime_batch_api.release_mem(&command, 40, 0x30c, 0, 0,
+                                       (void *)entry->marker, 1,
+                                       (uint32_t)marker, 0, 0, 0, 0) ||
+        out_of_space || command.up <= words + entry->submit.word_count ||
+        command.up > command.top)
+        return -1;
+    entry->submit.word_count = (uint32_t)(command.up - words);
+    entry->expected = (uint32_t)marker;
+    flush_gpu_data(words, entry->submit.word_count * sizeof(*words));
+    runtime_gpu_present_buffer = (int)buffer_index;
+    runtime_gpu_present_marker = marker;
+    return 0;
+}
+
+static int runtime_gpu_present_finish(unsigned buffer_index)
+{
+    if (runtime_gpu_present_buffer != (int)buffer_index)
+        return -1;
+    for (unsigned waits = 0; waits <= 120; ++waits) {
+        uint64_t status[16] = {0};
+        int result = runtime_video_api.get_flip_status(runtime_video_handle, status);
+        if (result != 0)
+            return result;
+        int pending = runtime_video_api.is_flip_pending(runtime_video_handle);
+        if (pending < 0)
+            return pending;
+        if (!pending && status[3] == runtime_gpu_present_marker) {
+            runtime_gpu_present_buffer = -1;
+            ++runtime_gpu_present_count;
+            return 0;
+        }
+        if (waits == 120)
+            return -1;
+        result = runtime_video_api.wait_vblank(runtime_video_handle);
+        if (result != 0)
+            return result;
+    }
+    return -1;
+}
+#endif
+
 int ps5_agc_gate2_shutdown_present(void)
 {
     int unregister_rc = 0;
     int close_rc = 0;
+#ifdef PS5_GPU_PRESENT_BATCH
+    if (runtime_gpu_present_buffer >= 0)
+        return -1; /* Unconfirmed presentation still owns scanout. */
+#endif
 #ifdef PS5_MULTIDRAW_BATCH
     if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count)
         return -1;
@@ -1039,6 +1120,11 @@ int ps5_agc_gate2_shutdown_present(void)
     runtime_video_framebuffer_size = 0;
     runtime_video_registered = 0;
     runtime_present_count = 0;
+#ifdef PS5_GPU_PRESENT_BATCH
+    if (runtime_gpu_present_count)
+        printf("[ps5-gpu-present] frames=%u\n", runtime_gpu_present_count);
+    runtime_gpu_present_count = 0;
+#endif
     runtime_render_marker = (uint64_t)RENDER_MARKER;
     return close_rc;
 }
@@ -1144,12 +1230,20 @@ int ps5_agc_gate2_present(unsigned buffer_index)
         return -1;
     }
     PS5_PROFILE_MARK(1);
-    marker = runtime_next_render_marker();
-    result = runtime_video_api.submit_flip(
-        runtime_video_handle, (int)buffer_index, 1, marker);
-    PS5_PROFILE_MARK(2);
-    if (result == 0)
-        result = runtime_video_api.wait_vblank(runtime_video_handle);
+#ifdef PS5_GPU_PRESENT_BATCH
+    if (runtime_gpu_present_buffer >= 0) {
+        PS5_PROFILE_MARK(2);
+        result = runtime_gpu_present_finish(buffer_index);
+    } else
+#endif
+    {
+        marker = runtime_next_render_marker();
+        result = runtime_video_api.submit_flip(
+            runtime_video_handle, (int)buffer_index, 1, marker);
+        PS5_PROFILE_MARK(2);
+        if (result == 0)
+            result = runtime_video_api.wait_vblank(runtime_video_handle);
+    }
     PS5_PROFILE_MARK(3);
 #ifdef PS5_DRAW_PROFILE
     if (profile_this_present)
@@ -1161,8 +1255,6 @@ int ps5_agc_gate2_present(unsigned buffer_index)
     return result;
 }
 #endif
-
-static volatile unsigned out_of_space;
 
 static uint8_t command_out_of_space(agc_command_buffer_t *buffer,
                                     uint32_t words, void *user_data)
@@ -2298,13 +2390,6 @@ int main(void)
         init_rc = 0;
     else {
         init_rc = agc.init(8);
-#ifdef PS5_SUBMIT_MODE_PROBE
-        if (init_rc == 0) {
-            extern int sceAgcSetSubmitMode(int);
-            init_rc = sceAgcSetSubmitMode(1);
-            printf("[ps5-submit-mode] mode=1 result=%d\n", init_rc);
-        }
-#endif
         if (init_rc == 0)
             runtime_agc_initialized = 1;
     }

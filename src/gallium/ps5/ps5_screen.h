@@ -15,6 +15,7 @@ struct pipe_resource;
 struct pipe_screen *ps5_screen_create(void);
 void ps5_screen_submit_lock(struct pipe_screen *screen);
 void ps5_screen_submit_unlock(struct pipe_screen *screen);
+void ps5_context_queue_present(struct pipe_context *context, unsigned buffer_index);
 int ps5_context_last_draw_status(struct pipe_context *context,
                                  unsigned *draw_calls);
 int ps5_shader_state_info(void *state, size_t *machine_code_size,
