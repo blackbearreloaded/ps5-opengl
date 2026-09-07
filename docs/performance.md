@@ -458,7 +458,48 @@ The successor retains this change and skips CPU cache flushing of depth/stencil
 backing only when the encoded depth/stencil control is exactly zero, under the
 same opt-in GPU-present build flag. All nonzero controls, CPU transfer handling,
 staging, target validation/binding, completion and default-build behavior remain
-unchanged. Compare 1080p120 and 4K120 again before making a throughput claim.
+unchanged.
+
+#### G5d verified high-resolution 120 FPS candidate
+
+Candidate `610e6a3` passed the original ImGui scene at all three render sizes,
+each for 30 measured seconds after 30 warm-up frames on the same firmware-6.02
+console. No scene reduction, changed GPU commands or weaker completion checks.
+
+| Render size | Achieved FPS | Clear + draw ms/frame | p95 / p99 frame ms | Budget misses |
+| --- | ---: | ---: | ---: | ---: |
+| 1920x1080 | 119.883028 | 4.697100 | 9.262385 / 9.338802 | 779 |
+| 2560x1440 | 119.881864 | 4.910530 | 8.874127 / 8.985345 | 733 |
+| 3840x2160 | 119.882543 | 5.473047 | 9.014852 / 9.283553 | 1,122 |
+
+The 4K diagnostic baseline was 59.942610 FPS with 9.952447 ms/frame in clear/draw.
+Flushing the registered scanout pool once per batch improved it to 70.089393 FPS;
+omitting depth/stencil backing flushes only while both tests are disabled reached
+119.882543 FPS. Native setup measured only about 0.042 ms/frame, so resource-pool
+redesign was not justified by this profile. These are CPU-wall measurements,
+not isolated GPU execution times.
+
+Each run passed both warm-up pixel probes, exactly 3,597 measured frames and
+10,791 preparations, 3,627 total clear-plus-two-draw groups and 3,625 GPU flips.
+Both output APIs reported 119.88 Hz and 3840x2160 full/pane extents, followed by
+checked 59.94 Hz restoration. Native/EGL/title teardown, service health and
+exact-token release passed. The separate existing depth-batch gate also passed
+enabled-depth occlusion in four draw modes plus disabled-depth texture upload,
+buffer/map updates, unrelated CPU access, query/fence and cleanup checks.
+
+Average throughput meets the target; frame intervals still vary. The existing
+`0x80290009` busy-unregister warning remains with successful close. No fresh
+physical TV/controller or independent HDMI timing check, long-session claim,
+new CTS campaign, accepted-SDK promotion or GitHub push is implied. The prior
+12-case matrix remains historical; 4K90 has not been rerun with this candidate.
+Next: frame-pacing/retirement stability and a matched heavier 3D workload;
+validate 4K90 separately before claiming every matrix target is now met.
+
+Receipts and audited summaries: `results/g5d-depth{1080,1440,2160}-20260907` and
+`results/g5d-depth-gate-20260907`; frozen hashes/receipt index:
+`build/frozen/g5d-depth-candidates-20260907.md`.
+
+- 2026-09-07 | G5d | 610e6a3 | pass: 1080p/1440p/4K120 ~119.88 FPS; depth/hazard gate, restore/health passed | results/g5d-depth*-20260907
 
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
