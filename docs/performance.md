@@ -24,6 +24,8 @@ remains opt-in; per-draw completion waits remain the main scaling limitation.
 
 ## Release sequence
 
+- 2026-09-06 | G7 | e678bbb | pass: presenter-error SDK, three EGL/ImGui sessions, 18 frames/180 probes; clean teardown/health/unlock | results/g7-present-errors-lifecycle/220742
+
 1. G5 correctness: PrimitiveID consumers/program switches, then affected CTS.
 2. G6 consumers: rebuild SDK; clean Make/CMake/pkg-config checks and native ImGui/NanoVG/Sokol.
 3. G7 practical use: an existing 3D application, longer sessions, repeated lifecycles and the VideoOut warning.
