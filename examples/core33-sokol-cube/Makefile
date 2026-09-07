@@ -10,6 +10,7 @@ check-source:
 egl_public_core33_sokol_cube.o: main.c native_glue.h check-source
 	$(CC) -std=gnu11 -O2 -g -fPIC -ffunction-sections -fdata-sections -Wall \
 	    $(if $(filter 1,$(PS5_SOKOL_MAPPED_READBACK)),-DPS5_SOKOL_MAPPED_READBACK) \
+	    $(if $(filter 1,$(PS5_SOKOL_HEAP_READBACK)),-DPS5_SOKOL_HEAP_READBACK) \
 	    -Werror=implicit-function-declaration $(PS5_OPENGL_PUBLIC_CFLAGS) \
 	    -I. -I../../build/sokol-cube-source -I../../third_party/sokol \
 	    -I../../third_party/sokol-samples/libs/vecmath -c -o $@ $<

@@ -2,6 +2,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#if defined(PS5_SOKOL_MAPPED_READBACK) && defined(PS5_SOKOL_HEAP_READBACK)
+#error Select only one full-frame readback allocation mode
+#endif
+#if defined(PS5_SOKOL_MAPPED_READBACK) || defined(PS5_SOKOL_HEAP_READBACK)
+#define PS5_SOKOL_FULL_READBACK
+#endif
 #ifdef PS5_SOKOL_MAPPED_READBACK
 #include <sys/mman.h>
 #endif
@@ -107,12 +113,12 @@ static void check_frame(void)
     }
 #endif
     unsigned mismatches = 0, foreground = 0, background = 0, checked = 0;
-#ifdef PS5_SOKOL_MAPPED_READBACK
+#ifdef PS5_SOKOL_FULL_READBACK
     glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 #endif
     for (int gy = 1; gy <= 17; ++gy) {
         int y = height * gy / 18;
-#ifndef PS5_SOKOL_MAPPED_READBACK
+#ifndef PS5_SOKOL_FULL_READBACK
         glReadPixels(0, y, width, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 #endif
         for (int gx = 1; gx <= 31; ++gx) {
@@ -122,7 +128,7 @@ static void check_frame(void)
             if (face < 0) { ++background; face = 6; }
             else { ++foreground; face_mask |= 1u << face; }
             const unsigned char *actual = pixels + x * 4;
-#ifdef PS5_SOKOL_MAPPED_READBACK
+#ifdef PS5_SOKOL_FULL_READBACK
             actual += (size_t)y * width * 4;
 #endif
             for (int c = 0; c < 4; ++c) if (abs(actual[c] - colors[face][c]) > 2) {
@@ -201,6 +207,10 @@ int main(void)
     }
 #endif
     printf("[ps5-sokol-cube] readback=mmap bytes=%zu\n", mapping_bytes);
+#elif defined(PS5_SOKOL_HEAP_READBACK)
+    // Restore the original large allocation before GLSL/Sokol setup.
+    pixels = malloc((size_t)width * height * 4);
+    printf("[ps5-sokol-cube] readback=heap bytes=%zu\n", (size_t)width * height * 4);
 #else
     // The oracle samples only 17 rows; do not compete with GLSL setup for 8 MiB.
     pixels = malloc((size_t)width * 4);

@@ -46,5 +46,12 @@ color/depth staging to owned CPU mappings: the unchanged full-frame control then
 passes 180 frames and all 2,596 probes with clean teardown. The small checker
 remains the default; this does not establish general application-heap robustness.
 
+`PS5_SOKOL_HEAP_READBACK=1 make sokol-cube` restores the original 8,294,400-byte
+`malloc` before shader setup (mutually exclusive with mapped readback).
+Use `bash tools/test-sokol-cube-host.sh --heap` for its host oracle. The native
+builder now shares the CTS app's existing 128 MiB process-lifetime heap wrapper;
+hardware acceptance of this integration is pending. No allocator is added to the
+host reference or silently injected by the standalone installed graphics SDK.
+
 The sample is MIT-licensed by Andre Weissflog; its bundled vecmath is used under
 Mattias Gustavsson's MIT option. See [notices](../../THIRD_PARTY_NOTICES.md).

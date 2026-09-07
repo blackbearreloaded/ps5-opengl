@@ -38,6 +38,23 @@ Set `PS5OpenGLCore33_DIR` to the package's `lib/cmake/PS5OpenGLCore33` directory
 and configure PS5 cross-compilers. The boilerplate separately assembles a linked
 target into a runnable native folder application.
 
+## Native application heap
+
+The native example and CTS builders share [app_heap.c](../native-app/app_heap.c):
+an app-owned, process-lifetime 128 MiB heap. The standalone graphics SDK does not
+silently replace the application's allocator. Custom folder-app integrations
+must include the helper and its complete linker wrap set together, as the native
+builders do:
+
+```text
+--wrap=malloc --wrap=calloc --wrap=realloc --wrap=free --wrap=posix_memalign --wrap=malloc_usable_size
+```
+
+Foreign pointers retain their original allocator; partial wrapping is unsafe.
+This integration is undergoing native-example validation on the performance
+branch. Larger budgets, exhaustive OOM recovery and cross-module ownership
+contracts are not established by the graphics test campaign.
+
 ## Verify the interface
 
 ```sh

@@ -119,6 +119,11 @@ heap_default='write_u64(result.data, result.heap_size, std::numeric_limits<std::
 test "$(grep -Fc "$heap_default" "$heap_source")" = 1
 sed -i "s/$heap_default/write_u64(result.data, result.heap_size, 0x10000000ULL);/" \
     "$heap_source"
+link_script="$app/tools/build.sh"
+link_marker='--eh-frame-hdr \'
+test "$(grep -Fc -- "$link_marker" "$link_script")" = 1
+sed -i 's/--eh-frame-hdr \\/--eh-frame-hdr --wrap=malloc --wrap=calloc --wrap=realloc --wrap=free --wrap=posix_memalign --wrap=malloc_usable_size \\/' \
+    "$link_script"
 cp "$template/tooling/native/ps5-pie.ld" \
     "$app/tooling/native/ps5-pie-base.ld"
 cp "$root/native-app/ps5-pie.ld" "$app/tooling/native/ps5-pie.ld"
@@ -126,6 +131,7 @@ cp "$root/native-app/app-symbols.map" "$app/tooling/native/app-symbols.map"
 rm -rf -- "$app/src" "$app/include" "$app/vendor"
 mkdir -p "$app/src" "$app/include" "$app/vendor"
 cp "$root/native-app/runtime_shims.c" "$app/src/runtime_shims.c"
+cp "$root/native-app/app_heap.c" "$app/src/app_heap.c"
 for headers in EGL GL KHR; do
     cp -a "$public_headers/$headers" "$app/include/"
 done

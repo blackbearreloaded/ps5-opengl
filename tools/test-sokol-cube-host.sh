@@ -7,7 +7,8 @@ flags=()
 case ${1:-} in
     '') ;;
     --mapped) flags=(-DPS5_SOKOL_MAPPED_READBACK) ;;
-    *) echo 'usage: test-sokol-cube-host.sh [--mapped]' >&2; exit 2 ;;
+    --heap) flags=(-DPS5_SOKOL_HEAP_READBACK) ;;
+    *) echo 'usage: test-sokol-cube-host.sh [--mapped|--heap]' >&2; exit 2 ;;
 esac
 clang-18 -std=gnu11 -O2 -Wall -Werror=implicit-function-declaration \
     "${flags[@]}" \
@@ -23,6 +24,9 @@ test -z "$extra" || { printf 'Non-Core-3.3 imports: %s\n' "$extra" >&2; exit 1; 
 export EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 MESA_GL_VERSION_OVERRIDE=3.3 MESA_GLSL_VERSION_OVERRIDE=330
 "$root/build/sokol-cube-host/check" | tee "$root/build/sokol-cube-host/check.log"
 test "$(grep -c 'mismatches=0 PASS' "$root/build/sokol-cube-host/check.log")" = 5
+if [[ ${1:-} == --heap ]]; then
+    grep -Fq 'readback=heap bytes=8294400' "$root/build/sokol-cube-host/check.log"
+fi
 if PS5_CUBE_CORRUPT=1 "$root/build/sokol-cube-host/check" > "$root/build/sokol-cube-host/negative.log" 2>&1; then
     echo 'Erased-cube negative control unexpectedly passed' >&2
     exit 1

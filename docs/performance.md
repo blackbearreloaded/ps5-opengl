@@ -200,6 +200,16 @@ Separately, the CTS app already links a 128 MiB app-owned mspace wrapper that th
 example builder omits. Reuse and validate that integration before inventing a
 new allocator; this readback result does not fix general application malloc.
 
+- 2026-09-06 | G7 | afeb36a | pass: 28 transfer CTS cases, 26 Pass + 2 reviewed Core-4.3 stencil-texturing exclusions; zero failure/loss, clean teardown/health/unlock | results/g7-cts-transfers/212737
+
+The next app-only control shares the existing CTS heap implementation with the
+native example builder and restores the original full-image malloc. It retains
+the transfer SDK/shaders. Host wrappers cover initialization/reentrancy/failure,
+owned versus foreign allocation routing, and OOM ownership. The shared helper
+also acquires initialization state before reading non-atomic metadata. Heap
+capacity remains 128 MiB for process lifetime; this is not a general OOM-recovery
+claim, a new allocator implementation, or a change to the standalone SDK ABI.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

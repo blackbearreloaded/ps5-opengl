@@ -53,6 +53,12 @@ grep -aFq '[pss-opengl-native] gate completed status=%d' "$linked"
 grep -aFq '/download0/pss-opengl.log' "$linked"
 # Drain producers under pipefail: grep -q can otherwise make nm/readelf SIGPIPE.
 nm -u "$linked" | grep -F 'sceAgcDcbSetNumInstances' >/dev/null
+for wrapper in __wrap_malloc __wrap_free; do
+    nm --defined-only "$linked" | grep -E " [Tt] $wrapper\$" >/dev/null || {
+        printf 'native app is missing its shared heap wrapper: %s\n' "$wrapper" >&2
+        exit 1
+    }
+done
 
 for module in libSceAgc.prx libSceAgcDriver.prx libSceLibcInternal.prx \
     libScePosixForWebKit.prx libSceVideoOut.prx libkernel.prx; do
