@@ -26,8 +26,8 @@ distinct when reporting compatibility.
   slower; window throughput must not be generalized to render-to-texture workloads.
   The G7 CPU-copy optimization improves the matched 1080p FBO case from 3.54 to
   14.98 FPS, still below 60. The later normal-swap 128-cube profile reaches
-  59.94 FPS with instancing and 14.98 FPS with ordinary draws after mixed-clear,
-  batching and logging improvements. It uses two tiny textures; neither result predicts game
+  59.94 FPS with instancing and 29.97 FPS with ordinary draws after mixed-clear,
+  batching, depth-flush reuse and logging improvements. It uses two tiny textures; neither result predicts game
   performance or establishes a hardware ceiling. Ordinary submission/retirement
   and broader render-to-texture optimization remain substantial work.
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its

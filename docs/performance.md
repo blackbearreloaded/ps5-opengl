@@ -684,6 +684,15 @@ frames: 2,795 batches and 65,840 draws total. Completed ordinary FPS is 14.98492
 backing grows from a 3.5 to 14 MiB ceiling; ownership/failure guards are unchanged.
 Frozen evidence: `build/frozen/g7-batch128-20260907.md`; not a new full CTS result.
 
+- 2026-09-07 | G7 | 6fab303 | pass: 128-entry depth reuse, ordinary 14.98→29.97 FPS, instanced 59.94; pixels/123890 draws/close/health | results/g7-batch128-depth-cache-cubes-20260907
+
+At 128 entries, the same batch-local depth-flush reuse now doubles ordinary
+throughput to 29.969793 FPS (p99 34.32 ms); instanced throughput is 59.940644.
+All 2,052 probes and 123,890 draws in 3,695 batches pass. Cache lifetime remains
+limited to retained, unsubmitted work and ends at every drain; no cross-frame
+dirty cache or relaxed completion guards. Retain this measured combination.
+Frozen evidence: `build/frozen/g7-batch128-depth-cache-20260907.md`.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
