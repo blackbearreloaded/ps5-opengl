@@ -190,6 +190,16 @@ staging on the heap. Investigate that shared color/depth allocation path next.
 No assertion, GPU timeout or kernel panic appears in this receipt. Mapping the
 caller alone is not a fix, and general application-heap robustness remains open.
 
+- 2026-09-06 | G7 | c53925e | pass: mapped full-frame cube, 180 frames/2596 pixels; driver staging fix eliminates readback OOM; clean teardown/health/unlock | results/g7-sokol-cube-transfer/211530
+
+The isolated transfer SDK passes consumer checks and this unchanged cube control.
+Color/depth staging >=64 KiB now uses owned anonymous CPU mappings; small and
+direct transfers are unchanged. Host fault injection covers both backing kinds,
+read/write, overflow and cleanup. Next: one framebuffer/depth-transfer CTS batch.
+Separately, the CTS app already links a 128 MiB app-owned mspace wrapper that the
+example builder omits. Reuse and validate that integration before inventing a
+new allocator; this readback result does not fix general application malloc.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.

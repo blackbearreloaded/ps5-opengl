@@ -41,9 +41,10 @@ not replace `malloc`, expand the app's resource budget or access other memory.
 Run `bash tools/test-sokol-cube-host.sh --mapped` first; it also checks a simulated
 allocation failure exits before rendering and cleans up EGL. Native `1c74dee`
 accepts the mapping and completes shader setup, but its first full-frame readback
-returns `GL_OUT_OF_MEMORY`; the app closes normally. Driver transfer staging
-still uses the heap and is the next investigation. The small checker remains the
-default; neither control establishes general application-heap robustness.
+returns `GL_OUT_OF_MEMORY`; the app closes normally. Driver `c53925e` moves large
+color/depth staging to owned CPU mappings: the unchanged full-frame control then
+passes 180 frames and all 2,596 probes with clean teardown. The small checker
+remains the default; this does not establish general application-heap robustness.
 
 The sample is MIT-licensed by Andre Weissflog; its bundled vecmath is used under
 Mattias Gustavsson's MIT option. See [notices](../../THIRD_PARTY_NOTICES.md).

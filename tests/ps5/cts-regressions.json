@@ -32,6 +32,10 @@
     "KHR-GL33.primitive_restart.restart_mode",
     "KHR-GL33.transform_feedback.*"
   ],
+  "transfers": [
+    "KHR-GL33.framebuffer_blit.*",
+    "KHR-GL33.packed_depth_stencil.*"
+  ],
   "shaders": ["KHR-GL33.shaders.*", "KHR-GL33.shaders30.*"],
   "textures": [
     "KHR-GL33.texture_lod_basic.*",
