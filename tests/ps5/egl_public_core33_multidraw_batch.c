@@ -239,7 +239,7 @@ int main(void)
    glClear(GL_COLOR_BUFFER_BIT);
    /* Update a sampled texture before readback. The old draws must see old data. */
    for (unsigned i = 0; i < DRAWS; ++i) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
-   const uint8_t replacement[4] = {0, 255, 255, 255};
+   const uint8_t replacement[4] = {255, 255, 0, 255}; /* Must change the final blue draw. */
    glActiveTexture(GL_TEXTURE7);
    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, replacement);
    if (!check_pixels(1, 0)) goto cleanup;

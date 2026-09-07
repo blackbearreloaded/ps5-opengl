@@ -32,11 +32,14 @@ for fault in sampler upload; do
     fi
     grep -F '[ps5-multidraw] pixel mismatch' "$out/fault-$fault.log" >/dev/null
 done
-for fault in uniform scissor; do
+for fault in uniform scissor pending-texture; do
     if [[ $fault == uniform ]]; then
         change='s/green \&\& !(band % 2)/green/'
-    else
+    elif [[ $fault == scissor ]]; then
         change='s/glScissor(band \* 8, 0, 8, HEIGHT - 4 \* (band % 3))/glScissor(band * 8, 0, 8, HEIGHT)/'
+    else
+        # Simulate the last staged draw incorrectly sampling the replacement.
+        change='/GL_UNSIGNED_BYTE, replacement);/a\   glDrawArrays(GL_TRIANGLES, BANDS * 6, 6);'
     fi
     sed "$change" "$source" |
         clang-18 "${flags[@]}" -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 \
@@ -46,4 +49,4 @@ for fault in uniform scissor; do
     fi
     grep -F '[ps5-multidraw] pixel mismatch' "$out/fault-$fault.log" >/dev/null
 done
-echo 'Draw host PASS: plain/textured/deferred pixels, upload hazards, sampler/upload/uniform/scissor fault rejection'
+echo 'Draw host PASS: plain/textured/deferred pixels, upload hazards, sampler/upload/uniform/scissor/pending-texture fault rejection'
