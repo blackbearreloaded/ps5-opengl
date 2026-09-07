@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 
-def summarize(text, host=False, submit_profile=False, deferred_batches=False):
+def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
@@ -80,6 +80,26 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False):
         report["submission_per_call"] = dict(calls=calls, **timings)
         if "sleeps" in fields:
             report["submission_per_call"]["sleeps"] = int(fields["sleeps"])
+    present_lines = re.findall(r"^\[ps5-present-perf\] (.+)$", text, re.M)
+    if present_lines or present_profile:
+        require(not host and len(present_lines) == 1, "expected one native presentation profile")
+        pairs = [token.split("=", 1) for token in present_lines[0].split()]
+        require(all(len(pair) == 2 for pair in pairs), "malformed presentation field")
+        fields = dict(pairs)
+        phases = ["idle_ms", "flip_ms", "vblank_ms"]
+        require(len(fields) == len(pairs) and set(fields) ==
+                set(phases + ["calls", "failures", "warmup_frames", "total_ms"]),
+                "unexpected presentation fields")
+        require(int(fields["calls"]) == frames and fields["failures"] == "0" and
+                fields["warmup_frames"] == "30", "presentation count/failure/warmup mismatch")
+        timings = {name: float(fields[name]) for name in phases + ["total_ms"]}
+        require(all(math.isfinite(v) and v >= 0 for v in timings.values()) and
+                abs(sum(timings[p] for p in phases) - timings["total_ms"]) <= 0.000003 and
+                timings["total_ms"] <= values["swap_ms"] + 0.000002,
+                "invalid presentation phase accounting")
+        report["presentation_per_frame"] = dict(calls=frames, **timings)
+        # Remainder includes deferred draw retirement plus EGL bookkeeping, not GPU time.
+        report["swap_other_ms"] = max(0, values["swap_ms"] - timings["total_ms"])
     return report
 
 
@@ -113,6 +133,26 @@ def self_test():
     split_submit = submit.replace("warmup_frames=30", "warmup_frames=30 sleeps=300").replace(
         "submit_wait_ms=1", "submit_ms=0 suspend_ms=0 poll_ms=1")
     assert summarize(text + split_submit)["submission_per_call"]["sleeps"] == 300
+    present = ("[ps5-present-perf] calls=100 failures=0 warmup_frames=30 "
+               "idle_ms=0 flip_ms=1 vblank_ms=2 total_ms=3\n")
+    assert summarize(text + present, present_profile=True)["swap_other_ms"] == 1
+    for bad in (text, text + present + present,
+                text + present.replace("calls=100", "calls=99"),
+                text + present.replace("calls=100", "calls=101"),
+                text + present.replace("failures=0", "failures=1"),
+                text + present.replace("warmup_frames=30", "warmup_frames=0"),
+                text + present.replace("idle_ms=0", "idle_ms=-1"),
+                text + present.replace("idle_ms=0", "idle_ms=nan"),
+                text + present.replace("idle_ms=0", "idle_ms=0 idle_ms=0"),
+                text + present.replace("flip_ms=1", "malformed"),
+                text + present.replace("total_ms=3", "total_ms=4"),
+                text + present.replace("vblank_ms=2 total_ms=3", "vblank_ms=4 total_ms=5")):
+        try:
+            summarize(bad, present_profile=True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid presentation profile accepted")
     for bad in (text + text, text + "[ps5-gallium] clear-gpu-color status=-3 draws=1\n",
                 text.replace("PASS", "FAIL", 1),
                 text.replace("frames=130", "frames=129"), text.replace("warmup=30", "warmup=2"),
@@ -148,6 +188,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", action="store_true")
     parser.add_argument("--submit-profile", action="store_true")
     parser.add_argument("--deferred-batches", action="store_true")
+    parser.add_argument("--present-profile", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -156,4 +197,4 @@ if __name__ == "__main__":
         if not args.receipt:
             parser.error("receipt required")
         print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
-                                   args.deferred_batches), indent=2))
+                                   args.deferred_batches, args.present_profile), indent=2))

@@ -858,6 +858,21 @@ int ps5_agc_gate2_batch_end(void)
 #include "util/os_time.h"
 static uint64_t runtime_profile_ns[9], runtime_profile_sleeps;
 static unsigned runtime_profile_calls, runtime_profile_failures;
+static uint64_t runtime_present_profile_ns[3];
+static unsigned runtime_present_profile_calls, runtime_present_profile_failures;
+
+static void runtime_present_profile_record(const int64_t ticks[4], int result)
+{
+    for (unsigned i = 0; i < 4; ++i) {
+        if (result || ticks[i] <= 0 || (i && ticks[i] < ticks[i - 1])) {
+            ++runtime_present_profile_failures;
+            return;
+        }
+    }
+    for (unsigned i = 0; i < 3; ++i)
+        runtime_present_profile_ns[i] += ticks[i + 1] - ticks[i];
+    ++runtime_present_profile_calls;
+}
 
 static void runtime_profile_record(const int64_t ticks[10], unsigned sleeps, int result)
 {
@@ -894,6 +909,20 @@ static void runtime_profile_report(void)
     memset(runtime_profile_ns, 0, sizeof(runtime_profile_ns));
     runtime_profile_calls = runtime_profile_failures = 0;
     runtime_profile_sleeps = 0;
+    if (runtime_present_profile_calls || runtime_present_profile_failures) {
+        const double scale = runtime_present_profile_calls ?
+            1e-6 / runtime_present_profile_calls : 0;
+        printf("[ps5-present-perf] calls=%u failures=%u warmup_frames=30 "
+               "idle_ms=%.6f flip_ms=%.6f vblank_ms=%.6f total_ms=%.6f\n",
+               runtime_present_profile_calls, runtime_present_profile_failures,
+               runtime_present_profile_ns[0] * scale,
+               runtime_present_profile_ns[1] * scale,
+               runtime_present_profile_ns[2] * scale,
+               (runtime_present_profile_ns[0] + runtime_present_profile_ns[1] +
+                runtime_present_profile_ns[2]) * scale);
+    }
+    memset(runtime_present_profile_ns, 0, sizeof(runtime_present_profile_ns));
+    runtime_present_profile_calls = runtime_present_profile_failures = 0;
 }
 #define PS5_PROFILE_MARK(i) profile_ticks[i] = os_time_get_nano()
 #endif
@@ -1029,6 +1058,10 @@ int ps5_agc_gate2_present(unsigned buffer_index)
 {
     int result;
     int64_t marker;
+#ifdef PS5_DRAW_PROFILE
+    int64_t profile_ticks[4] = {0};
+    const int profile_this_present = runtime_present_count >= 30;
+#endif
 #ifdef PS5_MULTIDRAW_BATCH
     if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count)
         return -1;
@@ -1040,13 +1073,26 @@ int ps5_agc_gate2_present(unsigned buffer_index)
         !runtime_video_api.is_flip_pending ||
         !runtime_video_api.wait_vblank)
         return -1;
-    if (runtime_video_wait_idle() != 0)
+    PS5_PROFILE_MARK(0);
+    if (runtime_video_wait_idle() != 0) {
+#ifdef PS5_DRAW_PROFILE
+        if (profile_this_present)
+            runtime_present_profile_record(profile_ticks, -1);
+#endif
         return -1;
+    }
+    PS5_PROFILE_MARK(1);
     marker = runtime_next_render_marker();
     result = runtime_video_api.submit_flip(
         runtime_video_handle, (int)buffer_index, 1, marker);
+    PS5_PROFILE_MARK(2);
     if (result == 0)
         result = runtime_video_api.wait_vblank(runtime_video_handle);
+    PS5_PROFILE_MARK(3);
+#ifdef PS5_DRAW_PROFILE
+    if (profile_this_present)
+        runtime_present_profile_record(profile_ticks, result);
+#endif
     if (result == 0) {
         ++runtime_present_count;
     }

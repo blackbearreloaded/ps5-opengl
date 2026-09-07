@@ -57,5 +57,34 @@ submission coalescing, transfer/format acceleration and real-application profili
 remain useful follow-up work. Any new runtime must receive its own relevant
 regressions and release validation; it does not inherit these results.
 
+The opt-in `PS5_DRAW_PROFILE=1` native build now separates presentation queue-idle,
+flip submission and post-flip vblank CPU wall time. Combine it with
+`PS5_IMGUI_PROFILE=1` for the existing 30-second demo, and audit its receipt with:
+
+```sh
+python3 tools/summarize-imgui-profile.py RECEIPT --submit-profile --present-profile --deferred-batches
+```
+
+`swap_other_ms` is the remaining EGL swap time (including deferred draw retirement),
+not a GPU timer. Profiling preserves the existing waits and is not enabled in the
+accepted SDK. Build/install profiling candidates into a separate SDK directory.
+
+## OpenGL-only follow-up order
+
+1. Profile the accepted workload; change one measured bottleneck at a time with
+   matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
+2. Investigate busy unregister independently; validate repeated creation/close,
+   allocation-failure handling and bounded endurance before claiming stability.
+   Suspend/resume and device-loss recovery remain separate, unvalidated features.
+3. Use application findings from the separate Yamagi port as library bug reports;
+   no game-specific changes belong in this repository's driver.
+4. Define the actual SDL/GLFW platform boundary from consumer requirements before
+   implementing an adapter. Neither framework is currently supported.
+5. Repeat independent builds and fresh TV/controller checks. Keep one-console,
+   one-firmware results explicitly scoped; broader compatibility needs new evidence.
+6. Produce a versioned SDK/example archive with licenses, dependency pins, hashes
+   and validation provenance after freezing a release candidate. Source delivery
+   and private repository visibility stay unchanged until publication is requested.
+
 See [limitations](limitations.md), the [cube benchmark](../examples/core33-cubes/README.md),
 and the preserved [development measurements and failure history](performance-history.md).
