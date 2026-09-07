@@ -284,6 +284,25 @@ deadline helper. Audit with `summarize-imgui-profile.py RECEIPT --window-target 
 1080p60 harness only at 59–60.5 FPS before extending modes. This measures app
 presentation completion, not independently verified physical output timing.
 
+The matched harness (`c88497a`, unchanged frozen `18c4d65` runtime) passed both
+initial 1080p cases. Each ran 30 measured seconds after warm-up, with two passing
+pixel probes, exact clear/draw/flip coverage, unchanged controls and clean
+native/EGL/title teardown, healthy services and exact-token release.
+
+| Target | Achieved FPS | Measured frames | Mean frame ms | p95 ms | p99 ms | Frame-budget misses |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 60 | 59.940919 | 1,799 | 16.683094 | 17.331530 | 17.581307 | 612 |
+| 30 | 29.999886 | 900 | 33.333460 | 33.352348 | 33.355315 | 0 |
+
+Misses count completed application intervals exceeding the target budget plus
+0.25 ms; they are **not** proof of dropped TV frames. Active work includes swap
+but excludes the target-30 sleep: 16.680966 ms at target 60 and 15.513653 ms at
+target 30. Busy unregister remains. Output mode is still explicitly unverified.
+Two of twelve requested windowed combinations are measured; the other ten need
+resolution/high-refresh integration. Full local summaries are beside the receipts.
+
+- 2026-09-07 | matched window benchmark | c88497a | pass: 1080p60/30, pixels/groups/flips, healthy teardown | results/window-benchmark{60,30}-20260907
+
 GPU-resident sampleable FBOs remain a separate optimization: avoid unnecessary
 linear/tiled conversions while preserving sampling/readback, CPU-write hazards
 and retirement. Start with a focused matched 1080p FBO case and affected
