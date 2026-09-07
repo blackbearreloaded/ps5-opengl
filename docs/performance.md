@@ -598,6 +598,19 @@ contract. It now compares feature-define values as well as names; negative
 pool/feature tests supplement the compiled three-resolution layout checks.
 This repairs stale inventory checks; it is not a new hardware CTS campaign.
 
+- 2026-09-07 | G7 | runtime ee9a5b9 / test fa985f0 | pass: 128-cube matched swap profile, instanced 19.98→29.97 FPS; ordinary 3.33 FPS; pixels/close/health | results/g7-cubes-profile{0,1}-20260907
+
+The reviewed profile measures 30 seconds per ordinary/instanced path, retaining
+2,052 pixel probes per app and exact draw deltas on every completed frame. Both
+apps use identical instrumented runtime bytes. Removing the pre-swap `glFinish`
+helps instancing; 128 ordinary draws end on the eight-draw batch boundary and
+still measure 3.33 FPS. Normal-swap clear/submit/swap means are 20.85/263.81/15.64
+ms for ordinary drawing and 19.66/1.86/11.84 ms for instancing. Mixed depth/color
+clear ordering and repeated enabled-depth flushes are the next measured targets;
+do not weaken retirement checks. These are CPU-wall microbenchmark results, not
+game FPS. Both closes, native teardowns, health checks and exact-token releases
+passed. Frozen identities: `build/frozen/g7-cubes-profile-pair-20260907.md`.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
