@@ -2,6 +2,7 @@
 from pathlib import Path
 import subprocess
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -177,3 +178,14 @@ int main(void) {
             subprocess.run([sys.executable, "-", str(path)], input=body, text=True, check=True)
             actual = json.loads(path.read_text())
         self.assertEqual(actual, original | {"attribute3": 0x80040})
+
+    def test_videoout_import_stub(self):
+        # Link-only symbol coverage, not alternative implementations of system APIs.
+        source = (ROOT / "src/platform/ps5_agc_native_runtime.c").read_text()
+        required = set(re.findall(r"extern (?:int|void) (sceVideoOut\w+)\(", source))
+        with tempfile.TemporaryDirectory() as tmp:
+            library = str(Path(tmp) / "libSceVideoOut.so")
+            subprocess.run(["cc", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
+                            str(ROOT / "native-app/videoout_link_stub.c"), "-o", library], check=True)
+            symbols = subprocess.check_output(["nm", "-D", "--defined-only", library], text=True)
+        self.assertEqual(set(re.findall(r"\b(sceVideoOut\w+)$", symbols, re.M)), required)

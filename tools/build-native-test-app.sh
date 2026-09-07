@@ -181,6 +181,16 @@ fi
 
 app_sdk="$app/.deps/native/ps5-payload-sdk"
 mkdir -p "$app/build/native-imports"
+if [[ ${PS5_IMGUI_WINDOW_TARGET:-60} == 90 ]]; then
+    # The base SDK lacks the VRR symbol; use the existing native import-stub path.
+    PS5_PAYLOAD_SDK="$app_sdk" sh "$app/tooling/prospero-clang18" \
+        -std=c11 -O2 -fPIC -ffunction-sections -fdata-sections \
+        -c "$root/native-app/videoout_link_stub.c" -o "$app/build/native-imports/videoout_link_stub.o"
+    "$app_sdk/bin/prospero-lld" --shared -soname libSceVideoOut.prx \
+        -o "$app_sdk/target/lib/libSceVideoOut.so" "$app/build/native-imports/videoout_link_stub.o"
+else
+    cp "$sdk/target/lib/libSceVideoOut.so" "$app_sdk/target/lib/libSceVideoOut.so"
+fi
 PS5_PAYLOAD_SDK="$app_sdk" sh "$app/tooling/prospero-clang18" \
     -std=c11 -O2 -fPIC -ffunction-sections -fdata-sections \
     -c "$root/native-app/agc_link_stub.c" \
