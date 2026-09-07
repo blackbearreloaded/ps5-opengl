@@ -200,8 +200,10 @@ dropped frames as successful presentation.
 
 G4 first measures completed **offscreen** ImGui rendering using the unchanged
 frozen GPU-presentation SDK. The EGL window is still fixed at 1080p, so the
-matrix uses RGBA8 FBOs, a fixed logical UI scaled to each resolution, 30 warm-up
-frames and 30 measured seconds per case. Every measured frame calls `glFinish`;
+matrix uses RGBA8 FBOs and a fixed logical UI scaled to each resolution. Warm-up
+ends after 30 frames or one second (at least two frames), followed by 30 measured
+seconds per case. Every measured frame calls `glFinish` and checks the existing
+native draw-status/count diagnostic;
 CPU pacing is included in achieved FPS but excluded from render-stage timing.
 Pixels are checked before/after each case, outside timing. All twelve cases
 share one bounded title cycle; only an unmeasured preview is presented per case.
@@ -212,6 +214,20 @@ pacing jitter, render-budget misses use the exact target budget. A missed FPS
 target is a benchmark result, not a rendering failure. Stop the batch on any
 correctness, completion, allocation or lifecycle failure. Actual higher-resolution
 and high-refresh scanout remains a separate, unvalidated integration step.
+
+The first matrix exposed a real slow path: Mesa gives user renderbuffers
+`PIPE_BIND_SAMPLER_VIEW`; `ps5_linear_sampled_layout` then selects linear storage
+with tiled staging. `ps5_stage_color_surface` copies the full surface on the CPU
+before and after each synchronous draw, and GPU-clear/deferred-batch eligibility
+excludes that storage. Ten measured cases produced correct pixels but only
+~4.0/2.4/1.1 FPS at 1080p/1440p/2160p. Fixed 30-frame warm-ups exceeded the
+450-second runner budget before cases 10/11 completed. No full-matrix pass is
+claimed. The successor bounds warm-up time and distinguishes synchronous draw
+completion from deferred batches; it does not hide or optimize this slow path.
+This identifies GPU-resident render-to-texture/staging as a priority after the
+window-presentation improvement, not a hardware rasterization ceiling.
+
+- 2026-09-07 | offscreen matrix | 3795762 | inconclusive: 10/12 measured; CPU staging dominated, warm-up overran bound; title closed/health/unlock | results/imgui-matrix-20260907
 
 ## OpenGL-only follow-up order
 

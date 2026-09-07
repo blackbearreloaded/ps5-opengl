@@ -18,9 +18,9 @@ def receipt():
                     for phase in ("warmup", "final"))
         rows.append(f"[ps5-imgui-bench] result case={i} warmup=30 frames=90 seconds=30.000000 fps=3.000000 "
                     "render_mean_ms=10 render_p50_ms=10 render_p95_ms=10 render_p99_ms=10 "
-                    "frame_p50_ms=333 frame_p95_ms=334 frame_p99_ms=334 render_misses=0 frame_misses=90 status=0")
+                    "frame_p50_ms=333 frame_p95_ms=334 frame_p99_ms=334 render_misses=0 frame_misses=90 driver_draws=180 status=0")
         rows.extend(["[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0",
-                     "[ps5-deferred-batch] draws=3 result=0"] * 121)
+                     "[ps5-deferred-batch] draws=3 result=0"])
     rows.extend(["[ps5-imgui-bench] finished cases=12 status=0", "[ps5-imgui] finished status=0",
                  "[pss-opengl-native] gate completed status=0",
                  "[ps5-agc] present-shutdown unregister=80290009 close=00000000 frames=12",
@@ -39,6 +39,7 @@ class BenchmarkTest(unittest.TestCase):
                          ("render_mean_ms=10", "render_mean_ms=nan"), ("render_p95_ms=10", "render_p95_ms=9"),
                          ("phase=final samples=3 status=0", "phase=final samples=3 status=1"),
                          ("case=11", "case=10"), ("frames=90", "frames=0"), ("frame_misses=90", "frame_misses=91"),
+                         ("driver_draws=180", "driver_draws=179"), ("warmup=30", "warmup=31"),
                          ("attempted=3", "attempted=2"), ("close=00000000", "close=ffffffff"),
                          ("gate completed status=0", "gate completed status=1"),
                          ("[ps5-gpu-present] frames=12", "[ps5-gpu-present] frames=13")):
@@ -46,10 +47,12 @@ class BenchmarkTest(unittest.TestCase):
                 summarize(text.replace(old, new, 1))
         with self.assertRaises(ValueError):
             summarize(text + "\n[ps5-imgui-bench] finished cases=12 status=0")
+        self.assertEqual(len(summarize(text.replace("warmup=30", "warmup=2"))["cases"]), 12)
 
     def test_actual_pacing_and_statistics(self):
         source = (ROOT / "examples/core33-imgui/benchmark.h").read_text()
         helpers = source[source.index("static bool bench_wait"):source.index("static bool bench_draw")]
+        warmup = source[source.index("    const double warmup_start"):source.index("    const unsigned warmup = frame")]
         code = r'''
 #include <cassert>
 #include <cerrno>
@@ -67,7 +70,25 @@ static int usleep(unsigned micros) {
     return 0;
 }
 ''' + helpers + r'''
+static double cost;
+static bool check(bool ok, const char*) { return ok; }
+static bool bench_draw(unsigned, int, int, int, unsigned) { return true; }
+static void glFinish() { now += cost; }
+static int glGetError() { return 0; }
+static const int GL_NO_ERROR = 0;
+static unsigned warm_frames(double seconds) {
+    cost = seconds; now = 0;
+    unsigned frame = 0, warmup_limit = 30, fbo = 0;
+    int width = 1920, height = 1080, target = 30;
+    bool ok = true;
+''' + warmup + r'''
+    return ok ? frame : 0;
+}
 int main() {
+    assert(warm_frames(0.25) == 4);
+    assert(warm_frames(0.9) == 2);
+    assert(warm_frames(0.001) == 30);
+    assert(warm_frames(-0.01) == 0);
     double values[] = {6, 1, 4, 2, 5, 3};
     qsort(values, 6, sizeof(double), bench_compare);
     assert(bench_percentile(values, 6, 50) == 3);

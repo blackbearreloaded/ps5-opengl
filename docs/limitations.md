@@ -15,6 +15,10 @@ The [development history](performance-history.md) preserves the earlier failures
   thirty FPS is only its cap. Clear/presentation waits and broader workload
   optimization remain. These measurements do not predict full-game FPS.
   See [Performance](performance.md).
+  The later performance candidate reaches ~60 FPS in the windowed TV demo, but
+  sampleable offscreen render targets still copy linear/tiled surfaces on the
+  CPU around each draw. Initial high-resolution ImGui FBO measurements are much
+  slower; window throughput must not be generalized to render-to-texture workloads.
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.

@@ -5,6 +5,11 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifndef PS5_IMGUI_HOST_REFERENCE
+// Existing read-only diagnostic; glFinish has already retired the frame.
+extern "C" int ps5_egl_current_draw_status(unsigned*);
+#endif
+
 static double bench_seconds()
 {
     timespec now = {};
@@ -99,22 +104,34 @@ static bool bench_case(unsigned id, GLuint fbo, int width, int height, int targe
     if (!check(render_ms != nullptr, "benchmark samples allocation")) return false;
     double* frame_ms = render_ms + capacity;
 #ifdef PS5_IMGUI_HOST_REFERENCE
-    const unsigned warmup = 2;
+    const unsigned warmup_limit = 2;
 #else
-    const unsigned warmup = 30;
+    const unsigned warmup_limit = 30;
 #endif
     unsigned frame = 0, count = 0, render_misses = 0, frame_misses = 0;
+    unsigned first_draws = 0, last_draws = 0;
     bool ok = true;
     double render_sum = 0, start = 0, end = 0;
     const double budget_ms = 1000.0 / target;
     printf("[ps5-imgui-bench] begin case=%u width=%d height=%d target=%d mode=offscreen-completed\n",
            id, width, height, target);
-    for (; frame < warmup && ok; ++frame) {
+    const double warmup_start = bench_seconds();
+    ok = check(warmup_start >= 0, "benchmark warm-up clock");
+    while (frame < warmup_limit && ok) {
         ok = bench_draw(fbo, width, height, target, frame);
         glFinish();
         ok = check(glGetError() == GL_NO_ERROR, "benchmark warm-up completion") && ok;
+        ++frame;
+        const double now = bench_seconds();
+        ok = check(now >= warmup_start, "benchmark warm-up clock") && ok;
+        if (frame >= 2 && now - warmup_start >= 1.0) break;
     }
+    const unsigned warmup = frame;
     if (ok) ok = bench_probe(id, "warmup", width, height, frame - 1);
+#ifndef PS5_IMGUI_HOST_REFERENCE
+    if (ok) ok = check(ps5_egl_current_draw_status(&first_draws) == 0, "benchmark initial driver status");
+    last_draws = first_draws;
+#endif
     if (ok) {
         start = end = bench_seconds();
         ok = check(start >= 0, "benchmark start clock");
@@ -130,6 +147,12 @@ static bool bench_case(unsigned id, GLuint fbo, int width, int height, int targe
         ok = check(begin >= previous, "benchmark frame clock") &&
              bench_draw(fbo, width, height, target, frame);
         glFinish(); // Timing includes real GPU completion, never just submission.
+#ifndef PS5_IMGUI_HOST_REFERENCE
+        unsigned draws = 0;
+        ok = check(ps5_egl_current_draw_status(&draws) == 0 && draws >= last_draws &&
+                   draws - last_draws >= 2, "benchmark retired driver draws") && ok;
+        last_draws = draws;
+#endif
         const double ready = bench_seconds();
         ok = check(glGetError() == GL_NO_ERROR && ready >= begin, "benchmark GPU completion") && ok;
 #ifndef PS5_IMGUI_HOST_REFERENCE
@@ -155,12 +178,12 @@ static bool bench_case(unsigned id, GLuint fbo, int width, int height, int targe
         qsort(frame_ms, count, sizeof(double), bench_compare);
         printf("[ps5-imgui-bench] result case=%u warmup=%u frames=%u seconds=%.6f fps=%.6f "
                "render_mean_ms=%.6f render_p50_ms=%.6f render_p95_ms=%.6f render_p99_ms=%.6f "
-               "frame_p50_ms=%.6f frame_p95_ms=%.6f frame_p99_ms=%.6f render_misses=%u frame_misses=%u status=0\n",
+               "frame_p50_ms=%.6f frame_p95_ms=%.6f frame_p99_ms=%.6f render_misses=%u frame_misses=%u driver_draws=%u status=0\n",
                id, warmup, count, end - start, count / (end - start), render_sum / count,
                bench_percentile(render_ms, count, 50), bench_percentile(render_ms, count, 95),
                bench_percentile(render_ms, count, 99), bench_percentile(frame_ms, count, 50),
                bench_percentile(frame_ms, count, 95), bench_percentile(frame_ms, count, 99),
-               render_misses, frame_misses);
+               render_misses, frame_misses, last_draws - first_draws);
     }
     free(render_ms);
     return ok;

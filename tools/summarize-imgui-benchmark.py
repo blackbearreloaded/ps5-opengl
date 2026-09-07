@@ -29,15 +29,18 @@ def summarize(text, host=False):
                 for fps in (30, 60, 90, 120)]
     timings = ["render_mean_ms", "render_p50_ms", "render_p95_ms", "render_p99_ms",
                "frame_p50_ms", "frame_p95_ms", "frame_p99_ms"]
-    report, rendered = [], 0
+    report = []
     for i, (begin, result, (width, height, target)) in enumerate(zip(begins, results, expected)):
         require(begin == dict(case=str(i), width=str(width), height=str(height), target=str(target),
                               mode="offscreen-completed"), "wrong matrix order or workload")
         require(set(result) == set(timings + ["case", "warmup", "frames", "seconds", "fps",
-                                            "render_misses", "frame_misses", "status"]), "unexpected fields")
+                                            "render_misses", "frame_misses", "driver_draws", "status"]), "unexpected fields")
         require(result["case"] == str(i) and result["status"] == "0", "failed/wrong case")
         count, warmup = int(result["frames"]), int(result["warmup"])
-        require(warmup == (2 if host else 30) and 2 <= count <= 8192, "invalid sample count")
+        require((warmup == 2 if host else 2 <= warmup <= 30) and 2 <= count <= 8192, "invalid sample count")
+        driver_draws = int(result["driver_draws"])
+        require(driver_draws == 0 if host else 2 * count <= driver_draws <= 8 * count,
+                "missing/invalid retired driver draws")
         seconds, fps = float(result["seconds"]), float(result["fps"])
         require(math.isfinite(seconds) and math.isfinite(fps) and seconds > 0 and fps > 0,
                 "invalid sample duration/throughput")
@@ -57,9 +60,9 @@ def summarize(text, host=False):
         require(all(0 <= v <= count for v in misses.values()), "invalid missed-budget count")
         require(probes[i * 2:i * 2 + 2] == [dict(case=str(i), phase=phase, samples="3", status="0")
                                           for phase in ("warmup", "final")], "missing/failed pixels")
-        rendered += count + warmup + 1  # One unmeasured preview per case.
         report.append(dict(width=width, height=height, target_fps=target, frames=count, seconds=seconds,
                            achieved_fps=fps, target_met=fps >= target * 0.99,
+                           warmup_frames=warmup, driver_draws=driver_draws,
                            frame_budget_tolerance_ms=0.25, **values, **misses))
     require(records("finished") == [dict(cases="12", status="0")], "matrix cleanup failed")
     require(re.findall(r"^\[ps5-imgui\] finished status=(\d+)$", text, re.M) == ["0"], "EGL cleanup failed")
@@ -71,7 +74,7 @@ def summarize(text, host=False):
         native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
         deferred = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
         require(len(native) == len(deferred) == text.count("[ps5-multidraw-batch]") ==
-                text.count("[ps5-deferred-batch]") and len(native) >= rendered,
+                text.count("[ps5-deferred-batch]") and len(native) >= 12,
                 "missing/failed native retirement")
         require(all(n == d == attempted and 0 < int(n) <= 8 and int(waits) < 2000
                     for n, (d, attempted, waits) in zip(deferred, native)), "batch accounting mismatch")
@@ -80,7 +83,7 @@ def summarize(text, host=False):
                 "preview lifecycle mismatch")
         require(re.findall(r"\[ps5-gpu-present\] frames=(\d+)", text) == ["12"], "preview flip coverage mismatch")
     return dict(mode="host-reference" if host else "PS5", workload="imgui-offscreen-completed",
-                display_fps_measured=False, cases=report)
+                display_fps_measured=False, deferred_batches=len(native) if not host else 0, cases=report)
 
 
 if __name__ == "__main__":

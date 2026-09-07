@@ -117,7 +117,8 @@ python3 tools/summarize-imgui-benchmark.py RECEIPT
 ```
 
 The distinct lightweight UI workload measures 1080p, 1440p and 2160p at target
-rates of 30/60/90/120 FPS in one launch. Each case has 30 warm-up frames and
+rates of 30/60/90/120 FPS in one launch. Each case warms for at most 30 frames
+or one second (at least two completed frames), then runs
 30 measured seconds; `glFinish` confirms GPU completion per frame. Three pixels
 (clear, opaque geometry, alpha overlap) are checked before and after measurement.
 The host check shortens each case to two warm-up and six measured frames without
