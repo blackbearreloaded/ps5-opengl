@@ -82,7 +82,8 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
             report["submission_per_call"]["sleeps"] = int(fields["sleeps"])
     present_lines = re.findall(r"^\[ps5-present-perf\] (.+)$", text, re.M)
     if present_lines or present_profile:
-        require(not host and len(present_lines) == 1, "expected one native presentation profile")
+        require(not host and len(present_lines) == 1 and
+                text.count("[ps5-present-perf]") == 1, "expected one native presentation profile")
         pairs = [token.split("=", 1) for token in present_lines[0].split()]
         require(all(len(pair) == 2 for pair in pairs), "malformed presentation field")
         fields = dict(pairs)
@@ -136,7 +137,7 @@ def self_test():
     present = ("[ps5-present-perf] calls=100 failures=0 warmup_frames=30 "
                "idle_ms=0 flip_ms=1 vblank_ms=2 total_ms=3\n")
     assert summarize(text + present, present_profile=True)["swap_other_ms"] == 1
-    for bad in (text, text + present + present,
+    for bad in (text, text + present + present, text + present + "[ps5-present-perf]\n",
                 text + present.replace("calls=100", "calls=99"),
                 text + present.replace("calls=100", "calls=101"),
                 text + present.replace("failures=0", "failures=1"),

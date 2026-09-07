@@ -69,6 +69,26 @@ python3 tools/summarize-imgui-profile.py RECEIPT --submit-profile --present-prof
 not a GPU timer. Profiling preserves the existing waits and is not enabled in the
 accepted SDK. Build/install profiling candidates into a separate SDK directory.
 
+The first instrumented native run (`d453cb2`, September 7) passed 602 frames,
+both pixel probes and 602 two-draw batch retirements, with clean title teardown,
+healthy services and exact-token release. Its 572 post-warm-up frames averaged
+**50.049 ms (~19.98 FPS)**: clear 17.769 ms, draw 4.020 ms, swap 28.225 ms.
+The synchronous clear's completion poll accounted for 16.424 ms. Native
+presentation took 15.834 ms (15.822 ms in post-flip vblank; queue-idle only
+0.004 ms), leaving 12.390 ms of other swap work. Busy unregister remained;
+close succeeded. This is a diagnostic result, not an optimization or new CTS campaign.
+
+Next target: coalesce eligible clear/draw work without losing resource ownership
+or CPU/GPU ordering. Internal blitter draws are deliberately excluded from the
+queue today; the clear also uses triangle-fan topology, outside ordinary batch
+eligibility. CPU buffer uploads/maps/unmaps unconditionally drain queued work.
+Simply allowing the clear would move its wait to the next upload. Any successor
+needs alias-aware resource-hazard checks, retained clear vertices/uniforms,
+CPU-fallback/readback ordering and mixed clear/draw regression evidence first.
+No presentation wait was removed on the basis of these timings.
+
+- 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
+
 ## OpenGL-only follow-up order
 
 1. Profile the accepted workload; change one measured bottleneck at a time with
