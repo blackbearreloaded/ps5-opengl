@@ -1868,6 +1868,35 @@ ps5_flush_gpu_data(const void *address, size_t bytes)
    __asm__ volatile("mfence" ::: "memory");
 }
 
+struct ps5_depth_flush_cache {
+   const void *data[2];
+   size_t size[2];
+};
+
+static void
+ps5_flush_depth_backing(struct ps5_depth_flush_cache *batch, unsigned slot,
+                         const void *data, size_t bytes)
+{
+   /* Only unsubmitted, retained batch resources may reuse a CPU flush. CPU
+    * access drains that batch; its cache is discarded before the next draw.
+    * ponytail: last backing per plane, not a cross-frame resource cache. */
+#ifdef PS5_GPU_PRESENT_BATCH
+   if (batch && data && bytes &&
+       batch->data[slot] == data && batch->size[slot] == bytes)
+      return;
+#else
+   (void)batch;
+   (void)slot;
+#endif
+   ps5_flush_gpu_data(data, bytes);
+#ifdef PS5_GPU_PRESENT_BATCH
+   if (batch) {
+      batch->data[slot] = data;
+      batch->size[slot] = bytes;
+   }
+#endif
+}
+
 static bool
 ps5_stage_packed_depth_samples(struct ps5_resource *resource,
                                unsigned *base_stride)
@@ -6345,7 +6374,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
                     unsigned drawid_offset,
                     const struct pipe_draw_indirect_info *indirect,
                     const struct pipe_draw_start_count_bias *draws,
-                    unsigned num_draws)
+                    unsigned num_draws,
+                    struct ps5_depth_flush_cache *depth_cache)
 {
    struct ps5_context *context = (struct ps5_context *)base;
    struct pipe_draw_start_count_bias draw;
@@ -6420,7 +6450,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
 
          single.instance_count = 1;
          single.start_instance = info->start_instance + instance;
-         ps5_draw_vbo_locked(base, &single, drawid_offset, NULL, draws, 1);
+         ps5_draw_vbo_locked(base, &single, drawid_offset, NULL, draws, 1, NULL);
          if (context->last_draw_status != 0)
             return;
       }
@@ -7166,7 +7196,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          return;
       }
       if (flush_depth_stencil)
-         ps5_flush_gpu_data(depth_data, depth_allocation);
+         ps5_flush_depth_backing(depth_cache, 0, depth_data, depth_allocation);
       if (packed) {
          if (!ps5_agc_gate2_set_depth_stencil_buffer ||
              !depth->stencil_data ||
@@ -7176,8 +7206,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             return;
          }
          if (flush_depth_stencil)
-            ps5_flush_gpu_data(depth->stencil_data,
-                               depth->stencil_allocation_size);
+            ps5_flush_depth_backing(depth_cache, 1, depth->stencil_data,
+                                     depth->stencil_allocation_size);
          printf("[ps5-gallium] stencil-state format=%u depth=%p/%zu stencil=%p/%zu control=%08x refmask=%08x refmask-bf=%08x\n",
                 depth->base.format, depth_data, depth_allocation,
                 depth->stencil_data, depth->stencil_allocation_size,
@@ -7649,6 +7679,7 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
    handled = true;
    context->last_draw_status = 0;
    for (unsigned first = 0; first < num_draws;) {
+      struct ps5_depth_flush_cache depth_cache = {0};
       if (ps5_agc_gate2_batch_begin() != 0) {
          context->last_draw_status = -30;
          break;
@@ -7660,7 +7691,7 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
          if (draws[first].count)
             ps5_draw_vbo_locked(base, info,
                drawid_offset + (info->increment_draw_id ? first : 0),
-               NULL, &draws[first], 1);
+               NULL, &draws[first], 1, &depth_cache);
          if (context->last_draw_status)
             break;
       }
@@ -7697,6 +7728,7 @@ release:
 static struct {
    struct ps5_context *owner;
    unsigned count;
+   struct ps5_depth_flush_cache depth_cache;
    struct {
       struct pipe_resource *storage[3];
       struct pipe_resource *retained[PS5_BATCH_RESOURCE_COUNT];
@@ -7847,7 +7879,8 @@ ps5_try_deferred_draw(struct pipe_context *base,
    context->descriptor_storage[0] = ps5_deferred.slots[slot].storage[1];
    context->descriptor_storage[1] = ps5_deferred.slots[slot].storage[2];
    context->last_draw_status = 0;
-   ps5_draw_vbo_locked(base, info, drawid_offset, indirect, draws, num_draws);
+   ps5_draw_vbo_locked(base, info, drawid_offset, indirect, draws, num_draws,
+                       &ps5_deferred.depth_cache);
    context->vertex_descriptor_table = saved[0];
    context->descriptor_storage[0] = saved[1];
    context->descriptor_storage[1] = saved[2];
@@ -7923,7 +7956,7 @@ ps5_draw_vbo(struct pipe_context *base, const struct pipe_draw_info *info,
    /* ponytail: one hardware queue lock; split per queue if parallel submit
     * becomes measurable and the runtime stops using process-global setters. */
    ps5_screen_submit_lock(&screen->base);
-   ps5_draw_vbo_locked(base, info, drawid_offset, indirect, draws, num_draws);
+   ps5_draw_vbo_locked(base, info, drawid_offset, indirect, draws, num_draws, NULL);
    ps5_screen_submit_unlock(&screen->base);
    pipe_resource_reference(&uploaded_indices, NULL);
    if (context->last_draw_status != 0)
