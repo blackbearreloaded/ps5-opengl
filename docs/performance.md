@@ -549,6 +549,16 @@ The unchanged G6 runtime's five-minute 1080p60 run retired exactly 17,970 groups
 It closed successfully without busy unregister. This is bounded endurance, not
 exhaustive memory-pressure, suspend/resume or device-loss recovery validation.
 
+G7 reuses the offscreen benchmark with `PS5_IMGUI_BENCHMARK_CASE=1` (1080p60)
+and requires `summarize-imgui-benchmark.py --case 1`. Default `-1` still runs
+and audits all twelve cases; a single case is never accepted as a full matrix.
+Freeze a matched G6-runtime baseline first. Optimize the existing CPU color
+staging loop before changing GPU resource ownership, sampling or synchronization;
+retain full bounds and compare all byte sizes, mip/layer slices and both copy
+directions against the original offset calculation on the host. Then measure
+the same native scene/pixels/completion/teardown. This remains CPU staging, not
+a claim of GPU-resident sampleable FBOs or predictable game performance.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Investigate busy unregister independently; validate repeated creation/close,

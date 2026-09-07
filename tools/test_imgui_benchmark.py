@@ -10,10 +10,12 @@ summarize = runpy.run_path(str(ROOT / "tools/summarize-imgui-benchmark.py"))["su
 profile = runpy.run_path(str(ROOT / "tools/summarize-imgui-profile.py"))["summarize"]
 
 
-def receipt():
+def receipt(case=-1):
     rows = []
     for i, (w, h, fps) in enumerate((w, h, fps) for w, h in ((1920, 1080), (2560, 1440), (3840, 2160))
                                     for fps in (30, 60, 90, 120)):
+        if case >= 0 and i != case:
+            continue
         rows.append(f"[ps5-imgui-bench] begin case={i} width={w} height={h} target={fps} mode=offscreen-completed")
         rows.extend(f"[ps5-imgui-bench] probe case={i} phase={phase} samples=3 status=0"
                     for phase in ("warmup", "final"))
@@ -22,14 +24,27 @@ def receipt():
                     "frame_p50_ms=333 frame_p95_ms=334 frame_p99_ms=334 render_misses=0 frame_misses=90 driver_draws=180 status=0")
         rows.extend(["[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0",
                      "[ps5-deferred-batch] draws=3 result=0"])
-    rows.extend(["[ps5-imgui-bench] finished cases=12 status=0", "[ps5-imgui] finished status=0",
+    count = 12 if case < 0 else 1
+    rows.extend([f"[ps5-imgui-bench] finished cases={count} status=0", "[ps5-imgui] finished status=0",
                  "[pss-opengl-native] gate completed status=0",
-                 "[ps5-agc] present-shutdown unregister=80290009 close=00000000 frames=12",
-                 "[ps5-gpu-present] frames=12"])
+                 f"[ps5-agc] present-shutdown unregister=80290009 close=00000000 frames={count}",
+                 f"[ps5-gpu-present] frames={count}"])
     return "\n".join(rows)
 
 
 class BenchmarkTest(unittest.TestCase):
+    def test_selected_case(self):
+        for case in range(12):
+            text = receipt(case)
+            self.assertEqual(len(summarize(text, case=case)["cases"]), 1)
+            for bad_case in (-2, -1, (case + 1) % 12, 12):
+                with self.assertRaises(ValueError):
+                    summarize(text, case=bad_case)
+            with self.assertRaises(ValueError):
+                summarize(receipt(), case=case)
+            with self.assertRaises(ValueError):
+                summarize(text + "\n[ps5-imgui-bench] probe case=1 phase=final samples=3 status=0", case=case)
+
     def test_audit(self):
         text = receipt()
         report = summarize(text)

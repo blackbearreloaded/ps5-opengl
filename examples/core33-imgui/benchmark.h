@@ -2,6 +2,12 @@
 // Window previews are outside measurement; no high-refresh scanout claim.
 #include "benchmark_timing.h"
 
+#ifndef PS5_IMGUI_BENCHMARK_CASE
+#define PS5_IMGUI_BENCHMARK_CASE -1
+#endif
+static_assert(PS5_IMGUI_BENCHMARK_CASE >= -1 && PS5_IMGUI_BENCHMARK_CASE < 12,
+              "benchmark case must be -1 (matrix) or 0..11");
+
 #ifndef PS5_IMGUI_HOST_REFERENCE
 // Existing read-only diagnostic; glFinish has already retired the frame.
 extern "C" int ps5_egl_current_draw_status(unsigned*);
@@ -163,10 +169,15 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     GLuint fbo = 0, color = 0;
     glGenFramebuffers(1, &fbo);
     glGenRenderbuffers(1, &color);
-    unsigned completed = 0;
+    unsigned completed = 0, id = 0;
     bool ok = check(fbo && color && glGetError() == GL_NO_ERROR, "benchmark objects");
     for (const auto& size : sizes) {
         if (!ok) break;
+        if (PS5_IMGUI_BENCHMARK_CASE >= 0 &&
+            static_cast<unsigned>(PS5_IMGUI_BENCHMARK_CASE) / 4 != id / 4) {
+            id += 4;
+            continue;
+        }
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         glBindRenderbuffer(GL_RENDERBUFFER, color);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, size[0], size[1]);
@@ -174,18 +185,22 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         ok = check(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE &&
                    glGetError() == GL_NO_ERROR, "benchmark framebuffer allocation");
         for (int rate : rates) {
+            const unsigned current = id++;
+            if (PS5_IMGUI_BENCHMARK_CASE >= 0 &&
+                current != static_cast<unsigned>(PS5_IMGUI_BENCHMARK_CASE)) continue;
             if (!ok) break;
             // One preview per case, excluded from all measured frame counts/times.
             ok = bench_draw(0, window_width, window_height, rate, 0) &&
                  check(eglSwapBuffers(display, surface), "benchmark preview swap");
-            if (ok) ok = bench_case(completed, fbo, size[0], size[1], rate);
+            if (ok) ok = bench_case(current, fbo, size[0], size[1], rate);
             if (ok) ++completed;
         }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteRenderbuffers(1, &color);
     glDeleteFramebuffers(1, &fbo);
-    ok = check(glGetError() == GL_NO_ERROR && completed == 12, "benchmark cleanup/completeness") && ok;
+    ok = check(glGetError() == GL_NO_ERROR && completed == (PS5_IMGUI_BENCHMARK_CASE < 0 ? 12u : 1u),
+               "benchmark cleanup/completeness") && ok;
     printf("[ps5-imgui-bench] finished cases=%u status=%d\n", completed, ok ? 0 : 1);
     return ok;
 }

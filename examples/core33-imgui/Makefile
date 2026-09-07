@@ -34,7 +34,7 @@ egl_public_core33_imgui_tv.o: tv_main.o $(filter-out main.o,$(objects))
 	ld.lld-18 -r -o $@ $^
 
 benchmark.o: main.cpp benchmark.h benchmark_timing.h
-	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_BENCHMARK -c -o $@ $<
+	$(CXX) $(flags) -DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_BENCHMARK -DPS5_IMGUI_BENCHMARK_CASE=$(or $(PS5_IMGUI_BENCHMARK_CASE),-1) -c -o $@ $<
 
 egl_public_core33_imgui_benchmark.o: benchmark.o $(filter-out main.o,$(objects))
 	ld.lld-18 -r -o $@ $^

@@ -17,7 +17,8 @@ case ${1:-} in
         case ${PS5_IMGUI_WINDOW_TARGET:-60} in 30|60|90|120) ;; *) echo 'Invalid window target' >&2; exit 2 ;; esac
         demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_PROFILE -DPS5_IMGUI_WINDOW_BENCHMARK
                     -DPS5_IMGUI_WINDOW_TARGET=${PS5_IMGUI_WINDOW_TARGET:-60}) ;;
-    --benchmark) demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_BENCHMARK) ;;
+    --benchmark) demo_flags=(-DPS5_IMGUI_TV_DEMO -DPS5_IMGUI_BENCHMARK
+                             -DPS5_IMGUI_BENCHMARK_CASE=${PS5_IMGUI_BENCHMARK_CASE:--1}) ;;
     --lifecycle) main_source="$root/examples/core33-imgui/lifecycle.cpp" ;;
     *) echo 'usage: test-imgui-host.sh [--tv-demo|--profile|--window-benchmark|--benchmark|--lifecycle]' >&2; exit 2 ;;
 esac
@@ -40,7 +41,8 @@ if [[ ${1:-} == --lifecycle ]]; then
     test "$(grep -cE '^\[ps5-imgui\] frame=.* PASS$' "$root/build/imgui-host/check.log")" = 18
 fi
 if [[ ${1:-} == --benchmark ]]; then
-    python3 "$root/tools/summarize-imgui-benchmark.py" "$root/build/imgui-host/check.log" --host
+    python3 "$root/tools/summarize-imgui-benchmark.py" "$root/build/imgui-host/check.log" --host \
+        --case "${PS5_IMGUI_BENCHMARK_CASE:--1}"
 fi
 if [[ ${1:-} == --window-benchmark ]]; then
     python3 "$root/tools/summarize-imgui-profile.py" "$root/build/imgui-host/check.log" \
