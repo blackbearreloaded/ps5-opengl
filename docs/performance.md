@@ -542,6 +542,13 @@ retain resources in host fault injection. Next reuse the existing five-minute
 suspend/resume, device-loss recovery and physical UI verification remain unproven.
 Frozen artifacts and receipt hashes: `build/frozen/g6-close-candidates-20260907.md`.
 
+- 2026-09-07 | G6 | ec9ac2c | pass: 300s/17,970 frames, 11 pixels, ten 59.83-59.93 FPS windows, close-only/health/unlock | results/g6-close-soak-20260907
+
+The unchanged G6 runtime's five-minute 1080p60 run retired exactly 17,970 groups
+(53,910 draws) and 17,959 GPU flips; 11 frames used the intentional readback path.
+It closed successfully without busy unregister. This is bounded endurance, not
+exhaustive memory-pressure, suspend/resume or device-loss recovery validation.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Investigate busy unregister independently; validate repeated creation/close,

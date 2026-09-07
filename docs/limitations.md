@@ -36,6 +36,8 @@ distinct when reporting compatibility.
   three native EGL sessions and the 4K120 check pass with no busy warning and
   successful close/restoration. This is bounded full-port teardown evidence,
   not unregister-while-open support or device-loss recovery.
+  Its five-minute 1080p60 endurance run also passed 17,970 frames and 11 pixel
+  checks with successful close and healthy native teardown.
 - **Stress:** maximum-axis framebuffers were tested, not an 8192x8192 allocation
   or deliberate hardware OOM exhaustion. Five-minute runs and bounded recreation
   are tested, not exhaustive long sessions, suspend/resume or device-loss recovery.
