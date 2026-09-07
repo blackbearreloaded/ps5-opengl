@@ -42,11 +42,11 @@ static unsigned char *runtime_video_framebuffer;
 static size_t runtime_video_framebuffer_size;
 static unsigned runtime_present_count;
 static uint64_t runtime_render_marker;
-static int close_failure, unregister_failure, closes, unregisters;
+static int close_failure, closes, unregisters;
 static int close_video(int handle) { assert(handle == 7); ++closes; return close_failure ? -1 : 0; }
 static int unregister_video(int handle, int group) {
     assert(handle == 7 && group == 0); ++unregisters;
-    return unregister_failure ? (int)UINT32_C(0x80290009) : 0;
+    return (int)UINT32_C(0x80290009); /* Active scanout may keep its buffer set busy. */
 }
 static unsigned opens, sleeps, pending_calls, waits, pending_until;
 static int acquire_failure, pending_error, wait_error;
@@ -133,7 +133,7 @@ static void setup(void) {
     runtime_video_framebuffer = scanout; runtime_video_framebuffer_size = sizeof(scanout);
     runtime_present_count = 6; runtime_render_marker = 200;
     runtime_batch_faulted = runtime_batch_active = runtime_batch_count = 0;
-    close_failure = unregister_failure = closes = unregisters = releases = locked = egl_error = 0;
+    close_failure = closes = unregisters = releases = locked = egl_error = 0;
     opens = sleeps = pending_calls = waits = pending_until = 0;
     acquire_failure = pending_error = wait_error = 0;
     ps5_display = (struct ps5_egl_display){.initialized=true, .screen=&screen,
@@ -156,7 +156,7 @@ int main(void) {
         setup(); pending_until = n;
         assert((ps5_agc_gate2_shutdown_present() == 0) == (n <= 120));
         assert(waits == (n > 120 ? 120 : n));
-        assert(closes == (n <= 120) && unregisters == (n <= 120));
+        assert(closes == (n <= 120) && unregisters == 0);
         if (n > 120)
             assert(runtime_video_handle == 7 && runtime_video_registered && runtime_video_framebuffer == scanout);
     }
@@ -199,17 +199,17 @@ int main(void) {
             }
         }
     }
-    for (int busy = 0; busy <= 1; ++busy) {
-        setup(); close_failure = 1; unregister_failure = busy;
+    for (int registered = 0; registered <= 1; ++registered) {
+        setup(); close_failure = 1; runtime_video_registered = registered;
         assert(ps5_agc_gate2_shutdown_present() != 0);
         assert(runtime_video_handle == 7 && runtime_video_framebuffer == scanout);
         assert(runtime_video_framebuffer_size == sizeof(scanout) && runtime_present_count == 6);
         assert(runtime_render_marker == 200 && runtime_video_api.close == close_video);
-        assert(runtime_video_registered == busy);
+        assert(runtime_video_registered == registered);
         close_failure = 0;
         assert(ps5_agc_gate2_shutdown_present() == 0);
         assert(runtime_video_handle == -1 && !runtime_video_framebuffer && !runtime_video_registered);
-        assert(unregisters == 1 + busy && closes == 2);
+        assert(unregisters == 0 && closes == 2);
         assert(ps5_agc_gate2_shutdown_present() == 0 && closes == 2); /* Idempotent. */
     }
     for (int failure = 1; failure <= 7; ++failure) {
@@ -234,7 +234,7 @@ int main(void) {
     }
     puts("present-shutdown: PASS close errors/batch guards retain runtime, surface and display ownership");
     puts("present-acquire/wait: PASS failed acquisition retains close ownership; errors stop; 120 waits bounded");
-    puts("present-drain: PASS pending/error/timeout drains precede unregister/close; failures retain EGL resources");
+    puts("present-drain: PASS bounded drains precede close-only teardown; failures retain EGL resources");
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

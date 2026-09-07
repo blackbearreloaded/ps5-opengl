@@ -78,8 +78,10 @@ def summarize(text, host=False):
                 "missing/failed native retirement")
         require(all(n == d == attempted and 0 < int(n) <= 8 and int(waits) < 2000
                     for n, (d, attempted, waits) in zip(deferred, native)), "batch accounting mismatch")
-        require(re.findall(r"\[ps5-agc\] present-shutdown unregister=([0-9a-f]+) close=([0-9a-f]+) frames=(\d+)",
-                           text) in [[("80290009", "00000000", "12")], [("00000000", "00000000", "12")]],
+        shutdown = re.findall(r"^\[ps5-agc\] present-shutdown (.+)$", text, re.M)
+        require(len(shutdown) == text.count("[ps5-agc] present-shutdown") == 1 and
+                shutdown in [[f"{method} close=00000000 frames=12"]
+                             for method in ("unregister=00000000", "unregister=80290009", "method=close")],
                 "preview lifecycle mismatch")
         require(re.findall(r"\[ps5-gpu-present\] frames=(\d+)", text) == ["12"], "preview flip coverage mismatch")
     return dict(mode="host-reference" if host else "PS5", workload="imgui-offscreen-completed",

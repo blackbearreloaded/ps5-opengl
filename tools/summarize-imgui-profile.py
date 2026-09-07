@@ -224,9 +224,11 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
                     report["deferred_batches"]["clear_two_draw_chunks"] == frames + warmup and
                     report["deferred_batches"]["chunks"] == frames + warmup,
                     "window GPU flip/clear/draw coverage missing")
-            shutdown = re.findall(r"\[ps5-agc\] present-shutdown unregister=([0-9a-f]+) close=([0-9a-f]+) frames=(\d+)", text)
-            require(shutdown in [[(code, "00000000", str(frames + warmup))]
-                                 for code in ("00000000", "80290009")], "window presenter cleanup failed")
+            shutdown = re.findall(r"^\[ps5-agc\] present-shutdown (.+)$", text, re.M)
+            require(len(shutdown) == text.count("[ps5-agc] present-shutdown") == 1 and
+                    shutdown in [[f"{method} close=00000000 frames={frames + warmup}"]
+                                 for method in ("unregister=00000000", "unregister=80290009", "method=close")],
+                    "window presenter cleanup failed")
         report["window_benchmark"] = dict(width=window_width, height=window_height, target_fps=window_target,
             achieved_fps=fps, seconds=seconds, target_met=fps >= window_target * 0.99,
             frame_mean_ms=seconds * 1000 / frames, frame_budget_tolerance_ms=0.25,

@@ -1187,7 +1187,6 @@ static int runtime_video_restore_output(void)
 
 int ps5_agc_gate2_shutdown_present(void)
 {
-    int unregister_rc = 0;
     int close_rc = 0;
 #ifdef PS5_GPU_PRESENT_BATCH
     if (runtime_gpu_present_buffer >= 0)
@@ -1209,10 +1208,9 @@ int ps5_agc_gate2_shutdown_present(void)
 #if defined(PS5_DRAW_PROFILE) && defined(PS5_NATIVE_TITLE_RUNTIME)
         runtime_video_report("end");
 #endif
-        unregister_rc = runtime_video_api.unregister_buffers(
-            runtime_video_handle, 0);
-        if (unregister_rc == 0)
-            runtime_video_registered = 0;
+        /* An idle flip queue can still scan out its last registered buffer.
+         * This path always closes the whole port; close releases its buffers.
+         * Retain registration/allocation ownership until that close succeeds. */
     }
 #if PS5_SCANOUT_FPS > 60
     if (runtime_video_handle >= 0) {
@@ -1224,9 +1222,9 @@ int ps5_agc_gate2_shutdown_present(void)
     if (runtime_video_handle >= 0)
         close_rc = runtime_video_api.close(runtime_video_handle);
     if (runtime_video_handle >= 0)
-        printf("[ps5-agc] present-shutdown unregister=%08" PRIx32
+        printf("[ps5-agc] present-shutdown method=close"
                " close=%08" PRIx32 " frames=%u\n",
-               (uint32_t)unregister_rc, (uint32_t)close_rc,
+               (uint32_t)close_rc,
                runtime_present_count);
     /* A failed close does not release ownership of the scanout allocation. */
     if (close_rc != 0)

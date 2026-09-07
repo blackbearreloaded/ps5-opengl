@@ -36,6 +36,14 @@ class BenchmarkTest(unittest.TestCase):
         self.assertFalse(report["display_fps_measured"])
         self.assertEqual(len(report["cases"]), 12)
         self.assertTrue(all(not case["target_met"] for case in report["cases"]))
+        for method in ("unregister=00000000", "method=close"):
+            current = text.replace("unregister=80290009", method)
+            self.assertEqual(len(summarize(current)["cases"]), 12)
+            for bad in (current.replace("close=00000000", "close=ffffffff"),
+                        current + "\n[ps5-agc] present-shutdown malformed",
+                        current.replace(method + " close=", "method=unknown close=")):
+                with self.assertRaises(ValueError):
+                    summarize(bad)
         for old, new in (("fps=3.000000", "fps=120"), ("seconds=30.000000", "seconds=29.9"),
                          ("render_mean_ms=10", "render_mean_ms=nan"), ("render_p95_ms=10", "render_p95_ms=9"),
                          ("phase=final samples=3 status=0", "phase=final samples=3 status=1"),
@@ -129,6 +137,14 @@ int main() {
 """ + ("[ps5-multidraw-batch] draws=3 attempted=3 waits=1 result=0\n"
        "[ps5-deferred-batch] draws=3 result=0\n") * 1830
         self.assertTrue(profile(text, window_target=60)["window_benchmark"]["target_met"])
+        for method in ("unregister=00000000", "method=close"):
+            current = text.replace("unregister=80290009", method)
+            self.assertTrue(profile(current, window_target=60)["window_benchmark"]["target_met"])
+            for bad in (current.replace("close=00000000", "close=ffffffff"),
+                        current + "\n[ps5-agc] present-shutdown malformed",
+                        current.replace(method + " close=", "method=unknown close=")):
+                with self.assertRaises(ValueError):
+                    profile(bad, window_target=60)
         for old, new in (("seconds=30.000000", "seconds=29.900000"),
                          ("fps=60.000000", "fps=600"), ("target=60", "target=120"),
                          ("width=1920", "width=2560"), ("active_mean_ms=16", "active_mean_ms=15"),

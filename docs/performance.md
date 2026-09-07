@@ -517,6 +517,18 @@ also remain unmeasured, separate follow-ups.
 
 ## OpenGL-only follow-up order
 
+G6 starts with full-port shutdown: retain bounded GPU/flip retirement and output
+restoration, then close the owned VideoOut handle without first unregistering
+the still-scanned buffer set. The public [PS5 SDL backend](https://github.com/ps5-payload-dev/SDL/blob/release-2.30.x-ps5/src/video/ps5/SDL_ps5video.c)
+also uses close-only teardown; this is a reference pattern, not hardware proof.
+Keep every resource on drain/restore/close failure. The new receipt explicitly
+says `method=close`, never a fabricated successful unregister. Reuse the three-session
+ImGui/EGL lifecycle gate at 1080p60, then the matched 4K120 control. Require actual
+close success, pixels, recreation, output restoration and clean native teardown.
+Only after those pass extend endurance and move to the focused FBO/3D workload;
+notify the owner before starting an existing-game integration. No hardware fault
+injection, unproven blank flip, full CTS rerun or SDK promotion at this stage.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Investigate busy unregister independently; validate repeated creation/close,
