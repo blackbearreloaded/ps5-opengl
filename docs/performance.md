@@ -5,7 +5,7 @@ The accepted correctness campaign remains tied to the frozen identities in
 
 ## Current candidate — 2026-09-06
 
-Runtime/compiler `2df7d88` passes the combined indexed/instanced/restart/base-vertex
+The draw baseline at runtime/compiler `2df7d88` passes the combined indexed/instanced/restart/base-vertex
 draw regression, mixed float/integer constant attributes, and the original
 textured/depth-tested cube benchmark. All three native cycles closed cleanly.
 The final 1080p cube rerun measured 21.89 / 6.00 / 1.76 FPS for 1 / 8 / 32 ordinary
@@ -22,17 +22,29 @@ and complete the four-configuration release matrix. The default SDK and historic
 validation export have not been replaced. Batching
 remains opt-in; per-draw completion waits remain the main scaling limitation.
 
+Latest G7: presenter-error and submission-retirement guards pass host injection
+and normal native lifecycle/multi-draw controls. Latest G8: read-only fragment
+texture batching passes 32,256 pixels, sparse units 0/7, post-batch upload and
+query/fence/buffer reuse. Four single-sample timings were 139.9–166.5 ms serial
+versus 33.4–33.7 ms batched (4.16–4.99x); this is not a game-FPS estimate.
+The standalone installed SDK is still the previous default; no promotion or
+new complete CTS acceptance is implied. Separate ordinary GL calls remain
+synchronous. Extending batching across those calls requires flush points for
+CPU maps/uploads/clears, queries, presentation and destruction, plus immutable
+descriptors and retained resources; removing waits alone is not safe.
+
 ## Release sequence
 
 - 2026-09-06 | G7 | e678bbb | pass: presenter-error SDK, three EGL/ImGui sessions, 18 frames/180 probes; clean teardown/health/unlock | results/g7-present-errors-lifecycle/220742
 - 2026-09-06 | G7 | f7daf54 | pass: fail-stop host checks + native lifecycle and 32256-pixel multi-draw controls; clean teardown/health/unlock | results/g7-retirement-{lifecycle,multidraw}
+- 2026-09-06 | G8 | d0fb05c | pass: textured multi-draw, 32256 pixels + upload/query/fence/orphan; 4.16–4.99x workload ratio; clean teardown/health/unlock | results/g8-multidraw-textures/223705
 
 Unconfirmed native submission retirement now terminates the application before
 cleanup or exit handlers can reuse GPU memory; see [consumer limits](consumer-build.md#unrecoverable-gpu-submission-errors).
-Normal regressions do not establish hardware device-loss recovery. G8 next:
-extend the existing bounded multi-draw path to read-only fragment textures,
-retaining their storage and testing upload/reuse and descriptor isolation;
-keep vertex-texture, depth/MSAA and framebuffer-feedback exclusions.
+Normal regressions do not establish hardware device-loss recovery. Fragment
+textures are now covered in the existing bounded multi-draw path; vertex-texture,
+depth/MSAA and framebuffer-feedback exclusions remain. Audit the frozen receipt
+with `python3 tests/ps5/test_multidraw_lifetime.py RECEIPT --textures`.
 
 1. G5 correctness: PrimitiveID consumers/program switches, then affected CTS.
 2. G6 consumers: rebuild SDK; clean Make/CMake/pkg-config checks and native ImGui/NanoVG/Sokol.
@@ -398,10 +410,12 @@ unchanged. This uses multiple existing submissions followed by one suspend,
 which is distinct from the earlier repeated-command-buffer diagnostic.
 
 Initial eligibility is direct triangle draws with native indices or no indices,
-no shader texture use, a single non-staged RGBA8 2D level-zero target, no enabled depth/stencil,
+initially no shader texture use, a single non-staged RGBA8 2D level-zero target, no enabled depth/stencil,
 geometry shader, query, conditional rendering or stream output. Other paths
-stay synchronous. Submission/retirement failures poison this process's queue
-and quarantine bounded resources until teardown; no speculative reset or replay.
+stay synchronous. G8 adds used linear RGBA8 level-zero fragment textures and
+retains their allocations. Submission/retirement errors now fail-stop the
+application; only post-retirement cleanup failures return with bounded resources
+quarantined. No speculative reset or replay.
 An unused, non-staged depth/stencil attachment is allowed and retained, since
 the EGL surface always supplies one. Staged depth remains excluded even when disabled.
 The default build and installed SDK remain unchanged. Force-rebuild when
