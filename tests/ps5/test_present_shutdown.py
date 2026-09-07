@@ -9,6 +9,10 @@ runtime = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
 egl = (root / "src/egl/ps5_egl.c").read_text()
 shutdown = runtime[runtime.index("int ps5_agc_gate2_shutdown_present(void)"):
                    runtime.index("static int runtime_video_acquire(")]
+acquire_wait = runtime[runtime.index("static int runtime_video_acquire("):
+                       runtime.index("static int runtime_video_prepare_draw(")]
+video_api = runtime[runtime.index("typedef struct video_api {"):
+                    runtime.index("} video_api_t;") + len("} video_api_t;")]
 terminate = egl[egl.index("EGLAPI EGLBoolean EGLAPIENTRY\neglTerminate("):
                 egl.index("EGLAPI EGLint EGLAPIENTRY\neglGetError(")]
 destroy = egl[egl.index("EGLAPI EGLBoolean EGLAPIENTRY\neglDestroySurface("):
@@ -24,7 +28,14 @@ code = r'''
 #define RENDER_MARKER 100
 static int runtime_batch_faulted, runtime_batch_active;
 static unsigned runtime_batch_count;
-typedef struct { int (*unregister_buffers)(int, int); int (*close)(int); } video_api_t;
+typedef struct { uint64_t words[8]; } video_attribute_t;
+typedef struct { void *a, *b, *c, *d; } video_buffer_t;
+''' + video_api + r'''
+#define FRAMEBUFFER_BYTES 64
+#define FRAMEBUFFER_POOL_BYTES 128
+#define DISPLAY_WIDTH 8
+#define DISPLAY_HEIGHT 8
+#define VIDEO_OUT_PIXEL_FORMAT 1
 static video_api_t runtime_video_api;
 static int runtime_video_handle = -1, runtime_video_registered;
 static unsigned char *runtime_video_framebuffer;
@@ -37,7 +48,34 @@ static int unregister_video(int handle, int group) {
     assert(handle == 7 && group == 0); ++unregisters;
     return unregister_failure ? (int)UINT32_C(0x80290009) : 0;
 }
-''' + shutdown + r'''
+static unsigned opens, sleeps, pending_calls, waits, pending_until;
+static int acquire_failure, pending_error, wait_error;
+static int open_video(int32_t user, int32_t bus, int32_t index, const void *p) {
+    assert(user == 0xff && !bus && !index && !p); ++opens;
+    return acquire_failure == 1 ? -10 : 7;
+}
+static int flip_rate(int32_t handle, int32_t rate) {
+    assert(handle == 7 && !rate); return acquire_failure == 2 ? -11 : 0;
+}
+static void attribute(video_attribute_t *a, uint64_t format, uint32_t tile,
+                      uint32_t w, uint32_t h, uint64_t x, uint32_t y, uint64_t z) {
+    assert(format == 1 && !tile && w == 8 && h == 8 && !x && !y && !z);
+    a->words[0] = 1;
+}
+static int register_video(int32_t handle, int32_t group, int32_t start,
+                          video_buffer_t *b, int32_t count, video_attribute_t *a,
+                          int32_t flags, void *p) {
+    assert(handle == 7 && !group && !start && count == 2 && !flags && !p);
+    assert(b[0].a && b[1].a && a->words[0] == 1);
+    return acquire_failure == 3 ? -12 : 0;
+}
+static int sceKernelUsleep(uint32_t us) { assert(us == 500000); ++sleeps; return 0; }
+static int pending(int32_t handle) {
+    assert(handle == 7); ++pending_calls;
+    return pending_error ? pending_error : (waits < pending_until);
+}
+static int vblank(int32_t handle) { assert(handle == 7); ++waits; return wait_error; }
+''' + shutdown + acquire_wait + r'''
 #define EGLAPI
 #define EGLAPIENTRY
 #define EGL_TRUE 1
@@ -87,12 +125,16 @@ static void release_surface(void *s) { assert(s == &surface); ++releases; }
 #undef free
 static void setup(void) {
     static struct pipe_screen screen = {destroy_screen};
-    runtime_video_api = (video_api_t){unregister_video, close_video};
+    runtime_video_api = (video_api_t){.unregister_buffers=unregister_video, .close=close_video,
+        .open=open_video, .set_flip_rate=flip_rate, .set_attribute2=attribute,
+        .register_buffers2=register_video, .is_flip_pending=pending, .wait_vblank=vblank};
     runtime_video_handle = 7; runtime_video_registered = 1;
     runtime_video_framebuffer = scanout; runtime_video_framebuffer_size = sizeof(scanout);
     runtime_present_count = 6; runtime_render_marker = 200;
     runtime_batch_faulted = runtime_batch_active = runtime_batch_count = 0;
     close_failure = unregister_failure = closes = unregisters = releases = locked = egl_error = 0;
+    opens = sleeps = pending_calls = waits = pending_until = 0;
+    acquire_failure = pending_error = wait_error = 0;
     ps5_display = (struct ps5_egl_display){.initialized=true, .screen=&screen,
         .scanout={&resource, &resource}, .surfaces=1};
     surface = (struct ps5_egl_surface){.magic=1, .window=true, .used=true,
@@ -106,6 +148,45 @@ static void inject(int failure) {
     runtime_batch_count = failure == 4;
 }
 int main(void) {
+    setup(); pending_error = -21;
+    assert(runtime_video_wait_idle() != 0 && !waits && pending_calls == 1);
+    for (int error = -22; error <= 22; error += 44) {
+        setup(); pending_until = 3; wait_error = error;
+        assert(runtime_video_wait_idle() != 0 && waits == 1 && pending_calls == 1);
+    }
+    for (unsigned n = 0; n <= 121; ++n) {
+        setup(); pending_until = n;
+        assert((runtime_video_wait_idle() == 0) == (n <= 120));
+        assert(waits == (n > 120 ? 120 : n) && pending_calls == waits + 1);
+    }
+    for (int failure = 0; failure <= 3; ++failure) {
+        for (int close_error = 0; close_error <= 1; ++close_error) {
+            setup();
+            video_api_t api = runtime_video_api;
+            runtime_video_api = (video_api_t){0};
+            runtime_video_handle = -1; runtime_video_registered = 0;
+            runtime_video_framebuffer = NULL; runtime_video_framebuffer_size = 0;
+            acquire_failure = failure; close_failure = close_error;
+            int attempts = 0;
+            int rc = runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts);
+            assert((rc == 0) == (failure == 0));
+            assert(attempts == (failure == 1 ? 3 : 1));
+            assert(opens == (unsigned)attempts && sleeps == (failure == 1 ? 2u : 0u));
+            if (!failure || (failure >= 2 && close_error)) {
+                assert(runtime_video_handle == 7 && runtime_video_api.close == close_video);
+                assert(runtime_video_registered == !failure);
+                if (close_error) {
+                    assert(!eglDestroySurface(&ps5_display, &surface));
+                    assert(egl_error == EGL_BAD_ACCESS && !releases && surface.magic == 1);
+                }
+                close_failure = 0;
+                assert(eglDestroySurface(&ps5_display, &surface));
+                assert(runtime_video_handle == -1 && !runtime_video_registered);
+            } else {
+                assert(runtime_video_handle < 0 && !runtime_video_registered);
+            }
+        }
+    }
     for (int busy = 0; busy <= 1; ++busy) {
         setup(); close_failure = 1; unregister_failure = busy;
         assert(ps5_agc_gate2_shutdown_present() != 0);
@@ -140,6 +221,7 @@ int main(void) {
         assert(!ps5_display.initialized && !ps5_display.scanout[0] && releases == 4 && !locked);
     }
     puts("present-shutdown: PASS close errors/batch guards retain runtime, surface and display ownership");
+    puts("present-acquire/wait: PASS failed acquisition retains close ownership; errors stop; 120 waits bounded");
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

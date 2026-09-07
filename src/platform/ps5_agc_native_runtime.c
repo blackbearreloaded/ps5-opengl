@@ -965,6 +965,7 @@ static int runtime_video_acquire(const video_api_t *video,
         if (attempt != 3)
             sceKernelUsleep(UINT32_C(500000));
     }
+    runtime_video_api = *video;
     if (runtime_video_handle < 0 ||
         video->set_flip_rate(runtime_video_handle, 0) != 0)
         goto fail;
@@ -973,7 +974,6 @@ static int runtime_video_acquire(const video_api_t *video,
     if (video->register_buffers2(runtime_video_handle, 0, 0, buffers, 2,
                                  &attribute, 0, NULL) != 0)
         goto fail;
-    runtime_video_api = *video;
     runtime_video_framebuffer = framebuffer;
     runtime_video_framebuffer_size = framebuffer_size;
     runtime_video_registered = 1;
@@ -984,21 +984,25 @@ static int runtime_video_acquire(const video_api_t *video,
            framebuffer_size < FRAMEBUFFER_POOL_BYTES ? 1u : 0u);
     return 0;
 
-fail:
-    if (runtime_video_handle >= 0)
-        video->close(runtime_video_handle);
-    runtime_video_handle = -1;
-    return -1;
+fail: {
+    /* Reuse shutdown's ownership rule even when setup failed before registration. */
+    int close_rc = ps5_agc_gate2_shutdown_present();
+    return close_rc != 0 ? close_rc : -1;
+}
 }
 
 static int runtime_video_wait_idle(void)
 {
-    unsigned waits = 0;
-
-    while (runtime_video_api.is_flip_pending(runtime_video_handle) > 0 &&
-           waits++ < 120)
-        runtime_video_api.wait_vblank(runtime_video_handle);
-    return waits < 120 ? 0 : -1;
+    for (unsigned waits = 0; ; ++waits) {
+        int pending = runtime_video_api.is_flip_pending(runtime_video_handle);
+        if (pending <= 0)
+            return pending;
+        if (waits == 120)
+            return -1;
+        int result = runtime_video_api.wait_vblank(runtime_video_handle);
+        if (result != 0)
+            return result;
+    }
 }
 
 static int runtime_video_prepare_draw(void)
