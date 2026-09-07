@@ -34,9 +34,10 @@ readbacks. Broader stress/lifecycle work and release acceptance remain pending. 
   or deliberate hardware OOM exhaustion. Exhaustive long sessions, suspend/resume
   and device-loss recovery are not established.
 - **Application memory:** the upstream cube's first native run aborted in CPU-side
-  GLSL built-in allocation with an additional 8.3 MB readback buffer live. A small
-  scanline-buffer control is prepared; the cause/capacity of the allocator failure
-  and larger application-memory workloads are not yet validated.
+  GLSL built-in allocation with an additional 8.3 MB readback buffer live. The
+  7.5 KiB scanline-buffer control passes 180 frames with unchanged SDK/shaders,
+  supporting memory pressure as the trigger. General allocator capacity, graceful
+  OOM handling and larger application-memory workloads remain unvalidated.
 - **Hardware:** the final campaign covers one research console, not every model
   or firmware. Earlier experiments do not expand the final candidate's scope.
 - **Builds:** source pins/patches are published. Historical executable hashes are

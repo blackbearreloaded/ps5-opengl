@@ -29,8 +29,10 @@ color tolerance is two byte values. The host checks 2,596 pixels over five poses
 and rejects an intentionally erased cube. Readbacks do not prove TV scanout or
 input health. The readback buffer is 7,680 bytes, not a full 8,294,400-byte image.
 The first native candidate aborted during GLSL built-in initialization after
-allocation failure, before drawing. Reducing the test's allocation is the next
-control; native acceptance and broader application-memory robustness remain pending.
+allocation failure, before drawing. With the small buffer, native commit `a81c24d`
+passes all 180 frames and 2,596 probes, EGL cleanup and title teardown. This supports
+test-buffer memory pressure as the trigger; larger application-memory robustness
+remains unvalidated. Busy VideoOut unregister followed by successful close remains.
 
 The sample is MIT-licensed by Andre Weissflog; its bundled vecmath is used under
 Mattias Gustavsson's MIT option. See [notices](../../THIRD_PARTY_NOTICES.md).

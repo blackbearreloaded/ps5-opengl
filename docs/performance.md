@@ -169,6 +169,13 @@ the SDK/renderer. Larger application allocations still need validation; this is
 not a demonstrated allocator-capacity limit or a general OOM fix. Resume hardware
 only after the owner confirms idle/input health following the app crash.
 
+- 2026-09-06 | G7 | a81c24d | pass: upstream cube 180 frames/2596 pose probes with 7.5 KiB checker; clean teardown/health/unlock | results/g7-sokol-cube-scanline/203807
+
+The owner confirmed return to the home screen before this run. Same SDK and
+shaders now pass all five poses, supporting test-buffer pressure as the trigger.
+No broad memory-capacity or TV/input claim. Next: same-process EGL recreation;
+larger application allocation and the VideoOut busy warning remain open.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
