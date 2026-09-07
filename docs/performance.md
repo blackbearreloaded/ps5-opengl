@@ -580,6 +580,15 @@ memory before the fix. Failed ownership transfers now terminate before further
 cleanup; normal arena/primary/split-stencil behavior is retained. Native acceptance
 requires normal lifecycle and transfer/CTS checks, never hardware fault injection.
 
+- 2026-09-07 | G7 | 333aa4e | pass: checked-resource SDK, three EGL sessions/180 probes and combined CTS 70 Pass + 2 reviewed exclusions; healthy teardown/unlock | results/g7-resource-{ownership-lifecycle,batched-cts}
+
+The CTS builder now preserves the chosen runtime flags. Its runtime archive
+matches the installed SDK byte for byte; the 72-case batch ran with deferred
+batching enabled. G9 uses this runtime after the full-image Sokol and five-minute
+ImGui checks, then one complete four-configuration campaign and final consumers.
+Only selectors/observation budgets change between campaign runs. Historical
+timings schedule cases; they never fill acceptance coverage for the new binary.
+
 G4 release-readiness case: `examples/core33-cubes` measures complete 1080p frames
 with 1/8/32 lit, textured, depth-tested cubes. Keep the runtime unchanged for the
 baseline; require six numerical oracles (334 probes), 24 measured frames and
