@@ -217,6 +217,13 @@ full-frame readback, and missing native-example heap integration for the live
 large allocation during shader setup. Next: same-process ImGui/EGL recreation
 with this app integration, then return to synchronization/performance work.
 
+- 2026-09-06 | G7 | 1eff5c5 | pass: shared-heap ImGui/EGL recreation, three sessions/18 frames/180 probes plus font/state checks; clean teardown/health/unlock | results/g7-imgui-app-heap-lifecycle/214736
+
+Before timing changes, host-check two presenter error paths found in review:
+negative pending-status errors currently look idle, and failed acquisition cleanup
+discards a handle even if close fails. Normal VideoOut busy unregister remains a
+separate warning; no fault injection or unproven blank flip is planned on hardware.
+
 ## G1: Measure the existing frame path
 
 Control: publication commit `6c2e928`, unchanged graphics runtime and compiler.
