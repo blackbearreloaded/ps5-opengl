@@ -25,6 +25,14 @@ remains opt-in; per-draw completion waits remain the main scaling limitation.
 ## Release sequence
 
 - 2026-09-06 | G7 | e678bbb | pass: presenter-error SDK, three EGL/ImGui sessions, 18 frames/180 probes; clean teardown/health/unlock | results/g7-present-errors-lifecycle/220742
+- 2026-09-06 | G7 | f7daf54 | pass: fail-stop host checks + native lifecycle and 32256-pixel multi-draw controls; clean teardown/health/unlock | results/g7-retirement-{lifecycle,multidraw}
+
+Unconfirmed native submission retirement now terminates the application before
+cleanup or exit handlers can reuse GPU memory; see [consumer limits](consumer-build.md#unrecoverable-gpu-submission-errors).
+Normal regressions do not establish hardware device-loss recovery. G8 next:
+extend the existing bounded multi-draw path to read-only fragment textures,
+retaining their storage and testing upload/reuse and descriptor isolation;
+keep vertex-texture, depth/MSAA and framebuffer-feedback exclusions.
 
 1. G5 correctness: PrimitiveID consumers/program switches, then affected CTS.
 2. G6 consumers: rebuild SDK; clean Make/CMake/pkg-config checks and native ImGui/NanoVG/Sokol.
