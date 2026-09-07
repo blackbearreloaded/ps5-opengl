@@ -229,6 +229,39 @@ window-presentation improvement, not a hardware rasterization ceiling.
 
 - 2026-09-07 | offscreen matrix | 3795762 | inconclusive: 10/12 measured; CPU staging dominated, warm-up overran bound; title closed/health/unlock | results/imgui-matrix-20260907
 
+#### Completed sampleable-FBO baseline
+
+Successor `d4579e4` completed all twelve 30-second cases on the same firmware-6.02
+console and unchanged frozen runtime. All 72 clear/opaque/blended pixel probes
+passed. The measured frames had successful synchronous driver status after
+`glFinish`; all twelve unmeasured previews had confirmed GPU flips. Native/EGL
+cleanup, title-layer release, post-health and exact-token release passed.
+Busy unregister remains. **Correctness passed; none of the FPS targets was met.**
+
+| Render resolution | Target 30 FPS: achieved | Target 60: achieved | Target 90: achieved | Target 120: achieved |
+| --- | ---: | ---: | ---: | ---: |
+| 1920x1080 | 3.88 | 3.89 | 3.88 | 3.90 |
+| 2560x1440 | 2.30 | 2.32 | 2.30 | 2.32 |
+| 3840x2160 | 1.07 | 1.09 | 1.08 | 1.08 |
+
+These are measured application frame rates including the existing CPU staging
+path, not GPU-only throughput or display cadence. The workload differs from the
+~60 FPS windowed TV demo and must not be substituted for its result. The baseline
+contains 880 measured frames and 1,760 measured driver draws; every measured frame
+missed its target budget. Nearest-rank p95 frame times span 271.19–271.44 ms at
+1080p, 449.86–450.74 ms at 1440p, and 929.45–953.50 ms at 2160p. Full per-case
+percentiles and counts are in the locally audited `summary.json` alongside the
+receipt under `results/imgui-matrix-bounded-20260907`.
+
+- 2026-09-07 | FBO baseline | d4579e4 | pass: 12/12 correctness, 72 probes, 880 frames; 0/12 FPS targets met; clean lifecycle | results/imgui-matrix-bounded-20260907
+
+G5 next: keep eligible render targets GPU-resident and avoid unnecessary
+linear/tiled conversions, preserving sampling/readback, CPU-write hazards and
+retirement. Start with a focused matched 1080p FBO case and affected correctness
+checks; repeat the full matrix only after that hot path improves. Textured 3D,
+heavier workloads and actual high-resolution/high-refresh presentation remain
+unmeasured, separate follow-ups.
+
 ## OpenGL-only follow-up order
 
 1. Profile the accepted workload; change one measured bottleneck at a time with
