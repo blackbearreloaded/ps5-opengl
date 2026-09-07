@@ -92,6 +92,20 @@ int main(void) {
     assert(!runtime_present_profile_calls && !runtime_present_profile_failures);
     for (unsigned i = 0; i < 3; ++i) assert(!runtime_present_profile_ns[i]);
     runtime_profile_report();
+    int64_t batch_ticks[5] = {1, 1000001, 3000001, 6000001, 10000001};
+    runtime_batch_profile_record(batch_ticks, 1, 0);
+    runtime_batch_profile_record(batch_ticks, 2, 0);
+    runtime_batch_profile_record(batch_ticks, 9, -1);
+    batch_ticks[4] = 0;
+    runtime_batch_profile_record(batch_ticks, 9, 0);
+    batch_ticks[4] = batch_ticks[3] - 1;
+    runtime_batch_profile_record(batch_ticks, 9, 0);
+    assert(runtime_batch_profile_calls == 2 && runtime_batch_profile_failures == 3);
+    assert(runtime_batch_profile_sleeps == 3);
+    runtime_profile_report();
+    assert(!runtime_batch_profile_calls && !runtime_batch_profile_failures && !runtime_batch_profile_sleeps);
+    for (unsigned i = 0; i < 4; ++i) assert(!runtime_batch_profile_ns[i]);
+    runtime_profile_report();
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:
@@ -100,7 +114,8 @@ with tempfile.TemporaryDirectory() as tmp:
     c.write_text(code)
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(c), "-o", str(exe)], check=True)
     output = subprocess.check_output([str(exe)], text=True)
-    assert len(output.splitlines()) == 2
+    assert len(output.splitlines()) == 3
+    assert "[ps5-batch-perf] calls=2 failures=3 warmup_frames=30 sleeps=3 submit_ms=1.000000 suspend_ms=2.000000 poll_ms=3.000000 cleanup_ms=4.000000 total_ms=10.000000" in output
     assert "calls=2 failures=3 warmup_frames=30" in output
     assert "scanout_flush_ms=2.000000" in output and "total_ms=6.000000" in output
     assert "[ps5-present-perf] calls=2 failures=5 warmup_frames=30 idle_ms=1.000000 flip_ms=2.000000 vblank_ms=3.000000 total_ms=6.000000" in output

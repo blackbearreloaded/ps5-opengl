@@ -106,6 +106,26 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
         report["presentation_per_frame"] = dict(calls=frames, **timings)
         # Remainder includes deferred draw retirement plus EGL bookkeeping, not GPU time.
         report["swap_other_ms"] = max(0, values["swap_ms"] - timings["total_ms"])
+    batch_lines = re.findall(r"^\[ps5-batch-perf\] (.+)$", text, re.M)
+    if batch_lines:
+        require(not host and len(batch_lines) == text.count("[ps5-batch-perf]") == 1,
+                "expected one batch profile")
+        pairs = [token.split("=", 1) for token in batch_lines[0].split()]
+        require(all(len(pair) == 2 for pair in pairs), "malformed batch field")
+        fields = dict(pairs)
+        phases = ["submit_ms", "suspend_ms", "poll_ms", "cleanup_ms"]
+        require(len(fields) == len(pairs) and set(fields) ==
+                set(phases + ["calls", "failures", "warmup_frames", "sleeps", "total_ms"]),
+                "unexpected batch fields")
+        calls, sleeps = int(fields["calls"]), int(fields["sleeps"])
+        require(calls >= frames and 0 <= sleeps < calls * 2000 and
+                fields["failures"] == "0" and fields["warmup_frames"] == "30",
+                "batch count/failure/warmup mismatch")
+        timings = {name: float(fields[name]) for name in phases + ["total_ms"]}
+        require(all(math.isfinite(v) and v >= 0 for v in timings.values()) and
+                abs(sum(timings[p] for p in phases) - timings["total_ms"]) <= 0.000004,
+                "invalid batch phase accounting")
+        report["batch_per_call"] = dict(calls=calls, sleeps=sleeps, **timings)
     return report
 
 
@@ -120,6 +140,19 @@ def self_test():
     assert summarize(text)["cpu_wall_ms"] == 10
     assert summarize(text.replace("\n", "\r\n"))["frames"] == 100
     batch = "[ps5-multidraw-batch] draws=2 attempted=2 waits=1 result=0\n[ps5-deferred-batch] draws=2 result=0\n"
+    batch_perf = ("[ps5-batch-perf] calls=100 failures=0 warmup_frames=30 sleeps=100 "
+                  "submit_ms=0.1 suspend_ms=0.2 poll_ms=2.4 cleanup_ms=0.3 total_ms=3\n")
+    assert summarize(text + batch_perf)["batch_per_call"]["poll_ms"] == 2.4
+    for bad in (batch_perf * 2, batch_perf.replace("calls=100", "calls=99"),
+                batch_perf.replace("failures=0", "failures=1"),
+                batch_perf.replace("sleeps=100", "sleeps=-1"),
+                batch_perf.replace("poll_ms=2.4", "poll_ms=nan"),
+                batch_perf.replace("total_ms=3", "total_ms=4")):
+        try:
+            summarize(text + bad)
+        except ValueError:
+            continue
+        raise AssertionError("Invalid batch profile accepted")
     assert summarize(text + batch * 130, deferred_batches=True)["deferred_batches"]["draws"] == 260
     assert summarize(text + batch.replace("=2", "=3") * 130,
                      clear_batches=True)["deferred_batches"]["clear_two_draw_chunks"] == 130

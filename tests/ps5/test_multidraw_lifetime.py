@@ -156,7 +156,7 @@ source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
 start = source.index("static void runtime_require_retirement(")
 guard = source[start:source.index("\n}\n", start) + 3]
 start = source.index("static struct runtime_batch_entry {")
-body = source[start:source.index("\n#endif", start)]
+body = source[start:source.index("\n#endif\n\n#ifdef PS5_DRAW_PROFILE", start)]
 code = r'''
 #include <assert.h>
 #include <stdint.h>
@@ -170,6 +170,17 @@ typedef struct { int (*submit)(void *); int (*suspend_point)(void); } agc_api_t;
 static uint32_t markers[PS5_MULTIDRAW_BATCH_CAPACITY];
 static uint8_t memory[PS5_MULTIDRAW_BATCH_CAPACITY][64];
 static unsigned submits, suspends, sleeps, unmaps, releases, delay;
+#ifdef PS5_DRAW_PROFILE
+static unsigned runtime_present_count = 30;
+static int64_t os_time_get_nano(void) { static int64_t ticks = 1; return ticks++; }
+static void runtime_batch_profile_record(const int64_t ticks[5], unsigned waits, int result) {
+    assert(waits == sleeps);
+    if (!result) {
+        for (unsigned i = 1; i < 5; ++i) assert(ticks[i] > ticks[i - 1]);
+        assert(unmaps == submits && releases == submits);
+    }
+}
+#endif
 static int fail_submit, fail_suspend, fail_unmap, wrong_marker;
 static int submit(void *p) {
     agc_submit_description_t *d = p;
@@ -263,9 +274,10 @@ int main(void) {
 with tempfile.TemporaryDirectory() as tmp:
     c, exe = Path(tmp) / "lifetime.c", Path(tmp) / "lifetime"
     c.write_text(code)
-    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
-                    "-I" + str(root / "src/gallium/ps5"), str(c), "-o", str(exe)], check=True)
-    subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
+    for flags in ([], ["-DPS5_DRAW_PROFILE=1"]):
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags,
+                        "-I" + str(root / "src/gallium/ps5"), str(c), "-o", str(exe)], check=True)
+        subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
 print("PASS: staged ownership, 1..8 draws, all-marker retirement, shared timeout, fail-stop before cleanup")
 
 # Exercise the real Gallium wrapper too: ownership must survive command staging.

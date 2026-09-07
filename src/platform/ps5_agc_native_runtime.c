@@ -766,6 +766,11 @@ static void runtime_require_retirement(int completed)
 #endif
 
 #ifdef PS5_MULTIDRAW_BATCH
+#ifdef PS5_DRAW_PROFILE
+#include "util/os_time.h"
+static void runtime_batch_profile_record(const int64_t ticks[5], unsigned sleeps,
+                                         int result);
+#endif
 /* A batch is synchronous at the Gallium multi-draw boundary. The caller holds
  * the queue lock and retains all descriptors and referenced resources. */
 static struct runtime_batch_entry {
@@ -813,9 +818,17 @@ int ps5_agc_gate2_batch_end(void)
 {
     unsigned attempted = 0, waits = 0;
     int result = 0;
+#ifdef PS5_DRAW_PROFILE
+    int64_t ticks[5] = {0};
+    const int profile = runtime_present_count >= 30 && runtime_batch_count;
+#define BATCH_PROFILE_MARK(i) ticks[i] = os_time_get_nano()
+#else
+#define BATCH_PROFILE_MARK(i) ((void)0)
+#endif
     if (!runtime_batch_active || runtime_batch_faulted)
         return -1;
     runtime_batch_active = 0;
+    BATCH_PROFILE_MARK(0);
     for (unsigned i = 0; i < runtime_batch_count; ++i) {
         ++attempted; /* A failed submit is conservatively treated as in flight. */
         if (runtime_batch_api.submit(&runtime_batch_entries[i].submit) != 0) {
@@ -823,8 +836,10 @@ int ps5_agc_gate2_batch_end(void)
             break;
         }
     }
+    BATCH_PROFILE_MARK(1);
     if (attempted && runtime_batch_api.suspend_point() != 0)
         result = 1;
+    BATCH_PROFILE_MARK(2);
     for (; attempted && waits < 2000; ++waits) {
         int complete = 1;
         for (unsigned i = 0; i < attempted; ++i) {
@@ -837,6 +852,7 @@ int ps5_agc_gate2_batch_end(void)
         sceKernelUsleep(UINT32_C(1000));
     }
     result |= waits == 2000;
+    BATCH_PROFILE_MARK(3);
     printf("[ps5-multidraw-batch] draws=%u attempted=%u waits=%u result=%d\n",
            runtime_batch_count, attempted, waits, result);
     runtime_require_retirement(result == 0);
@@ -845,11 +861,21 @@ int ps5_agc_gate2_batch_end(void)
         if (munmap(entry->memory, entry->bytes) != 0 ||
             sceKernelReleaseDirectMemory(entry->direct, entry->bytes) != 0) {
             runtime_batch_faulted = 1;
+#ifdef PS5_DRAW_PROFILE
+            if (profile)
+                runtime_batch_profile_record(ticks, waits, -1);
+#endif
             return -1;
         }
         memset(entry, 0, sizeof(*entry));
     }
     runtime_batch_count = 0;
+    BATCH_PROFILE_MARK(4);
+#ifdef PS5_DRAW_PROFILE
+    if (profile)
+        runtime_batch_profile_record(ticks, waits, 0);
+#endif
+#undef BATCH_PROFILE_MARK
     return 0;
 }
 #endif
@@ -860,6 +886,23 @@ static uint64_t runtime_profile_ns[9], runtime_profile_sleeps;
 static unsigned runtime_profile_calls, runtime_profile_failures;
 static uint64_t runtime_present_profile_ns[3];
 static unsigned runtime_present_profile_calls, runtime_present_profile_failures;
+static uint64_t runtime_batch_profile_ns[4], runtime_batch_profile_sleeps;
+static unsigned runtime_batch_profile_calls, runtime_batch_profile_failures;
+
+static void runtime_batch_profile_record(const int64_t ticks[5], unsigned sleeps,
+                                         int result)
+{
+    for (unsigned i = 0; i < 5; ++i) {
+        if (result || ticks[i] <= 0 || (i && ticks[i] < ticks[i - 1])) {
+            ++runtime_batch_profile_failures;
+            return;
+        }
+    }
+    for (unsigned i = 0; i < 4; ++i)
+        runtime_batch_profile_ns[i] += ticks[i + 1] - ticks[i];
+    runtime_batch_profile_sleeps += sleeps;
+    ++runtime_batch_profile_calls;
+}
 
 static void runtime_present_profile_record(const int64_t ticks[4], int result)
 {
@@ -923,6 +966,22 @@ static void runtime_profile_report(void)
     }
     memset(runtime_present_profile_ns, 0, sizeof(runtime_present_profile_ns));
     runtime_present_profile_calls = runtime_present_profile_failures = 0;
+    if (runtime_batch_profile_calls || runtime_batch_profile_failures) {
+        const double scale = runtime_batch_profile_calls ?
+            1e-6 / runtime_batch_profile_calls : 0;
+        uint64_t total = 0;
+        for (unsigned i = 0; i < 4; ++i)
+            total += runtime_batch_profile_ns[i];
+        printf("[ps5-batch-perf] calls=%u failures=%u warmup_frames=30 sleeps=%" PRIu64 " "
+               "submit_ms=%.6f suspend_ms=%.6f poll_ms=%.6f cleanup_ms=%.6f total_ms=%.6f\n",
+               runtime_batch_profile_calls, runtime_batch_profile_failures,
+               runtime_batch_profile_sleeps, runtime_batch_profile_ns[0] * scale,
+               runtime_batch_profile_ns[1] * scale, runtime_batch_profile_ns[2] * scale,
+               runtime_batch_profile_ns[3] * scale, total * scale);
+    }
+    memset(runtime_batch_profile_ns, 0, sizeof(runtime_batch_profile_ns));
+    runtime_batch_profile_calls = runtime_batch_profile_failures = 0;
+    runtime_batch_profile_sleeps = 0;
 }
 #define PS5_PROFILE_MARK(i) profile_ticks[i] = os_time_get_nano()
 #endif

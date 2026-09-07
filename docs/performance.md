@@ -118,8 +118,9 @@ two-draw batching alone cannot be mistaken for combined clear/draw execution.
 | Mean swap CPU wall time | 28.225 ms | 27.404 ms |
 
 This bounded sample improves throughput by **~50%** and reduces frame time by
-**~33%**. The demo retains its 30 FPS pacing ceiling; this is not maximum GPU
-throughput or a game-FPS estimate. Candidate native presentation still took
+**~33%**. The profiling build disables the normal demo's 30 FPS sleep: this
+measured ceiling is not that limiter, nor a GPU-throughput or game-FPS estimate.
+Candidate native presentation still took
 15.889 ms, including 15.878 ms of post-flip vblank waiting. No presentation guard
 was removed. Both successor gates closed cleanly, passed service checks and
 released their exact lock tokens. The ImGui run still reported busy unregister
@@ -130,6 +131,17 @@ unchanged, and neither candidate inherits its full CTS campaign. Next: affected
 3D renderer, depth/texture and longer-session regressions, then frozen-candidate
 release validation before promotion. Remaining presentation time is a separate
 profiling target, not justification to remove waits without lifecycle evidence.
+
+### Current target: sustained 60 FPS in the same demo
+
+- G1: split batched submit/suspend/completion-poll/cleanup timing, with unchanged
+  synchronization and the frozen 33.366 ms run as control.
+- G2: optimize the measured bottleneck only; preserve every completion marker,
+  buffer ownership rule and error/timeout guard. Run focused host checks before
+  one frozen, locked PPSA99005 cycle per candidate.
+- G3: require ~16.67 ms/frame at the same 1080p scene, correct pixels and batching,
+  then sustained cadence and clean teardown before declaring 60 FPS achieved.
+  Other release work waits; accepted SDK remains unchanged.
 
 - 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
 - 2026-09-07 | clear batching | fe337eb | pass: RGBA sweep, state/query/mixed-clear checks and teardown | results/deferred-clear-20260907
