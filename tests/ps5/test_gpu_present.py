@@ -202,6 +202,8 @@ with tempfile.TemporaryDirectory() as tmp:
 print("PASS: scanout flush retained at batch/CPU-access/pool boundaries; default path unchanged")
 
 screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()
+start = screen.index("struct ps5_depth_flush_cache {")
+depth_cache = screen[start:screen.index("\nstatic bool\nps5_stage_packed_depth_samples", start)]
 start = screen.index("#ifdef PS5_GPU_PRESENT_BATCH\n      /* Disabled depth AND stencil")
 policy = screen[start:screen.index("#endif", start) + len("#endif")] + "\n"
 start = screen.index("      if (flush_depth_stencil)")
@@ -215,18 +217,20 @@ code = r'''
 #include <stdint.h>
 static unsigned flushes;
 static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); ++flushes; }
-static void run(uint32_t control) {
+''' + depth_cache + r'''
+static void run(uint32_t control, struct ps5_depth_flush_cache *depth_cache,
+                char *backing, size_t bytes) {
     struct { uint32_t depth_control; } native = {control};
     (void)native;
-    char backing[2] = {0};
     void *depth_data = backing;
-    size_t depth_allocation = 32;
+    size_t depth_allocation = bytes;
     struct { void *stencil_data; size_t stencil_allocation_size; } buffer = {backing + 1, 8}, *depth = &buffer;
 ''' + policy + depth_flush + "\n{\n" + stencil_flush + "}\n" + r'''
 }
 int main(void) {
+    char backing[3] = {0};
     for (unsigned control = 0; control < 256; ++control) {
-        flushes = 0; run(control);
+        flushes = 0; run(control, NULL, backing, 32);
 #ifdef PS5_GPU_PRESENT_BATCH
         assert(flushes == (control ? 2u : 0u));
 #else
@@ -234,11 +238,48 @@ int main(void) {
 #endif
     }
     /* Disable, CPU update, re-enable: active draw still flushes both buffers. */
-    flushes = 0; run(0); run(2); run(1); run(3);
+    flushes = 0;
+    run(0, NULL, backing, 32); run(2, NULL, backing, 32);
+    run(1, NULL, backing, 32); run(3, NULL, backing, 32);
 #ifdef PS5_GPU_PRESENT_BATCH
     assert(flushes == 6);
 #else
     assert(flushes == 8);
+#endif
+    /* Disabled first draw must not warm the cache. Both planes remain distinct. */
+    struct ps5_depth_flush_cache cache = {0};
+    flushes = 0;
+    run(0, &cache, backing, 32);
+    run(2, &cache, backing, 32);
+    run(2, &cache, backing, 32);
+#ifdef PS5_GPU_PRESENT_BATCH
+    assert(flushes == 2);
+#else
+    assert(flushes == 6);
+#endif
+    /* Changed size/pointer must flush again; never reuse it across a drain. */
+    flushes = 0;
+    run(2, &cache, backing, 64); /* Depth size only: stencil backing unchanged. */
+    run(2, &cache, backing + 1, 64); /* Both pointers change. */
+    cache = (struct ps5_depth_flush_cache){0};
+    run(2, &cache, backing + 1, 64); /* New batch / CPU-write boundary. */
+#ifdef PS5_GPU_PRESENT_BATCH
+    assert(flushes == 5);
+#else
+    assert(flushes == 6);
+#endif
+    /* Nonbatched access cannot consume or populate a batch cache. */
+    flushes = 0;
+    run(2, NULL, backing + 1, 64);
+    run(2, NULL, backing + 1, 64);
+    assert(flushes == 4);
+    flushes = 0;
+    ps5_flush_depth_backing(&cache, 1, backing + 2, 16);
+    ps5_flush_depth_backing(&cache, 1, backing + 2, 16);
+#ifdef PS5_GPU_PRESENT_BATCH
+    assert(flushes == 1); /* Stencil size changes independently of depth. */
+#else
+    assert(flushes == 2);
 #endif
 }
 '''
@@ -249,4 +290,4 @@ with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags,
                         str(c), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
-print("PASS: disabled depth/stencil flush elision; all nonzero controls and default retain flushing")
+print("PASS: depth/stencil flushes at first enabled use, backing/size changes, CPU/drain boundaries; nonbatched/default unchanged")

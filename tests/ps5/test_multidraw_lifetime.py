@@ -307,6 +307,8 @@ print(f"PASS: staged ownership, 1..{capacity} draws, all-marker retirement, shar
 
 # Exercise the real Gallium wrapper too: ownership must survive command staging.
 source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
+cache_start = source.index("struct ps5_depth_flush_cache {")
+depth_cache_type = source[cache_start:source.index("\n};", cache_start) + 3]
 start = source.index("static bool\nps5_multidraw_eligible(")
 body = source[start:source.index("\n#endif", start)]
 code = r'''
@@ -421,8 +423,10 @@ static int end(void) {
 }
 static int (*ps5_agc_gate2_batch_begin)(void)=begin;
 static int (*ps5_agc_gate2_batch_end)(void)=end;
+''' + depth_cache_type + r'''
 static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_info *info, unsigned id,
-    const struct pipe_draw_indirect_info *indirect, const struct pipe_draw_start_count_bias *draw, unsigned n) {
+    const struct pipe_draw_indirect_info *indirect, const struct pipe_draw_start_count_bias *draw, unsigned n,
+    struct ps5_depth_flush_cache *depth_cache) {
     struct ps5_context *drawing=(struct ps5_context *)b;
     assert((b == &context.base || deferred_mode) && info && !indirect && n==1 && draw->count && locked);
     assert(id == 20 + (info->increment_draw_id ? draw->start : 0));
@@ -430,6 +434,13 @@ static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_i
     if (!info->index_size) ++unindexed_draws;
     if ((int)calls++ == fail_draw) { drawing->last_draw_status=-9; return; }
     assert(staged < PS5_MULTIDRAW_BATCH_CAPACITY);
+    /* Model a backing flush: cache ownership ends at EVERY batch boundary. */
+    assert(depth_cache);
+    if (!staged) assert(!depth_cache->data[0] && !depth_cache->data[1] &&
+                        !depth_cache->size[0] && !depth_cache->size[1]);
+    else assert(depth_cache->data[0] == &borrowed && depth_cache->size[0] == begun);
+    depth_cache->data[0] = &borrowed;
+    depth_cache->size[0] = begun;
     pending[staged][0]=(struct ps5_resource *)drawing->vertex_descriptor_table;
     pending[staged][1]=(struct ps5_resource *)drawing->descriptor_storage[0];
     pending[staged][2]=(struct ps5_resource *)drawing->descriptor_storage[1];
@@ -557,6 +568,8 @@ with tempfile.TemporaryDirectory() as tmp:
                    input=code, text=True, check=True)
     subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
     mutations = (
+        ("   for (unsigned first = 0; first < num_draws;) {\n      struct ps5_depth_flush_cache depth_cache = {0};",
+         "   struct ps5_depth_flush_cache depth_cache = {0};\n   for (unsigned first = 0; first < num_draws;) {"),
         ("ps5_shader_texture_count(context->vs) ||",
          "ps5_shader_texture_count(context->vs) || ps5_shader_texture_count(context->fs) ||"),
         ("pipe_resource_reference(&retained[retained_count++], context->sampler_views[1][unit]->texture);",
@@ -759,16 +772,22 @@ int main(void) {
 '''
 with tempfile.TemporaryDirectory() as tmp:
     exe = Path(tmp) / "deferred"
-    for mutate, flags in ((False, []), (True, []), (False, ["-DPS5_GPU_PRESENT_BATCH=1"])):
+    for mutate, flags in ((0, []), (1, []), (2, []), (0, ["-DPS5_GPU_PRESENT_BATCH=1"])):
         candidate = deferred_code
-        if mutate:
+        if mutate == 1:
             candidate = candidate.replace("if (ps5_deferred.owner && ps5_deferred.owner != context)", "if (false)")
+            assert candidate != deferred_code
+        if mutate == 2:
+            candidate = candidate.replace("   memset(&ps5_deferred, 0, sizeof(ps5_deferred));",
+                "   struct ps5_depth_flush_cache stale = ps5_deferred.depth_cache;\n"
+                "   memset(&ps5_deferred, 0, sizeof(ps5_deferred));\n"
+                "   ps5_deferred.depth_cache = stale;")
             assert candidate != deferred_code
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", *flags,
                         "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
                        input=candidate, text=True, check=True)
         run = subprocess.run([str(exe)], cwd=tmp, capture_output=True, text=True)
-        assert (run.returncode == 0) != mutate, run.stderr
+        assert (run.returncode == 0) == (mutate == 0), run.stderr
 
 # The queue test alone cannot prove that CPU access / lifecycle entry points drain.
 for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_blit",
