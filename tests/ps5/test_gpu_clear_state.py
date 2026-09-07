@@ -8,6 +8,10 @@ root = Path(__file__).resolve().parents[2]
 source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 assert "#define PS5_GPU_CLEAR_MIN_PIXELS 16384u" in source
 start = source.index("static bool\nps5_clear_gpu_color(")
+clear_body = source[start:source.index("\nstatic void\nps5_clear(", start)]
+assert clear_body.index("context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0;") < \
+       clear_body.index("   util_blitter_clear(") < \
+       clear_body.index("context->deferred_color_clear = false;")
 prefix = source[start:source.index("   if (!context->blitter)", start)]
 code = r'''
 #include <assert.h>

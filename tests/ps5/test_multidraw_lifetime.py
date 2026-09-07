@@ -284,7 +284,7 @@ code = r'''
 #define MIN2(a,b) ((a)<(b)?(a):(b))
 #define PS5_RENDER_ARENA_OFFSET (2u * 0xa00000u)
 enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=16, PIPE_BUFFER=1,
-       PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4, PIPE_BIND_DISPLAY_TARGET=1,
+       PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4, MESA_PRIM_TRIANGLE_FAN=5, PIPE_BIND_DISPLAY_TARGET=1,
        PIPE_FORMAT_Z32_FLOAT=77, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT=78 };
 struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind; };
 struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
@@ -295,7 +295,7 @@ struct pipe_screen { struct pipe_resource *(*resource_create)(struct pipe_screen
 struct ps5_screen { struct pipe_screen base; struct pipe_resource *render_pool; };
 struct pipe_context { struct pipe_screen *screen; };
 struct pipe_surface { struct pipe_resource *texture; unsigned level, first_layer, last_layer, format; };
-struct pipe_draw_info { unsigned mode, instance_count, index_size; bool primitive_restart, has_user_indices,
+struct pipe_draw_info { unsigned mode, instance_count, start_instance, index_size; bool primitive_restart, has_user_indices,
     increment_draw_id; struct { struct pipe_resource *resource; } index; };
 struct pipe_draw_indirect_info { int unused; };
 struct pipe_draw_start_count_bias { unsigned start, count; int index_bias; };
@@ -303,6 +303,7 @@ struct pipe_depth_stencil_alpha_state { bool depth_enabled; struct { bool enable
 struct ps5_context {
     struct pipe_context base;
     struct { bool running; } *blitter;
+    bool deferred_color_clear;
     struct { struct pipe_surface cbufs[1], zsbuf; unsigned nr_cbufs; } framebuffer;
     bool framebuffer_valid; unsigned *vs, *fs, *gs;
     unsigned stream_output_target_count, render_condition_query, active_occlusion_query,
@@ -325,6 +326,7 @@ static struct ps5_resource *pending[8][3];
 static unsigned expected_start[8], expected_id[8];
 static bool deferred_mode;
 static unsigned retained_draws;
+static unsigned unindexed_draws;
 static uint8_t expected_uniform[8][3];
 static unsigned ps5_shader_texture_count(const unsigned *s) { return *s; }
 static bool ps5_texture_used(const struct ps5_context *c, const unsigned *s, const void *metadata, unsigned unit) {
@@ -367,13 +369,13 @@ static int end(void) {
     }
     unsigned factor = deferred_mode ? retained_draws : 1;
     assert(borrowed.base.refs == 1+factor*(4+PIPE_MAX_ATTRIBS+2*PS5_MAX_CONSTANT_BUFFERS+
-        (context.framebuffer.zsbuf.texture == &borrowed.base)));
+        (context.framebuffer.zsbuf.texture == &borrowed.base))-unindexed_draws);
     if (context.framebuffer.zsbuf.texture == &depth_buffer.base)
         assert(depth_buffer.base.refs == 1+factor);
     for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit)
         if (fragment_textures & (1u << unit)) assert(textures[unit].base.refs == 1+factor);
     if (fail_end) return -1;
-    staged=retained_draws=0;
+    staged=retained_draws=unindexed_draws=0;
     return 0;
 }
 static int (*ps5_agc_gate2_batch_begin)(void)=begin;
@@ -384,6 +386,7 @@ static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_i
     assert((b == &context.base || deferred_mode) && info && !indirect && n==1 && draw->count && locked);
     assert(id == 20 + (info->increment_draw_id ? draw->start : 0));
     ++retained_draws;
+    if (!info->index_size) ++unindexed_draws;
     if ((int)calls++ == fail_draw) { drawing->last_draw_status=-9; return; }
     assert(staged < 8);
     pending[staged][0]=(struct ps5_resource *)drawing->vertex_descriptor_table;
@@ -400,7 +403,7 @@ static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_i
 }
 ''' + body + r'''
 static void reset(void) {
-    allocated=freed=begun=ended=staged=calls=locked=shader_textures=fragment_textures=retained_draws=0;
+    allocated=freed=begun=ended=staged=calls=locked=shader_textures=fragment_textures=retained_draws=unindexed_draws=0;
     fail_alloc=fail_draw=-1; fail_begin=fail_end=0;
     borrowed=(struct ps5_resource){.base={.target=PIPE_TEXTURE_2D, .format=1, .refs=1},
         .data=borrowed_bytes, .size=64, .allocation_size=64};
@@ -557,6 +560,32 @@ int main(void) {
     struct pipe_draw_info info={.mode=4,.instance_count=1,.index_size=2,.index={&borrowed.base}};
     struct pipe_draw_start_count_bias draw={0,6,0};
     deferred_mode=true;
+    reset();
+    struct pipe_draw_info fan={.mode=MESA_PRIM_TRIANGLE_FAN,.instance_count=1};
+    struct pipe_draw_start_count_bias quad={0,4,0};
+    assert(!ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
+    context.deferred_color_clear=true;
+    assert(!ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
+    __typeof__(*context.blitter) blitter={.running=true};
+    context.blitter=&blitter;
+    for (unsigned invalid=0;invalid<7;++invalid) {
+        struct pipe_draw_info f=fan;
+        struct pipe_draw_start_count_bias q=quad;
+        if (invalid==0) context.deferred_color_clear=false;
+        if (invalid==1) f.index_size=2;
+        if (invalid==2) f.instance_count=2;
+        if (invalid==3) f.start_instance=1;
+        if (invalid==4) q.count=3;
+        if (invalid==5) q.start=1;
+        if (invalid==6) blitter.running=false;
+        assert(!ps5_try_deferred_draw(&context.base,&f,20,NULL,&q,1));
+        context.deferred_color_clear=true; blitter.running=true;
+    }
+    assert(ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
+    context.deferred_color_clear=false; blitter.running=false;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    assert(staged==2 && !ended); /* Internal clear and ordinary draw share one retirement. */
+    drain(); idle(); assert(ended==1);
     assert(!ps5_memory_overlaps((void *)100, 10, (void *)110, 10));
     assert(!ps5_memory_overlaps((void *)110, 10, (void *)100, 10));
     assert(ps5_memory_overlaps((void *)100, 10, (void *)109, 10));

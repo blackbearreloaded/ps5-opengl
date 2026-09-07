@@ -38,7 +38,8 @@ int main(void)
 {
    const EGLint config_attrs[] = {EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
       EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8,
-      EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE};
+      EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
+      EGL_DEPTH_SIZE, 24, EGL_STENCIL_SIZE, 8, EGL_NONE};
    const EGLint context_attrs[] = {EGL_CONTEXT_MAJOR_VERSION_KHR, 3,
       EGL_CONTEXT_MINOR_VERSION_KHR, 3, EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR,
       EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR, EGL_NONE};
@@ -125,6 +126,21 @@ int main(void)
       }
    }
    printf("[ps5-gpu-clear] inline-uniforms/program/viewport restored PASS\n");
+
+   glClearColor(0.2f, 0.4f, 0.6f, 0.8f);
+   glClearDepth(0.25); glClearStencil(0x5a);
+   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+   GLfloat cleared_depth = 0;
+   GLubyte cleared_stencil = 0;
+   glReadPixels(0, 0, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &cleared_depth);
+   glReadPixels(0, 0, 1, 1, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE, &cleared_stencil);
+   if (!read_pixels() || cleared_depth < 0.24999f || cleared_depth > 0.25001f ||
+       cleared_stencil != 0x5a) goto cleanup;
+   for (unsigned i = 0; i < WIDTH * HEIGHT; ++i) {
+      const uint8_t expected[] = {51, 102, 153, 204};
+      if (memcmp(pixels + i * 4, expected, 4)) goto cleanup;
+   }
+   printf("[ps5-gpu-clear] mixed-color-depth-stencil PASS\n");
 
    glGenQueries(1, &query);
    glBeginQuery(GL_SAMPLES_PASSED, query);

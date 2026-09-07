@@ -96,6 +96,17 @@ The updated ordinary-draw oracle interleaves unrelated uploads while still requi
 with `tests/ps5/test_multidraw_lifetime.py RECEIPT --deferred-uploads`.
 Clear batching and the accepted SDK are unchanged at this stage.
 
+- 2026-09-07 | buffer hazards | aa27dcf | pass: four modes retained 8+2 groups across unrelated uploads; pixels/hazards/teardown healthy | results/buffer-hazards-20260907
+
+The following candidate admits only the existing eligible **color-only** blitter
+clear into the deferred queue (including its four-vertex nonindexed fan). General
+blits, queries, mixed depth/stencil clears and presentation waits are unchanged.
+Gate it first with the 128x128 clear sweep/state/query/mixed-clear oracle, then the
+unchanged 30-second ImGui workload against the frozen 50.049 ms profile. Require
+`summarize-imgui-profile.py RECEIPT --present-profile --clear-batches` so ordinary
+two-draw batching alone cannot be mistaken for combined clear/draw execution.
+Neither candidate inherits the accepted SDK's full CTS campaign.
+
 - 2026-09-07 | profile | d453cb2 | pass: 572 warm frames, phase audit, pixels and teardown | results/present-profile-20260907/PPSA99005-20260907-093808-opengl.log
 
 ## OpenGL-only follow-up order

@@ -178,6 +178,7 @@ struct ps5_constant_state {
 struct ps5_context {
    struct pipe_context base;
    struct blitter_context *blitter;
+   bool deferred_color_clear;
    int last_draw_status;
    unsigned draw_calls;
    struct ps5_shader *vs;
@@ -7480,7 +7481,11 @@ ps5_multidraw_eligible(const struct ps5_context *context,
    const struct pipe_depth_stencil_alpha_state *dsa = context->depth_stencil_alpha;
 
    if (!info || !draws || !num_draws || indirect ||
-       info->mode != MESA_PRIM_TRIANGLES || !info->instance_count ||
+       (info->mode != MESA_PRIM_TRIANGLES &&
+        !(context->deferred_color_clear && context->blitter && context->blitter->running &&
+          info->mode == MESA_PRIM_TRIANGLE_FAN && num_draws == 1 &&
+          !info->index_size && info->instance_count == 1 && !info->start_instance &&
+          draws[0].start == 0 && draws[0].count == 4)) || !info->instance_count ||
        info->primitive_restart || info->has_user_indices ||
        (info->index_size && info->index_size != 2 && info->index_size != 4) ||
        (info->index_size && !info->index.resource) ||
@@ -7757,7 +7762,7 @@ ps5_try_deferred_draw(struct pipe_context *base,
    if (ps5_deferred.owner && ps5_deferred.owner != context)
       ps5_draw_batch_flush_locked();
    if (!ps5_agc_gate2_batch_begin || !ps5_agc_gate2_batch_end || num_draws != 1 ||
-       (context->blitter && context->blitter->running) ||
+       (context->blitter && context->blitter->running && !context->deferred_color_clear) ||
        !ps5_multidraw_eligible(context, info, indirect, draws, num_draws)) {
       ps5_draw_batch_flush_locked();
       goto out;
@@ -8163,8 +8168,12 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    union pipe_color_union quantized;
    util_format_pack_rgba(surface->format, packed, color->ui, 1);
    util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
+   /* Only this validated color-only operation may defer its internal fan.
+    * Mixed depth/stencil clears still finish before the CPU fallback touches them. */
+   context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0;
    util_blitter_clear(blitter, context->framebuffer.width, context->framebuffer.height,
                       1, PIPE_CLEAR_COLOR0, &quantized, 0, 0, false);
+   context->deferred_color_clear = false;
    context->viewport_valid = viewport_valid;
    context->queries_enabled = queries_enabled;
    if (context->draw_calls == draws_before)

@@ -7,7 +7,8 @@ from pathlib import Path
 import re
 
 
-def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False):
+def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False,
+              clear_batches=False):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
@@ -40,7 +41,7 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
         require(re.findall(r"\[pss-opengl-native\] gate completed status=(\d+)", text) == ["0"],
                 "native gate incomplete")
     report = dict(mode="host-reference" if host else "PS5", frames=frames, warmup=warmup, **values)
-    if deferred_batches:
+    if deferred_batches or clear_batches:
         chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
         native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
         require(not host and len(chunks) == text.count("[ps5-deferred-batch]") ==
@@ -52,6 +53,10 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
         require(grouped >= frames, "insufficient actual multi-draw groups")
         report["deferred_batches"] = dict(chunks=len(chunks), draws=sum(map(int, chunks)),
                                          multi_draw_chunks=grouped)
+        if clear_batches:
+            combined = sum(count == "3" for count in chunks)
+            require(combined >= frames, "insufficient combined clear/two-draw groups")
+            report["deferred_batches"]["clear_two_draw_chunks"] = combined
     submit_lines = re.findall(r"^\[ps5-submit-perf\] (.+)$", text, re.M)
     if submit_lines or submit_profile:
         require(not host and len(submit_lines) == 1, "expected one native submission profile")
@@ -116,6 +121,15 @@ def self_test():
     assert summarize(text.replace("\n", "\r\n"))["frames"] == 100
     batch = "[ps5-multidraw-batch] draws=2 attempted=2 waits=1 result=0\n[ps5-deferred-batch] draws=2 result=0\n"
     assert summarize(text + batch * 130, deferred_batches=True)["deferred_batches"]["draws"] == 260
+    assert summarize(text + batch.replace("=2", "=3") * 130,
+                     clear_batches=True)["deferred_batches"]["clear_two_draw_chunks"] == 130
+    for bad in (text + batch * 130, text + batch.replace("=2", "=3") * 99):
+        try:
+            summarize(bad, clear_batches=True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("uncombined or insufficient clear batches accepted")
     for bad in (text, text + batch * 99, text + batch.replace("=2", "=1") * 130,
                 text + batch.replace("attempted=2", "attempted=1") * 130,
                 text + batch.replace("waits=1", "waits=2000") * 130,
@@ -190,6 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("--submit-profile", action="store_true")
     parser.add_argument("--deferred-batches", action="store_true")
     parser.add_argument("--present-profile", action="store_true")
+    parser.add_argument("--clear-batches", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -198,4 +213,4 @@ if __name__ == "__main__":
         if not args.receipt:
             parser.error("receipt required")
         print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
-                                   args.deferred_batches, args.present_profile), indent=2))
+                                   args.deferred_batches, args.present_profile, args.clear_batches), indent=2))
