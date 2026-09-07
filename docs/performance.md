@@ -673,6 +673,17 @@ enabled; logger buffering and GPU behavior are unchanged. This is not blanket
 quiet mode. Ordinary frame p99 is 84.26 ms: still far from 60 FPS. Frozen evidence:
 `build/frozen/g7-trace-policy-20260907.md`. Full release validation remains pending.
 
+### G7 128-entry batches
+
+- 2026-09-07 | G7 | 64b73c3 | pass: capacity 32→128, ordinary 11.99→14.98 FPS, instanced 59.94; pixels/65840 draws/close/health | results/g7-batch128-cubes-20260907
+
+The same 128-cube workload now retires two batches per ordinary frame instead of
+five. Exact 128+1 grouping passes for all 482 ordinary frames, plus 1,831 instanced
+frames: 2,795 batches and 65,840 draws total. Completed ordinary FPS is 14.984922
+(25% gain), instanced 59.941304. Ordinary p99 is 67.73 ms. Private descriptor
+backing grows from a 3.5 to 14 MiB ceiling; ownership/failure guards are unchanged.
+Frozen evidence: `build/frozen/g7-batch128-20260907.md`; not a new full CTS result.
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
