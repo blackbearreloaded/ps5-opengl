@@ -81,7 +81,7 @@ capacity = int(re.search(r"#define PS5_MULTIDRAW_BATCH_CAPACITY (\d+)u",
                         (root / "src/gallium/ps5/ps5_screen.h").read_text())[1])
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("receipt", nargs="?")
-parser.add_argument("--capacity", type=int, choices=sorted({8, 32, capacity}), default=8,
+parser.add_argument("--capacity", type=int, choices=sorted({8, 32, 128, capacity}), default=8,
                     help="Frozen runtime capacity; default preserves historical receipts")
 modes = parser.add_mutually_exclusive_group()
 for mode in ("postchecks", "textures", "deferred", "deferred-control", "deferred-uploads"):
@@ -710,7 +710,7 @@ int main(void) {
             assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
             assert(!locked && !context.last_draw_status && begun==1);
             assert(ended==(i+1==PS5_MULTIDRAW_BATCH_CAPACITY)); /* CPU staging, not a hidden wait per draw. */
-            for (unsigned s=0;s<3;++s) assert(original_bytes[s][0]==0x40+i+s);
+            for (unsigned s=0;s<3;++s) assert(original_bytes[s][0]==(uint8_t)(0x40+i+s));
         }
         drain(); idle(); assert(ended==1 && calls==n);
     }
