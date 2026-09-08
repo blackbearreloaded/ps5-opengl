@@ -1,0 +1,11 @@
+# PS5 OpenGL SDL2 adapter; SPDX-License-Identifier: GPL-3.0-or-later
+prefix=${pcfiledir}/../..
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: sdl2
+Description: Static SDL2 PS5 public OpenGL adapter (limited video/event contract)
+Version: 2.30.12
+Requires: ps5-opengl-core33
+Libs: -L${libdir} -lSDL2 -lScePad -lSceUserService -lSceSystemService
+Cflags: -I${includedir} -I${includedir}/SDL2 -DSDL_MAIN_HANDLED=1

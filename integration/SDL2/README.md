@@ -1,4 +1,8 @@
-# SDL2 / frozen G19 integration (local candidate)
+# SDL2 / public PS5 OpenGL SDK (offline distribution lane)
+
+New builds have **no hardware qualification**. G19 acceptance below belongs only
+to its historical binary. Building against G25 or another verified SDK does not
+transfer those results. The adapter and its `ps5-g19` driver/log names are unchanged.
 
 This is an SDL2 video-device implementation, compiled into **real SDL2**. The
 consumer calls `SDL_CreateWindow(SDL_WINDOW_OPENGL)`, `SDL_GL_CreateContext`,
@@ -41,31 +45,40 @@ Run from the repository root; choose a **new** output directory for each build:
 
 ```sh
 sdl=/path/to/cached/SDL
-g19=/path/to/frozen/ps5-opengl-core33-g19-blit-swizzle
+sdk=/path/to/verified/ps5-opengl-core33-g25-srgb
 template=/path/to/ps5-native-app-boilerplate
 python3 integration/SDL2/build.py host \
-  --sdl-source "$sdl" --g19-prefix "$g19" --out build/g26-host
+  --sdl-source "$sdl" --sdk-prefix "$sdk" --out build/host-build
 
 python3 integration/SDL2/build.py native \
-  --sdl-source "$sdl" --g19-prefix "$g19" --out build/g26-native \
+  --sdl-source "$sdl" --sdk-prefix "$sdk" --out build/native-build \
   --payload-sdk "$template/.deps/native/ps5-payload-sdk" \
   --compiler-wrapper "$template/tooling/prospero-clang18"
 
-ctest --test-dir build/g26-host/cmake --output-on-failure
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 \
+  ctest --test-dir build/host-build/cmake --output-on-failure
 
-python3 integration/SDL2/folder.py --native-build build/g26-native \
-  --template "$template" --g19-prefix "$g19" --out build/g26-folder
-bash tools/verify-native-test-app.sh build/g26-folder
+python3 integration/SDL2/folder.py --native-build build/native-build \
+  --template "$template" --sdk-prefix "$sdk" --out build/sdl-folder
+bash tools/verify-native-test-app.sh build/sdl-folder
+python3 tools/test_sdl_sdk.py
 ```
 
-No fetch, install or canonical SDK rebuild is performed. Inputs are hash-checked
-before and after building. The expected G19 manifest is
-`344673952a789cae7e4a6d4c6670e3cf8c6bbf595fb07ebf27a8ffe3680014be`;
-`lib/libps5_opengl_core33.a` is
-`627857a44a8101b0ab0df319293a554143e96405be8a1ec55fc48bbd1830caa5`.
+No fetch, system install or supplied SDK rebuild is performed. `--g19-prefix`
+remains an alias for `--sdk-prefix`; neither spelling pins private G19 bytes.
+The existing `tools/check-sdk-consumers.py` verifier checks the complete supplied
+GL manifest, canonical relative paths, symlinks and archive format; the SDL
+builder also requires the public headers, libraries and consumer metadata.
+Inputs are hash-checked before and after building; a changed identity fails.
 `lib/libPS5OpenGLCore33.a` (capital letters) is the SDK's linker GROUP script,
 not the runtime archive. Use the whole verified SDK and its public linker flags.
 Each completed build writes source/input/output hashes in `receipt.json`.
+Source checksums provide integrity, not authentication or hardware evidence.
+The pinned source tar SHA-256 is
+`9dc445a5add6a6abccbad323d173881fe489ec5fe196c26bc08f127c47f00ee4`.
+It retains exactly two upstream Android symlinks into the same source tree;
+the verifier permits only those exact name/target pairs, rejecting other links,
+unsafe paths, duplicate members and special files.
 Native configuration uses SDL's existing fallbacks for `wcslcpy`, `wcslcat`,
 `wcscasecmp` and `wcsncasecmp`: the cached SDK declares them, but the native
 folder libc does not export them. SDL's fallback case comparison is ASCII-only.
@@ -79,12 +92,72 @@ The assembler writes stage-root `selected-test.txt` as `egl_public_core33_sdl2.o
 and runs the existing `tools/verify-native-test-app.sh`. Unchanged runtime shims
 supply `pss-opengl.log` and the gate-return marker for the shared native runner.
 
-For another application, build this SDL archive once, consume the generated
-`cmake/sdl/include/SDL2` and `cmake/sdl/include-config-release/SDL2` headers,
-and link `cmake/sdl/libSDL2.a` with the SDK's documented static C++ dependency
-group and the public payload SDK's Pad/UserService imports. Define
-`SDL_MAIN_HANDLED`, call `SDL_SetMainReady`, and supply your ordinary native-app
-entry point. Do not link `SDL2main` or OSMesa. The native folder requires the
+## Installed payload and receipts (schema version 1)
+
+The native build installs into `native-build/sdk`, separately from the GL SDK:
+
+```text
+native-build/
+  receipt.json                 build receipt
+  sdl-source.tar               unmodified exact-commit git archive
+  integration/                 integration sources used by this build
+  sdk/
+    include/SDL2/              public and generated configuration/revision headers
+    lib/libSDL2.a              regular static archive, not a thin archive
+    lib/pkgconfig/sdl2.pc
+    lib/cmake/SDL2/            upstream CMake config and static target exports
+    share/licenses/SDL2/LICENSE.txt
+    share/licenses/SDL2-PS5/LICENSE
+    share/SDL2/README.md
+    share/SDL2/receipt.json    installed receipt
+    manifest.sha256           every installed file except this manifest itself
+```
+
+Both receipts contain `schema_version: 1`, `mode`, `hardware_run: false`,
+`sdl_commit`, `sdl_source_tar_sha256`, `sdk_manifest_sha256`,
+`sdk_runtime_sha256`, `sdk_files`, `integration_inputs` (filename to SHA-256),
+`receipt_tool_sha256`, and `artifacts` (relative path to SHA-256).
+The outer receipt identifies the build archive and example object, and adds
+`payload_receipt_sha256` and `payload_manifest_sha256`. Installed `artifacts`
+cover every payload file except the installed receipt and manifest, avoiding
+a hash cycle; the manifest includes the installed receipt. No absolute paths
+or hardware acceptance are recorded. The source tar is the clean upstream
+snapshot; the integration source and marked static patch describe alterations.
+Keep the matching source tar, integration sources and licenses with distribution
+source materials; the binary payload alone is not the complete source tree.
+
+`build.verify_native_build(native, prefix)` accepts resolved `Path` objects and
+returns the outer receipt after checking source, native artifacts, the complete
+installed payload and exact receipt-to-GL-SDK identity. `folder.py` uses this
+before and after assembly. It rejects legacy G19 receipts; rebuild them using
+this lane. The SDL manifest describes an SDL payload, **not a full GL SDK**.
+Snapshot hashes are checked against the recorded build, not the current mutable
+integration README. Later acceptance documentation is a separate companion;
+it must not rewrite build receipts or reassign results to different binaries.
+
+The `sdk` tree can be copied to a new prefix or staged with `DESTDIR`; no
+original checkout is a consumer dependency. Use its already completed tree
+when packaging: a raw repeat of upstream `cmake --install` does not regenerate
+the final receipts. `sdl2-config`/Autoconf metadata is omitted because its
+upstream flags do not describe this adapter. Standard supported consumers:
+
+```sh
+export PKG_CONFIG_LIBDIR="$sdl_prefix/lib/pkgconfig:$gl_prefix/lib/pkgconfig"
+pkg-config --cflags --libs --static sdl2
+```
+
+```cmake
+find_package(SDL2 CONFIG REQUIRED) # CMAKE_PREFIX_PATH contains both prefixes
+target_link_libraries(app PRIVATE SDL2::SDL2) # SDL2::SDL2-static also supported
+```
+
+The metadata composes with `PS5OpenGLCore33::OpenGL` / `ps5-opengl-core33`
+and Pad/UserService/SystemService imports. It supplies `SDL_MAIN_HANDLED=1`;
+manual consumers must define it too, call `SDL_SetMainReady`, and supply their
+ordinary native-app entry point. Link using the PS5 C++ compiler driver, or
+include the public SDK's static C++ group (`libc++`, `libc++abi`, `libunwind`
+and compiler builtins) when driving the linker directly. The payload toolchain
+provides platform imports. Do not link `SDL2main` or OSMesa. The native folder requires the
 existing complete `native-app/app_heap.c` allocator wrap set and native CRT;
 cross-compiling an object alone does not produce a runnable application.
 
@@ -124,7 +197,7 @@ unchanged and unqualified. No new device-loss recovery is supplied; failed EGL
 cleanup retains resources rather than freeing anything still current. Hardware
 qualification and any bounded native-folder launch belong to the parent.
 
-## Native acceptance (September 8, local)
+## Historical G19 acceptance (September 8; not these new binaries)
 
 Source companion `9cf0daf` / agent source `f25a3a6`, unchanged frozen G19 SDK:
 **180 frames and two exact center-pixel checks passed** at a 1920×1080 drawable.
