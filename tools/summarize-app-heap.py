@@ -49,7 +49,8 @@ def summarize(text, sessions=1, steady_samples=0):
                             steady_growth_bytes=live[-1] - live[0] if len(live) >= 2 else None,
                             steady_range_bytes=max(live) - min(live) if live else None))
     return dict(scope="owned heap usable bytes; excludes GPU mappings, foreign heaps and RSS",
-                sessions=reports, post_session_growth_bytes=groups[-1][-1][3] - groups[0][-1][3])
+                sessions=reports, post_session_growth_bytes=(groups[-1][-1][3] - groups[0][-1][3]
+                                                             if len(groups) > 1 else None))
 
 
 def self_test():
@@ -58,6 +59,7 @@ def self_test():
                 f"peak_bytes=64 blocks={blocks} failures=0 ambiguous_zero_reallocs=0\n")
     text = row("begin") + row("steady") + row("steady", 1800) + row("steady", 3600) + row("end")
     assert summarize(text, steady_samples=3)["sessions"][0]["steady_growth_bytes"] == 0
+    assert summarize(text, steady_samples=3)["post_session_growth_bytes"] is None
     assert summarize(row("begin") + row("end") + row("begin") + row("end", live=32),
                      sessions=2)["post_session_growth_bytes"] == 16
     for bad in ("", text + row("end"), text.replace("state=2", "state=-1"),
