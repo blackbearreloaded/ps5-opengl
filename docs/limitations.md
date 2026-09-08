@@ -26,10 +26,12 @@ distinct when reporting compatibility.
   slower; window throughput must not be generalized to render-to-texture workloads.
   The G7 CPU-copy optimization improves the matched 1080p FBO case from 3.54 to
   14.98 FPS, still below 60. The later normal-swap 128-cube profile reaches
-  59.94 FPS with instancing and 29.97 FPS with ordinary draws after mixed-clear,
-  batching, depth-flush reuse and logging improvements. It uses two tiny textures; neither result predicts game
-  performance or establishes a hardware ceiling. Ordinary submission/retirement
-  and broader render-to-texture optimization remain substantial work.
+  59.94 FPS for both ordinary and instanced draws after mixed-clear, batching,
+  depth-flush reuse and logging improvements, over 30 measured seconds per mode.
+  It uses two tiny textures; neither result predicts game performance or establishes
+  a hardware ceiling. Larger draw counts and broader render-to-texture workloads
+  still need optimization; a short 512-object run validates batch boundaries,
+  not sustained performance at that count.
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.

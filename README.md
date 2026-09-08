@@ -44,7 +44,7 @@ This is small-scene throughput, not a guarantee of game FPS or perfect frame pac
 | [NanoVG](examples/core33-nanovg/README.md) | Its upstream GL3 vector renderer | 45 pixel probes; zero dirty stencil pixels |
 | [Sokol](examples/core33-sokol/README.md) | Its GL backend through public OpenGL | 1,843,200 component comparisons; zero mismatches |
 | [Upstream Sokol cube](examples/core33-sokol-cube/README.md) | Adapted existing 3D sample: rotation, depth and culling | 180 native frames / 2,596 probes; full-image heap readback ([scope](examples/core33-sokol-cube/README.md)) |
-| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, ordinary versus instanced draws | Later 128-cube candidate: 59.94 FPS instanced / 29.97 FPS ordinary at 1080p; not a game benchmark ([scope](docs/performance.md#g7-128-entry-batches)) |
+| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, ordinary versus instanced draws | Later 128-cube candidate: 59.94 FPS for both ordinary and instanced draws at 1080p; not a game benchmark ([scope](docs/performance.md#g7-256-entry-batches)) |
 
 The frozen validation-baseline TV demo measured approximately **20 FPS** for
 five minutes. Its 30 FPS setting is a pacing ceiling, not achieved performance;

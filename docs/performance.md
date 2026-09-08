@@ -693,6 +693,31 @@ limited to retained, unsubmitted work and ends at every drain; no cross-frame
 dirty cache or relaxed completion guards. Retain this measured combination.
 Frozen evidence: `build/frozen/g7-batch128-depth-cache-20260907.md`.
 
+### G7 256-entry batches
+
+- 2026-09-07 | G7 | cef6c1b | pass: 128 ordinary cubes 29.97→59.94 FPS; instanced 59.94, 239861 draws/pixels/close/health; 512-object boundary gate | results/g7-batch256-cubes*-20260907
+
+The bounded capacity increase lets the GPU clear and 128 public draws retire in
+one batch. The same 1080p scene, two tiny textures and 30 measured seconds per
+mode now reach **59.941451 FPS ordinary / 59.940062 FPS instanced**. Each mode
+completes 1,799 measured frames; ordinary p99 is 17.62 ms, not perfect pacing.
+Mean ordinary clear/submit/swap times are 3.78/6.16/6.74 ms.
+
+All 2,052 probes pass. Including warmup and oracle frames, 3,662 batches retire
+239,861 draws: exactly [129] per ordinary frame and [2] per instanced frame.
+A preceding one-second-per-mode 512-object boundary test separately passes
+8,196 probes and 23,269 draws in 227 batches, including full [256,256,1] groups.
+That short gate is correctness evidence, not a sustained 512-object FPS claim.
+
+All-marker completion, the shared timeout, CPU hazard drains and depth-cache
+lifetimes are unchanged. The worst-case private descriptor ceiling is 28 MiB,
+allocated on demand; the 128-object scene uses only 129 entries. Both native
+titles close cleanly with healthy services and exact-token release. Retain the
+measured improvement; no full CTS rerun, game claim or SDK promotion is implied.
+Frozen hashes and acceptance: `build/frozen/g7-batch256-20260907.md`.
+
+## Next steps
+
 1. Profile the accepted workload; change one measured bottleneck at a time with
    matched pixel, retirement and lifecycle checks. Do not weaken completion guards.
 2. Preserve G6's checked close-only teardown and bounded recreation/endurance.
