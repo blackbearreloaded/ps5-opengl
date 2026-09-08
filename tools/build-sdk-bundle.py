@@ -3,7 +3,7 @@
 # Copyright (C) 2026 BlackBearReloaded
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Package a frozen sampled SDK or a host-checked CI build; no console access."""
+"""Package a frozen validated SDK or a host-checked CI build; no console access."""
 import argparse
 import gzip
 import importlib
@@ -37,6 +37,69 @@ SAMPLES = {
         # belong to the separately versioned application source companion.
         native_paths=["native-app/agc_link_stub.c", "native-app/agc_driver_link_stub.c"]),
 }
+TARGETED_VERSION = "0.1.0-perf20260908-targeted"
+TARGETED = dict(
+    runtime="44435a7ccf7e3d30e33169867a5421a5fd86fae2",
+    sdk="344673952a789cae7e4a6d4c6670e3cf8c6bbf595fb07ebf27a8ffe3680014be",
+    archive="627857a44a8101b0ab0df319293a554143e96405be8a1ec55fc48bbd1830caa5",
+    candidate="001ab679f38dfcd9b7466fd333ebc1775e1acdc176fe6e7b2a03f7ca2711b549",
+    guide="sdk-bundle-g19.md", receipt="PPSA99005-20260908-105113",
+    native_paths=["native-app", "tests/ps5/Makefile",
+                  "tests/ps5/egl_public_core33_transfer_workload.c",
+                  "tests/ps5/egl_public_core33_render_format_blit.c",
+                  "tests/ps5/egl_public_core33_transfer_regressions.c"],
+    raw_sha256={
+        "-opengl.log": "7aa557920fdf6053c56fdf2f6578a79a5c3f1e1bb5a7a15b688c20113062f2a7",
+        "-klog.log": "dee1d2e0b098d133e91a66c6278ffef94793ed57100a8f207c6e2065eb702dd1",
+        "-result.json": "db335da69882d23a4802bba327f9ca3570117cff39769ceb161ff733c91fcab8",
+        "-runner.json": "8634c6b75db1bfa39eab2595401717e30db39a9f30909b9f90e161034f3a55b0"})
+
+
+def targeted_report(candidate, results):
+    require(digest(candidate) == TARGETED["candidate"], "not the frozen targeted candidate")
+    manifest = json.loads(candidate.read_text())
+    paths = {suffix: results / (TARGETED["receipt"] + suffix)
+             for suffix in TARGETED["raw_sha256"]}
+    for suffix, path in paths.items():
+        require(digest(path) == TARGETED["raw_sha256"][suffix], "targeted receipt changed: " + suffix)
+    log = paths["-opengl.log"].read_text()
+    importlib.import_module("test_transfer_workload").check_receipts(log)
+    format_rows = [line for line in log.splitlines() if line.startswith("[ps5-egl-render-blit]")]
+    require(len(format_rows) == 20 and sum(" case=" in line for line in format_rows) == 17 and
+            all(line.endswith("result=0") for line in format_rows) and
+            "conversion=R16F-RGBA32F error=0x0 result=0" in log and
+            "[ps5-egl-render-blit] matching=18 result=0" in log and
+            "[ps5-egl-transfer-regressions] gates=2 result=0" in log and
+            "[pss-opengl-native] gate completed status=0" in log,
+            "targeted batch is incomplete or failed")
+    lifecycle = json.loads(paths["-result.json"].read_text())
+    runner = json.loads(paths["-runner.json"].read_text())
+    require(lifecycle["titleId"] == manifest["title"] and
+            lifecycle["ebootSha256"].lower() == manifest["eboot_sha256"] and
+            lifecycle["libcSha256"].lower() == manifest["libc_sha256"] and
+            lifecycle["outcome"] == "entered-eboot" and
+            lifecycle["teardownSignal"] == "runtime-layers-released" and
+            runner["checkoutCommit"] == manifest["source_commit"] == TARGETED["runtime"] and
+            runner["gate"] == manifest["gate"] and runner["ps5Host"] == manifest["host"] and
+            runner["protocolCommit"] == manifest["protocol_commit"] and
+            runner["postHealthChecked"] is True and runner["lockReleased"] is True,
+            "targeted artifact or lifecycle mismatch")
+    memory = importlib.import_module("summarize-app-heap")
+    heap, gpu = memory.summarize(log, sessions=2), memory.summarize_gpu(log, sessions=2)
+    require(heap["post_session_growth_bytes"] == 0 and
+            all(row["begin_bytes"] == row["end_bytes"] == row["end_blocks"] == 0
+                for kind in ("direct", "mapped") for row in gpu[kind]),
+            "targeted memory acceptance failed")
+    return dict(scope="targeted native regressions only; not CTS or certification",
+                targeted_complete=True, full_matrix_complete=False, clean_cycles=1,
+                hardware="one recorded firmware-6.02 console; numerical offscreen checks",
+                source_commit=TARGETED["runtime"], candidate_sha256=TARGETED["candidate"],
+                eboot_sha256=manifest["eboot_sha256"],
+                groups=dict(mip_cycles=dict(executed=24, counts={"Pass": 24},
+                            checks="copy/upload/draw/sample; exact mip, layer and base guards"),
+                            format_checks=dict(executed=18, counts={"Pass": 18}, receipts=format_rows)),
+                egl_sessions=2, heap=heap, gpu=gpu, teardown="runtime-layers-released",
+                post_health=True, lock_released=True, raw_sha256=TARGETED["raw_sha256"])
 
 
 def require_frozen_sdk(profile, sdk_hash, runtime_hash):
@@ -127,13 +190,16 @@ def main():
     parser.add_argument("--ci-version", help="distinct CI-built, NOT console-validated bundle")
     parser.add_argument("--sample-version", choices=SAMPLES,
                         help="frozen sampled release (default: September 7)")
-    parser.add_argument("--consumer-report", type=Path, help="CI SDK consumer summary.json")
+    parser.add_argument("--targeted-version", choices=[TARGETED_VERSION],
+                        help="frozen G19 native regression bundle; not CTS acceptance")
+    parser.add_argument("--consumer-report", type=Path, help="CI/targeted SDK consumer summary.json")
     parser.add_argument("--runtime-config", type=Path, help="CI runtime-config.txt")
     parser.add_argument("--destination", type=Path, required=True, help="new output directory")
     args = parser.parse_args()
-    require(not (args.ci_version and args.sample_version),
-            "CI and sampled release modes are mutually exclusive")
-    profile = SAMPLES[args.sample_version or VERSION]
+    require(sum(value is not None for value in
+                (args.ci_version, args.sample_version, args.targeted_version)) <= 1,
+            "CI, sampled and targeted release modes are mutually exclusive")
+    profile = TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
     repo = Path(__file__).resolve().parents[1]
     sdk, output = args.sdk.resolve(), args.destination.resolve()
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_commit), "use a full source commit")
@@ -156,15 +222,20 @@ def main():
         version = args.ci_version
     else:
         require(args.candidate and args.results and
-                not args.consumer_report and not args.runtime_config,
-                "sampled mode requires the frozen candidate and hardware receipts")
+                bool(args.consumer_report) == bool(args.targeted_version) and not args.runtime_config,
+                "frozen modes require candidate/receipts; targeted mode also requires consumer checks")
         require_frozen_sdk(profile, sdk_hash, runtime_hash)
         subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", profile["runtime"],
                         args.source_commit, "--", "src", "toolchain",
                         "tests/ps5/native-app.mk", "dependencies.json",
                         *profile["native_paths"]], check=True)
-        sampled = sample_report(repo, args.candidate, args.results, profile)
-        version = args.sample_version or VERSION
+        if args.targeted_version:
+            sampled = targeted_report(args.candidate, args.results)
+            consumers = json.loads(args.consumer_report.read_text())
+            require_consumers(consumers, sdk_hash)
+        else:
+            sampled = sample_report(repo, args.candidate, args.results, profile)
+        version = args.targeted_version or args.sample_version or VERSION
     epoch = subprocess.check_output(["git", "-C", str(repo), "show", "-s", "--format=%ct",
                                      args.source_commit], text=True).strip()
     require(epoch.isdecimal(), "invalid source timestamp")
@@ -192,6 +263,7 @@ def main():
     (stage / "README.md").write_text(
         f"# PS5 OpenGL SDK {version}\n\n"
         + ("Host-checked only; NOT console-validated.\n\n" if args.ci_version is not None
+           else "Targeted native checks: 24 mip cycles + 18 format checks; NOT a full CTS campaign or certification.\n\n" if args.targeted_version
            else "Sample-validated; NOT a full CTS campaign or certification.\n\n")
         + f"Read [scope, verification and use](docs/{guide}) before using this SDK.\n\n"
         "Compiled libraries and headers are in `sdk/`; sources, examples, licenses,\n"
@@ -233,6 +305,15 @@ def main():
             hardware_validation="not performed for this binary",
             payload_sdk=pins["native_boilerplate"]["payload_sdk"],
             payload_sdk_archive_sha256=pins["native_boilerplate"]["payload_sdk_archive_sha256"])
+    elif args.targeted_version:
+        write_json(stage / "targeted-validation.json", sampled)
+        write_json(stage / "consumer-validation.json", dict(
+            scope="installed-SDK compile/link checks, not GPU execution", status="PASS",
+            manifest=consumers["manifest"], gl33=dict(commands=344, exported=344),
+            consumers={name: "PASS" for name in consumers["consumers"]},
+            outputs=consumers["outputs"], raw_report_sha256=digest(args.consumer_report)))
+        provenance.update(status="local targeted-native-validated candidate; not published",
+                          validation="targeted-validation.json and consumer-validation.json; no inherited CTS results")
     else:
         write_json(stage / "sample-validation.json", sampled)
     write_json(stage / "provenance.json", provenance)

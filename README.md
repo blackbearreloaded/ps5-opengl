@@ -38,14 +38,18 @@ and [benchmark build instructions](examples/core33-imgui/README.md#high-refresh-
 These are render sizes, not verified HDMI modes. This is small-scene throughput,
 not a guarantee of game FPS or perfect frame pacing.
 
-**Latest local candidate (September 8, not published):** the matched 1080p
-single-mip 2D RGBA8 offscreen workload improved from 19.98 to **59.95 FPS**
-(p95 17.20 ms). Its ten-minute soak and **204/204 focused conformance executions**
-passed, with no steady tracked
-heap/GPU-memory growth. These results belong to the frozen G13 SDK, not the older
-download above. See [offscreen and stability findings](docs/offscreen-stability.md)
-and the [local sampled bundle](docs/sdk-bundle-g13.md). Manual 4K-app startup/input
-acceptance remains open; these checks do not establish exhaustive stability.
+**Latest local candidate (September 8, not published):** G19 fixes nonzero-mip
+copies and color-blit channel mappings. **24 mip cycles plus 18 format checks**
+pass in one native batch, with balanced tracked GPU memory over two EGL sessions.
+The [targeted SDK bundle](docs/sdk-bundle-g19.md) carries its own evidence, not a
+new full CTS campaign or performance benchmark.
+
+**Earlier local G13 measurements:** the matched 1080p single-mip 2D RGBA8 offscreen
+workload improved from 19.98 to **59.95 FPS** (p95 17.20 ms). A ten-minute soak and
+**204/204 focused conformance executions** passed without steady tracked memory
+growth. These apply to G13, not the newer G19 bytes or older download above;
+see [offscreen and stability findings](docs/offscreen-stability.md). Manual
+4K-app startup/input acceptance remains separate; exhaustive stability is not claimed.
 
 ## Project Foundation
 
@@ -141,6 +145,7 @@ integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
 | [Building](docs/building.md) | Dependencies, source setup, SDK and native apps |
 | [Using the SDK](docs/consumer-build.md) | Make, pkg-config and CMake integration |
 | [Sample-validated SDK bundle](docs/sdk-bundle.md) | Frozen 1080p60 package contents, verification and scope |
+| [Local targeted SDK bundle](docs/sdk-bundle-g19.md) | G18/G19 copy fixes, 24 mip cycles and 18 format checks; not published |
 | [CI-built SDK archives](docs/ci-releases.md) | Current-source builds, checksums and draft-release workflow |
 | [Architecture](docs/architecture.md) | Frontend, shader compiler, driver and platform boundaries |
 | [Testing](docs/testing.md) | Host checks, bounded hardware cases and acceptance |

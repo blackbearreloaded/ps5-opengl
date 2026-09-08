@@ -14,6 +14,7 @@ no console interaction without the shared lock, and no graphics ELF injection.
 | G16 | Focused acceptance | Frozen candidate, targeted regressions and matched workloads, sustained session and launch/exit checks; no automatic full CTS rerun. |
 | G18 | Mip transfer/object-churn regression | 24 ordered native copy/upload/draw/sample cycles, exact mip/layer/base guards, balanced tracked GPU memory and clean teardown. |
 | G19 | Color-blit channel mappings | Same mip checks plus 18 format/conversion checks in one native batch; two balanced GPU-memory sessions and clean teardown. |
+| G20 | Corrected SDK distribution | Preserve G19 binaries and targeted evidence; verify archive integrity and all three consumers after fresh extraction. No new console run or inherited CTS acceptance. |
 
 Keep G11/G12 separate from game-specific changes and preserve G9's copy optimization.
 Use existing tests and batching infrastructure. Hardware fault injection, console
@@ -57,8 +58,8 @@ is a manual cold launch of PPSA77800 with TV/controller confirmation. No blanket
 
 | Area | Current state | Remaining acceptance |
 | --- | --- | --- |
-| Core implementation and focused regressions | G11/G12/G13/G15/G16 pass for their frozen candidates | No new full-matrix claim; retain historical baseline separately. |
-| Distribution | Local G13 archive prepared; 118 file checksums and all three relocated consumers pass | Local only; publication requires a separate request. Older release unchanged. |
+| Core implementation and focused regressions | G19 additionally fixes mip copies and color mappings; its 24 mip cycles and 18 format checks pass | No new full-matrix claim; retain each older candidate's evidence separately. |
+| Distribution | Corrected G19 SDK and targeted bundle procedure available; G13 archive is historical | Verify fresh extraction before handoff. Local only; publication requires a separate request. |
 | Manual startup and controls | G14 automated supported-mode/exit runs pass; owner reports TV-only launches always work | Fresh physical-control acceptance remains separate. Earlier zero support occurred with a capture card; do not force an unsupported display mode. |
 | Broader platform coverage | Explicitly unqualified | Separate safe conditions for suspend/resume, device loss, hardware OOM, multi-hour sessions and another firmware. |
 | Application integration | Fullscreen EGL and public GL examples supplied | SDL/GLFW are separate platform ports, not missing Core 3.3 commands. |
@@ -114,5 +115,5 @@ bytes are in `.local/g19-tested-app/`. No new full CTS or long-soak acceptance.
 
 The independent package is an older source baseline, not the G18/G19 runtime,
 and has no hardware acceptance. All four agent lanes are integrated and closed.
-Next distribution preparation must use the corrected runtime and its own evidence;
-do not publish or relabel the preserved G13 or independent baseline archives.
+The [G19 bundle procedure](sdk-bundle-g19.md) uses the corrected runtime and its
+own evidence; do not publish or relabel the preserved G13 or independent archives.
