@@ -29,6 +29,7 @@ separate from console logs. Keep changes local unless publication is requested.
 - 2026-09-08 | G32 native | ac2a52a | pass: 180 frames/two exact pixels per size, correct SDL drawable, restoration/teardown/health/unlock | results/g32-sdl2-{1440,2160}-20260908/acceptance.json | HDMI still 1080p120.
 - 2026-09-08 | G33 | a60a0cb | partial-pass: profile consumed, 119.883 FPS/cleanup pass; HDMI still 1080p120 | results/g33-title-profile-2160-20260908/display-report.json | inspect sink/settings.
 - 2026-09-08 | G35 | 85f0a97 | pass: read-only installed identity; saved output requests match despite different HDMI | results/g35-prosperolight-installed-20260908/comparison.json | capture working stream.
+- 2026-09-08 | G36 | a53133a | inconclusive: live ProsperoLight logs 1080p120; owner TV reports 4K120 | results/g36-prosperolight-live-20260908/comparison.json | reconcile sink evidence.
 
 ## Current boundary and next check
 
@@ -44,11 +45,12 @@ restored 3840x2160 at 59.94 Hz. VideoOut's reported 4K dimensions alone do not
 override that evidence. This is a rendering pass, not end-to-end 1440p120 or
 2160p120 output acceptance; independent sink verification is still absent.
 
-Next: capture the owner's confirmed working ProsperoLight 4K120 stream on the
-current setup, then compare its actual transition with G33. The owner has already
-confirmed simultaneous 4K/120 in the TV signal panel; do not repeat the sink
-question. A 1440p render upscaled to 4K HDMI must remain labelled as such. Do not
-force an undocumented mode or repeat identical runs to turn the mismatch into a pass.
+Next: reconcile G36's fresh ProsperoLight console/TV discrepancy before changing
+output code. The owner reports simultaneous 4K/120 in the TV signal panel; the
+live console capture reports 1080p119.88. An input-signal photo was requested,
+not another verbal confirmation or PS5 settings change. A 1440p render upscaled
+to 4K HDMI must remain labelled as such. Do not force an undocumented mode or
+repeat identical runs to turn the mismatch into a pass.
 
 ## G33: title-profile negotiation diagnostic
 
@@ -133,3 +135,21 @@ PC application. Do not replace the installed ProsperoLight or modify its dirty t
 The old oracle wrapper is not a reusable current runner: its subsequent production
 relaunch has a saved kernel-panic trace, documented upstream as a teardown/mount
 race. Keep title-specific runtime-release verification mandatory.
+
+## G36: owner-started live stream (read-only)
+
+The owner started ProsperoLight and reported 4K120 on the TV. The capture ties
+the live transition to PPSA99002, PID 1033: the same request as G33 selected
+`1080P_11988 RGB444 ... 36bpp`; Shell UI separately reported 1920x1080 at
+119.8801 Hz. A second capture contained no later mode change. Checksum-validated
+saved preferences select 3840x2160, 120 FPS, HEVC HDR at 100 Mbps; preferences
+are not proof of decoded frames or physical output. Metadata matches G35.
+
+The two live observations conflict. Neither label this a fresh 4K120 console
+pass nor dismiss the owner's TV report. The mismatch is no longer established
+as OpenGL-specific. Retain both observations and inspect the requested TV
+input-signal photo before selecting another code experiment. No production
+code or display-auditor acceptance rule changed. Both read-only captures kept
+services healthy and released their exact locks; the owner's stream was left
+running, so no teardown or closed-cycle stability result is claimed. Reproduce
+the local consistency audit with `.local/g36-verify.py`.
