@@ -35,13 +35,19 @@ cmake --build "$cts_build" --target ps5-gl33-runner -j8
 runner="$cts_build/external/openglcts/modules/libps5-gl33-runner.a"
 test -s "$runner"
 
-make -C "$root/tests/ps5" --no-print-directory -f native-app.mk -j8 \
-    PS5_PAYLOAD_SDK="$sdk" \
-    runtime
-mapfile -t opengl_libraries < <(
+if [[ -n ${PS5_OPENGL_PREFIX:-} ]]; then
+    # Match renderer gates: validate the exact installed SDK instead of rebuilding it.
+    prefix=$(realpath -e -- "$PS5_OPENGL_PREFIX")
+    (cd "$prefix" && sha256sum --check --strict manifest.sha256 >/dev/null)
+    opengl_libraries=("$prefix/lib/libPS5OpenGLCore33.a")
+else
+    make -C "$root/tests/ps5" --no-print-directory -f native-app.mk -j8 \
+        PS5_PAYLOAD_SDK="$sdk" runtime
+    mapfile -t opengl_libraries < <(
     make -C "$root/tests/ps5" --no-print-directory -s -f native-app.mk \
         PS5_PAYLOAD_SDK="$sdk" print-static-libs
-)
+    )
+fi
 mapfile -d '' -t cts_libraries < <(
     find "$cts_build" -type f -name '*.a' -print0 | sort -z
 )

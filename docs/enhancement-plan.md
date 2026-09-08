@@ -34,3 +34,8 @@ Require balanced post-session bytes/counts, observed allocation activity, and ze
 failure/inconclusive flags. The bounded ledger serializes diagnostic memory calls;
 do not use this build for matched performance claims. SDK/default app builds are
 unchanged. This excludes module-internal allocations, CPU mmap and process RSS.
+
+G16 uses the frozen G13 SDK for the soak and CTS (`PS5_OPENGL_PREFIX` now works
+for both native builders). Run the existing 51-case smoke selection in each of
+four configurations on one binary, preserving exact ordered receipts. Keep the
+historical full-campaign and older SDK evidence separate.
