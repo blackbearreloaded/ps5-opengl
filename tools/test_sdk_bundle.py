@@ -28,22 +28,29 @@ class SampleGateTests(unittest.TestCase):
                         BUNDLE.main()
                 self.assertFalse(destination.exists())
 
-    def test_frozen_versions_cannot_share_sdk_acceptance(self):
+    def test_frozen_versions_require_matching_sdk_and_own_receipts(self):
         profiles = [*BUNDLE.SAMPLES.values(), BUNDLE.TARGETED]
-        for index, profile in enumerate(profiles):
+        for profile in profiles:
             BUNDLE.require_frozen_sdk(profile, profile["sdk"], profile["archive"])
-            other = profiles[(index + 1) % len(profiles)]
-            for sdk, archive in [(other["sdk"], profile["archive"]),
-                                 (profile["sdk"], other["archive"]),
-                                 (other["sdk"], other["archive"])]:
-                with self.assertRaises(ValueError):
-                    BUNDLE.require_frozen_sdk(profile, sdk, archive)
-        self.assertNotEqual(profiles[0]["candidate"], profiles[1]["candidate"])
+            for other in profiles:
+                for sdk, archive in [(other["sdk"], profile["archive"]),
+                                     (profile["sdk"], other["archive"]),
+                                     (other["sdk"], other["archive"])]:
+                    # The targeted and sampled G19 packages intentionally share
+                    # binaries, but never their distinct receipt manifests.
+                    if (sdk, archive) == (profile["sdk"], profile["archive"]):
+                        continue
+                    with self.assertRaises(ValueError):
+                        BUNDLE.require_frozen_sdk(profile, sdk, archive)
+        self.assertEqual(len({p["candidate"] for p in profiles}), len(profiles))
         samples = list(BUNDLE.SAMPLES.values())
-        for profile, other in (samples, samples[::-1]):
-            with mock.patch.object(BUNDLE, "digest", return_value=other["candidate"]):
-                with self.assertRaises(ValueError):
-                    BUNDLE.sample_report(None, None, None, profile)
+        for profile in samples:
+            for other in profiles:
+                if other is profile:
+                    continue
+                with mock.patch.object(BUNDLE, "digest", return_value=other["candidate"]):
+                    with self.assertRaises(ValueError):
+                        BUNDLE.sample_report(None, None, None, profile)
 
     def test_bundle_modes_are_exclusive(self):
         modes = [("--ci-version", "local"), ("--sample-version", BUNDLE.VERSION),

@@ -129,3 +129,6 @@ The source companion contains both fixes and the exact accepted batch sources;
 its preparation-time documentation precedes this verification note. Hardware
 scope is G19's targeted batch, not the historical full campaign, G13 sample/soak
 or a new performance measurement. The archive includes no raw logs or PPSA77800 app.
+
+- 2026-09-08 | G21 | unchanged G19: 204/204 sampled executions; matched FBO 59.95 FPS/p95 17.21 ms; both 128-cube modes 59.94 FPS; 600 s/35,941 frames/21 probes with zero growth across 20 steady heap/GPU samples; three launches/nine EGL sessions/54 frame oracles pass. Tracked GPU returns to zero, lifecycle heap stays 9,455 bytes/22 blocks; all ten cycles clean/healthy/unlocked | `results/g21-{cts-smoke,fbo,cubes,soak,lifecycle}-20260908/`, source companion `58f1ac6`, `.local/g21-cts-candidate.json`. No full-matrix, physical-input or exhaustive-stability claim.
+- 2026-09-08 | G23 | independent G19 runtime compilation, 344 exports, nine installed/relocated/extracted consumer links and 120 bundle checks pass | SDK agent `78cb70d`, `.local/final-audit.json`. Reuses that agent's independently built Mesa/PSBC; not a full clean-room rebuild or byte-identical binary. New binary is host-only, not console-validated. Canonical frozen SDK unchanged; provenance wording fix integrated.

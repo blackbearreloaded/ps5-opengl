@@ -1,12 +1,23 @@
 # Offscreen performance and sustained stability
 
+Latest local G19 qualification repeats the matched 1080p FBO at **59.95 FPS**
+(p95 17.21 ms) and both 128-cube modes at **59.94 FPS**. Its own ten-minute soak
+passes 35,941 frames/21 probes with zero steady tracked heap/GPU growth; three
+launch/exit cycles pass nine EGL sessions and 54 frame oracles. Tracked GPU
+bytes/counts return to zero, and post-session heap stays at 9,455 bytes/22 blocks.
+All cycles tear down cleanly with healthy services and exact-token release.
+See [G19 identity and scope](sdk-bundle-g19.md); these are fresh G19 results,
+not inherited G13 acceptance. Multi-hour and recovery behavior remain unqualified.
+
+## G13/G16 findings (historical)
+
 Local follow-up (not published): the single-mip 2D RGBA8 native-layout candidate
 `16e651b` improves the same 1080p FBO case from **19.98 to 59.95 FPS**.
 Mean render time is 16.43 ms; p95 is 17.20 ms, so this is not a guarantee that
 every frame meets 16.67 ms. Pixels, retirement and teardown passed. Other formats,
 mips and layers retain staging. The three-session GPU-memory diagnostic returns
 tracked allocations/mappings to zero after every cleanup. Broader current-candidate
-acceptance now includes a ten-minute zero-growth tracked-memory soak, 204 passing
+acceptance included a ten-minute zero-growth tracked-memory soak, 204 passing
 CTS smoke executions across four configurations, and native copy/layered-mip
 regressions. See [the local enhancement gates](enhancement-plan.md) for identities,
 the excluded timed-out attempt, and remaining qualification limits.

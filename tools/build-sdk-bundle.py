@@ -36,6 +36,13 @@ SAMPLES = {
         # Only these native-app sources enter the SDK. Heap/GPU diagnostics
         # belong to the separately versioned application source companion.
         native_paths=["native-app/agc_link_stub.c", "native-app/agc_driver_link_stub.c"]),
+    "0.1.0-perf20260908-g19-sampled": dict(
+        runtime="44435a7ccf7e3d30e33169867a5421a5fd86fae2",
+        sdk="344673952a789cae7e4a6d4c6670e3cf8c6bbf595fb07ebf27a8ffe3680014be",
+        archive="627857a44a8101b0ab0df319293a554143e96405be8a1ec55fc48bbd1830caa5",
+        candidate="31d8e1d13bbacad9d87a7ad656612abe04a234a165bd0c82009ed398af70244a",
+        guide="sdk-bundle-g19.md",
+        native_paths=["native-app/agc_link_stub.c", "native-app/agc_driver_link_stub.c"]),
 }
 TARGETED_VERSION = "0.1.0-perf20260908-targeted"
 TARGETED = dict(

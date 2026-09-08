@@ -41,13 +41,16 @@ not a guarantee of game FPS or perfect frame pacing.
 **Latest local candidate (September 8, not published):** G19 fixes nonzero-mip
 copies and color-blit channel mappings. **24 mip cycles plus 18 format checks**
 pass in one native batch, with balanced tracked GPU memory over two EGL sessions.
-The [targeted SDK bundle](docs/sdk-bundle-g19.md) carries its own evidence, not a
-new full CTS campaign or performance benchmark.
+The same frozen SDK now also passes **204/204 sampled executions**, a ten-minute
+zero-growth tracked-memory soak, and three launch/exit cycles (nine EGL sessions).
+Matched 1080p profiles reach **59.95 FPS offscreen** and **59.94 FPS in both
+128-cube modes**. The [local SDK bundles](docs/sdk-bundle-g19.md) keep this
+evidence separate from the historical full campaign and older downloads.
 
 **Earlier local G13 measurements:** the matched 1080p single-mip 2D RGBA8 offscreen
 workload improved from 19.98 to **59.95 FPS** (p95 17.20 ms). A ten-minute soak and
 **204/204 focused conformance executions** passed without steady tracked memory
-growth. These apply to G13, not the newer G19 bytes or older download above;
+growth. Those original receipts apply to G13; G19 has its own checks above;
 see [offscreen and stability findings](docs/offscreen-stability.md). Manual
 4K-app startup/input acceptance remains separate; exhaustive stability is not claimed.
 
@@ -145,7 +148,7 @@ integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
 | [Building](docs/building.md) | Dependencies, source setup, SDK and native apps |
 | [Using the SDK](docs/consumer-build.md) | Make, pkg-config and CMake integration |
 | [Sample-validated SDK bundle](docs/sdk-bundle.md) | Frozen 1080p60 package contents, verification and scope |
-| [Local targeted SDK bundle](docs/sdk-bundle-g19.md) | G18/G19 copy fixes, 24 mip cycles and 18 format checks; not published |
+| [Local G19 SDK bundles](docs/sdk-bundle-g19.md) | Copy fixes, focused sample, performance and bounded stability; not published |
 | [CI-built SDK archives](docs/ci-releases.md) | Current-source builds, checksums and draft-release workflow |
 | [Architecture](docs/architecture.md) | Frontend, shader compiler, driver and platform boundaries |
 | [Testing](docs/testing.md) | Host checks, bounded hardware cases and acceptance |

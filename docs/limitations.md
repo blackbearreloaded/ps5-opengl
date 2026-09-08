@@ -39,6 +39,9 @@ distinct when reporting compatibility.
   mips and layers retain staging. This focused improvement is not a universal
   render-to-texture or full-game speed guarantee, and is not in the older SDK
   download. See [the separately identified local candidate](sdk-bundle-g13.md).
+  G19's own focused qualification reproduces 59.95 FPS offscreen and 59.94 FPS
+  for both 128-cube modes; its [new sample and bounded stability checks](sdk-bundle-g19.md)
+  do not extend these results to arbitrary formats, games or HDMI modes.
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.
@@ -67,6 +70,8 @@ distinct when reporting compatibility.
   receipts show 4K rendering at ~120 FPS but HDMI `1080P_11988`, then restoration
   to `3840_2160P_5994`; they establish neither 4K120 HDMI nor a new timing defect.
   That unshipped app uses an older G6 SDK; see [its separate scope](sdk-bundle-g13.md).
+  G19 separately passes a ten-minute tracked-memory soak and three launch/exit
+  cycles (nine EGL sessions), without steady heap/GPU growth or teardown failures.
 - **Stress:** maximum-axis framebuffers were tested, not an 8192x8192 allocation
   or deliberate hardware OOM exhaustion. Ten-minute runs and bounded recreation
   are tested, not exhaustive long sessions, suspend/resume or device-loss recovery.
