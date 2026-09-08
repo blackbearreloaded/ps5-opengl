@@ -7,7 +7,7 @@ package includes ready-to-launch applications.
 
 ## Prerequisites
 
-- Git, Make, GCC/G++, binutils and CMake.
+- Git, Make, GCC/G++, binutils, CMake, Bison and Flex.
 - Clang/LLD 18 for the native app adapter, plus the Clang/LLD selected by the
   public SDK wrappers (21.1.8 in the recorded Mesa/PSBC builds).
 - Python 3.12+, Meson, Ninja, Mako, PyYAML and packaging.

@@ -15,12 +15,6 @@ jobs:
     env:
       LLVM_CONFIG: /usr/bin/llvm-config-21
       PSBC_JOBS: '2'
-      PS5_GPU_PRESENT_BATCH: '1'
-      PS5_DRAW_PROFILE: '1'
-      PS5_SCANOUT_HEIGHT: '1080'
-      PS5_SCANOUT_FPS: '60'
-      PS5_MULTIDRAW_BATCH: '1'
-      PS5_DEFERRED_DRAW_BATCH: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -32,7 +26,7 @@ jobs:
           sudo install -m 0644 "$RUNNER_TEMP/llvm.asc" /usr/share/keyrings/llvm.asc
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-21 main' | sudo tee /etc/apt/sources.list.d/llvm21.list
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y build-essential clang-18 lld-18 clang-21 lld-21 llvm-21-dev cmake ninja-build pkg-config python3-venv glslang-tools spirv-tools unzip
+          sudo apt-get install --no-install-recommends -y build-essential clang-18 lld-18 clang-21 lld-21 llvm-21-dev cmake ninja-build pkg-config python3-venv glslang-tools spirv-tools bison flex unzip
           python3 -m venv "$RUNNER_TEMP/build-tools"
           "$RUNNER_TEMP/build-tools/bin/pip" install meson==1.10.1 Mako==1.3.10 PyYAML==6.0.2 packaging==25.0
           echo "$RUNNER_TEMP/build-tools/bin" >> "$GITHUB_PATH"
@@ -50,6 +44,13 @@ jobs:
       - name: Fetch pinned graphics and example sources
         run: python3 tools/fetch-sources.py --sokol-samples
       - name: Build compiler, Mesa and PS5 static SDK
+        env:
+          PS5_GPU_PRESENT_BATCH: '1'
+          PS5_DRAW_PROFILE: '1'
+          PS5_SCANOUT_HEIGHT: '1080'
+          PS5_SCANOUT_FPS: '60'
+          PS5_MULTIDRAW_BATCH: '1'
+          PS5_DEFERRED_DRAW_BATCH: '1'
         run: make sdk
       - name: Verify relocated SDK with three independent consumers
         run: |
