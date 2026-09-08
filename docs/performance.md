@@ -725,8 +725,9 @@ regular archives, Make/pkg-config/CMake consumers and 344 Core exports pass
 offline checks. Native Sokol passes the original 8.3 MB heap readback and all
 five poses; repeated ImGui/EGL initialization passes three complete sessions.
 All presenter drains/closes and title teardowns succeed without the old busy
-warning. The accepted full-CTS baseline SDK is untouched; this candidate still
-requires its own frozen release matrix and is not yet a published bundle.
+warning. The accepted full-CTS baseline SDK is untouched; this candidate uses
+the [sampled validation gate](testing.md#current-optimized-candidate-sampled-validation)
+instead of a new full matrix and is not yet a published bundle.
 Provenance: `build/frozen/g7-60fps-sdk-consumers-20260907.md`.
 
 ## Next steps

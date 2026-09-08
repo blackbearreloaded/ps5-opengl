@@ -1,7 +1,9 @@
 # Testing
 
-Use targeted checks during development and the full matrix for a frozen release
-candidate. Documentation/example edits do not justify repeating all CTS cases.
+Use risk-based checks during development and for the current optimized release
+candidate. The full 39,544-execution matrix is deferred at the owner's request;
+it is not a release blocker for this explicitly sample-validated candidate.
+Documentation/example edits do not justify repeating all CTS cases.
 
 ## Host-only
 
@@ -73,10 +75,43 @@ Measured timings and `--budget-seconds` support efficient bounded batches.
 Long cases need adequate independent windows. Never merge different binaries
 to fill coverage gaps.
 
-Release acceptance requires all 9,886 cases once in each of four configurations,
-no required-case failures, reviewed optional exclusions, repeated clean lifecycles
-and external renderer oracles. A timeout is incomplete—not a pass or an automatic
-kernel panic.
+### Current optimized candidate: sampled validation
+
+Reuse the existing `smoke` suite: 51 distinct cases in each of the four target
+configurations, **204 executions total**, on one frozen binary. This is a
+deterministic, risk-based sample, not a statistical confidence estimate or full
+Core 3.3 coverage. It exercises buffer objects, draw buffers, framebuffer blits,
+depth/stencil clears, texture addressing/LOD/swizzle, interpolation and transform
+feedback across small, non-square, tall and wide targets.
+
+Accept this sampled gate only when every selected case is Pass, all four actual
+render-target reports match, and all cycles have clean teardown/health/unlock.
+Keep the current candidate's host lifetime/hazard checks, native 512-object batch
+boundary, 128-cube ordinary/instanced pixel checks, SDK links, Sokol renderer and
+repeated EGL-session results alongside CTS; the 51 cases alone do not exercise
+every optimized presentation path. Already verified frozen artifacts need not
+be rebuilt or rerun without an affected change.
+
+Run one bounded batch per configuration, reuse remotely verified binaries/data,
+upload only changed selection files and stop observation at completion. No routine
+screenshots or five-minute repetitions. Release the console lock before offline
+analysis. After a change, rerun the affected named tests and add a regression for
+any new failure; widen to the affected CTS family for unexplained failures or
+major compiler/resource/synchronization changes. Do not silently expand to the
+full matrix or omit a slow selected case to obtain a pass.
+
+Continue using `verify-cts-candidate.py --allow-incomplete` for strict identity,
+ordered-result and lifecycle auditing. Its full-matrix `complete=false` must stay
+false for a sample; record sampled-gate completion separately. Keep historical
+baseline coverage separate and label any resulting SDK **sample-validated**.
+Remaining unsampled cases are untested on this candidate, not inherited passes.
+
+### Full matrix (deferred)
+
+A full-matrix claim still requires all 9,886 cases once in each configuration,
+no required-case failures and reviewed optional exclusions, with clean lifecycles
+and renderer oracles. A timeout is incomplete—not a pass or an automatic kernel
+panic. The historical baseline retains its original full-matrix evidence.
 
 ## Reporting
 
