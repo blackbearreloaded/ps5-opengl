@@ -14,8 +14,10 @@
 #include <GL/gl.h>
 
 #define TAG "[ps5-egl-staging-profile]"
-#define WIDTH 640
-#define HEIGHT 360
+/* Common footprint within the Core 3.3 minimum 3D texture size (256).
+ * Keep every case comparable, including the existing PS5 3D limit. */
+#define WIDTH 256
+#define HEIGHT 144
 #define WARMUP 4
 #define MAX_CYCLES 100000
 #define TARGET_NS UINT64_C(3000000000)
@@ -240,7 +242,7 @@ static int run_case(const struct test_case *c, GLuint render, GLint color)
    else glDisable(GL_FRAMEBUFFER_SRGB);
    snprintf(fragment, sizeof(fragment), "#version 330 core\nuniform %s u_texture;\n"
             "layout(location=0) out vec4 color;\nvoid main() {\n"
-            "vec2 uv = gl_FragCoord.xy / vec2(640.0, 360.0);\n"
+            "vec2 uv = gl_FragCoord.xy / vec2(256.0, 144.0);\n"
             "color = textureLod(u_texture, %s, %d.0); }\n", c->sampler, c->coordinate, c->level);
    sample = make_program(fragment);
    if (!sample) goto cleanup;
@@ -360,7 +362,7 @@ int main(void)
    int made_current = 0, passed = 0;
    EGLBoolean cleanup_ok = EGL_TRUE;
    uint64_t start = now_ns(), end = 0;
-   printf(TAG " config version=2 host=%d cases=7 width=640 height=360 warmup=4 "
+   printf(TAG " config version=3 host=%d cases=7 width=256 height=144 warmup=4 "
           "target_ns=3000000000 max_ns=5000000000 max_cycles=100000 completion=glFinish\n", HOST);
    if (!start) goto cleanup;
    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -378,6 +380,15 @@ int main(void)
        !eglMakeCurrent(display, surface, surface, context)) goto cleanup;
    made_current = 1;
    printf(TAG " renderer=%s version=%s\n", glGetString(GL_RENDERER), glGetString(GL_VERSION));
+   GLint max_2d = 0, max_3d = 0, max_layers = 0, max_renderbuffer = 0;
+   glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_2d);
+   glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE, &max_3d);
+   glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+   glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &max_renderbuffer);
+   printf(TAG " limits texture2d=%d texture3d=%d layers=%d renderbuffer=%d\n",
+          max_2d, max_3d, max_layers, max_renderbuffer);
+   if (max_2d < WIDTH * 2 || max_3d < WIDTH || max_layers < 3 ||
+       max_renderbuffer < WIDTH || glGetError() != GL_NO_ERROR) goto cleanup;
    glDisable(GL_DITHER);
    glDisable(GL_BLEND);
    glDisable(GL_DEPTH_TEST);

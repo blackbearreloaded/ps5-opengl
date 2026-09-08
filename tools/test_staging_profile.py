@@ -21,7 +21,8 @@ TAG, CASES, summarize = API["TAG"], API["CASES"], API["summarize"]
 
 
 def parser_check():
-    records = [API["CONFIG"].format(host=1), "renderer=fixture version=3.3", "session_setup_ns=100"]
+    records = [API["CONFIG"].format(host=1), "renderer=fixture version=3.3",
+               "limits texture2d=8192 texture3d=256 layers=256 renderbuffer=8192", "session_setup_ns=100"]
     records += [f"case={name} framebuffer_srgb={int(name == 'srgb8-2d')} "
                 f"encoding={'srgb' if name.startswith('srgb8-') else 'linear'} "
                 f"setup_ns=100 warmup_ns=100 before={probes} cycles=3 "
@@ -37,7 +38,8 @@ def parser_check():
            valid.replace("measured_ns=3000000000", "measured_ns=2999999999", 1),
            valid.replace("measured_ns=3000000000", "measured_ns=5000000001", 1),
            valid.replace("setup_ns=100", "setup_ns=nan", 1), valid.replace("cleanup=1", "cleanup=0"),
-           valid.replace("version=2", "version=1"), valid.replace("encoding=srgb", "encoding=linear", 1),
+           valid.replace("version=3", "version=2"), valid.replace("encoding=srgb", "encoding=linear", 1),
+           valid.replace("texture3d=256", "texture3d=128"),
            valid.replace("framebuffer_srgb=1", "framebuffer_srgb=0"),
            "\n".join(line for line in valid.splitlines() if "case=srgb8-" not in line)]
     for log in bad:

@@ -13,7 +13,7 @@ TAG = "[ps5-egl-staging-profile]"
 CASES = (("rgba8-2d", 16), ("srgb8-2d", 32),
          ("r8-2d", 16), ("rgba16f-2d", 16),
          ("rgba8-2d-mip1", 24), ("rgba8-array-layer1", 32), ("rgba8-3d-layer1", 32))
-CONFIG = ("config version=2 host={host} cases=7 width=640 height=360 warmup=4 "
+CONFIG = ("config version=3 host={host} cases=7 width=256 height=144 warmup=4 "
           "target_ns=3000000000 max_ns=5000000000 max_cycles=100000 completion=glFinish")
 
 
@@ -36,6 +36,12 @@ def summarize(text, host=False):
 
     require(take() == CONFIG.format(host=int(host)), "Wrong/missing configuration or host mode")
     renderer = match(r"renderer=(.+) version=(.+)", "Missing renderer/version").groups()
+    limits = dict(zip(('texture2d', 'texture3d', 'layers', 'renderbuffer'), map(int,
+        match(r"limits texture2d=(\d+) texture3d=(\d+) layers=(\d+) renderbuffer=(\d+)",
+              "Missing public texture limits").groups())))
+    require(limits['texture2d'] >= 512 and limits['texture3d'] >= 256 and
+            limits['layers'] >= 3 and limits['renderbuffer'] >= 256,
+            "Workload exceeds public resource limits")
     setup = int(match(r"session_setup_ns=(\d+)", "Missing session setup")[1])
     require(0 < setup < 2**63, "Invalid session setup time")
     rows = []
@@ -61,10 +67,10 @@ def summarize(text, host=False):
     cleanup = int(match(r"finished cases=7 session_cleanup_ns=(\d+) cleanup=1 result=0",
                         "Incomplete batch or failed cleanup")[1])
     require(0 < cleanup < 2**63 and not take(), "Invalid cleanup time or extra profile records")
-    return dict(version=2, mode="host-reference" if host else "native-receipt",
-                renderer=renderer[0], gl_version=renderer[1], width=640, height=360,
+    return dict(version=3, mode="host-reference" if host else "native-receipt",
+                renderer=renderer[0], gl_version=renderer[1], width=256, height=144, limits=limits,
                 warmup_cycles=4, target_seconds=3, completion="glFinish-per-cycle",
-                draws_per_cycle=3, copied_pixels_per_cycle=634 * 350, uploaded_pixels_per_cycle=1,
+                draws_per_cycle=3, copied_pixels_per_cycle=250 * 134, uploaded_pixels_per_cycle=1,
                 session_setup_ms=setup / 1e6, session_cleanup_ms=cleanup / 1e6, cases=rows,
                 note="Composite draw/copy/upload/FBO-draw/sample CPU wall time, including completion, "
                      "error checks and loop overhead. Setup, warmup, probes and cleanup are excluded. "

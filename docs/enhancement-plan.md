@@ -149,3 +149,4 @@ Its source companion contains the completed G21–G23 results; this final archiv
 verification note is necessarily recorded after packaging. Older archives stay intact.
 
 - 2026-09-08 | G24 | `3c92754` | pass: 4K render 119.884 FPS, HDMI 1080p119.88 then 4K59.94; clean/healthy/unlocked | `results/g24-display-20260908/display-report.json`; sink confirmation pending.
+- 2026-09-08 | G25 control v2 | `70edc4a` | failed: 640-wide 3D benchmark exceeds supported 256 limit; six cases and format/sRGB gates pass, clean/healthy/unlocked | `results/g25-staging-control-20260908/`; correct test footprint.
