@@ -6,7 +6,10 @@ Mean render time is 16.43 ms; p95 is 17.20 ms, so this is not a guarantee that
 every frame meets 16.67 ms. Pixels, retirement and teardown passed. Other formats,
 mips and layers retain staging. The three-session GPU-memory diagnostic returns
 tracked allocations/mappings to zero after every cleanup. Broader current-candidate
-acceptance remains in [the local enhancement gates](enhancement-plan.md).
+acceptance now includes a ten-minute zero-growth tracked-memory soak, 204 passing
+CTS smoke executions across four configurations, and native copy/layered-mip
+regressions. See [the local enhancement gates](enhancement-plan.md) for identities,
+the excluded timed-out attempt, and remaining qualification limits.
 
 ## Validation plan
 
@@ -61,7 +64,7 @@ Memory observations exclude GPU mappings, foreign heaps and process RSS; ambiguo
 zero-size realloc behavior invalidates the accounting instead of changing allocator
 semantics. Flat owned-heap samples alone are not proof of a leak-free driver.
 
-## Yamagi handoff: next library candidates, not merged
+## Yamagi handoff (historical; now integrated as G11/G12)
 
 Reviewed game handoff `b711c4f` and its private runtime patch. The game reports
 user-observed 60 FPS, but its 66 sparse gameplay timing samples include heavier
