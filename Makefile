@@ -53,6 +53,7 @@ test-staging:
 	bash tools/test-staging-host.sh
 test:
 	python3 -m unittest discover -s tools -p 'test_*.py'
+	python3 tools/test_sdl_sdk.py
 	python3 tests/ps5/test_gpu_clear_state.py
 	python3 tests/ps5/test_draw_profile.py
 	python3 tests/ps5/test_gpu_present.py

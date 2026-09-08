@@ -46,6 +46,13 @@ SAMPLES = {
         candidate="31d8e1d13bbacad9d87a7ad656612abe04a234a165bd0c82009ed398af70244a",
         guide="sdk-bundle-g19.md",
         native_paths=["native-app/agc_link_stub.c", "native-app/agc_driver_link_stub.c"]),
+    "0.1.0-perf20260908-g25-sdl2-sampled": dict(
+        runtime="61a0919bff9e6944caef2b8ad6c6ef9fd9a30279",
+        sdk="749057e84def5ead284614db5d81a0a7e9c037f474afd95cd88ebceea5d65cda",
+        archive="5b6129538328ab8b950dfbdb2f1395774b4a91e7d4030d1acafbabe043829d9e",
+        candidate="ff6759b193b5bb9138a72e53214e112c2ddc68aca6338ca3b476c8172ee9bd15",
+        guide="sdk-bundle-g25.md",
+        native_paths=["native-app/agc_link_stub.c", "native-app/agc_driver_link_stub.c"]),
 }
 TARGETED_VERSION = "0.1.0-perf20260908-targeted"
 TARGETED = dict(
