@@ -1,0 +1,12 @@
+diff --git a/src/dynapi/SDL_dynapi.h b/src/dynapi/SDL_dynapi.h
+--- a/src/dynapi/SDL_dynapi.h
++++ b/src/dynapi/SDL_dynapi.h
+@@ -63,6 +63,8 @@
+ #define SDL_DYNAMIC_API 0 /* Turn off for static analysis, so reports are more clear. */
+ #elif defined(__VITA__)
+ #define SDL_DYNAMIC_API 0 /* vitasdk doesn't support dynamic linking */
++#elif defined(__PROSPERO__)
++#define SDL_DYNAMIC_API 0 /* Altered for this statically linked PS5 SDL2 build. */
+ #elif defined(__NGAGE__)
+ #define SDL_DYNAMIC_API 0 /* The N-Gage doesn't support dynamic linking either */
+ #elif defined(__3DS__)
