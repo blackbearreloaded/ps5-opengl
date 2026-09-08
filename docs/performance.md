@@ -716,6 +716,19 @@ titles close cleanly with healthy services and exact-token release. Retain the
 measured improvement; no full CTS rerun, game claim or SDK promotion is implied.
 Frozen hashes and acceptance: `build/frozen/g7-batch256-20260907.md`.
 
+### G7 frozen SDK consumer checks
+
+- 2026-09-07 | G7 | runtime cef6c1b / apps ace6af1 | pass: SDK links/344 exports, Sokol 180 frames/2596 probes, 3 EGL sessions/18 oracles, checked close/health | results/g7-60fps-sdk-*-20260907
+
+The separate 1080p60 SDK contains the exact tested runtime archive. Its manifest,
+regular archives, Make/pkg-config/CMake consumers and 344 Core exports pass
+offline checks. Native Sokol passes the original 8.3 MB heap readback and all
+five poses; repeated ImGui/EGL initialization passes three complete sessions.
+All presenter drains/closes and title teardowns succeed without the old busy
+warning. The accepted full-CTS baseline SDK is untouched; this candidate still
+requires its own frozen release matrix and is not yet a published bundle.
+Provenance: `build/frozen/g7-60fps-sdk-consumers-20260907.md`.
+
 ## Next steps
 
 1. Profile the accepted workload; change one measured bottleneck at a time with
