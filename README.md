@@ -30,6 +30,13 @@ These fresh binaries are **host-checked, not console-validated**; see
 [downloads and release procedure](docs/ci-releases.md). The older prerelease above
 is not rebuilt or replaced.
 
+**September 8 source update:** this branch includes the later offscreen/copy
+fixes, [display-negotiation audit](docs/performance.md#display-negotiation-audit-september-8-local),
+[sRGB storage and seven-case staging checks](docs/performance.md#broader-format-and-subresource-coverage-g25-local),
+and [SDL2 integration](integration/SDL2/README.md). This publishes source, tests
+and result summaries—not a new SDK release. G19/G25 binary bundles and the
+latest raw console receipts remain local; existing downloads are unchanged.
+
 **Earlier high-refresh benchmark (September 7):** the opt-in windowed ImGui
 benchmark averages **119.88 FPS at 1080p, 1440p and 4K**, measured for 30 seconds
 per size. See the
@@ -142,7 +149,7 @@ then launch its registered title. Do not send the application executable to an
 ELF loader. Each TV-demo launch runs for five minutes.
 
 Existing projects still need PS5 entry-point, build, window/input and lifecycle
-integration. A local [SDL2 bridge](integration/SDL2/README.md) now supports standard
+integration. An experimental [SDL2 bridge](integration/SDL2/README.md) now supports standard
 SDL window/context/swap/event calls over the frozen G19 SDK; its native demo passed
 180 frames and two pixel checks. It is limited to one fixed 1080p Core 3.3 window,
 not a complete SDL platform port. GLX, WGL and GLFW integration remain absent.
