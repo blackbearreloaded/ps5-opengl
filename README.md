@@ -19,12 +19,12 @@ four-configuration campaign and installed-SDK renderer checks. Later performance
 changes have focused regressions, not a new full CTS campaign; see the
 [frozen identity](docs/validation.md#frozen-identity-and-defaults).
 
-**Latest consolidated SDK:** [G25 + SDL2](docs/sdk-bundle-g25.md) combines the
+**Latest consolidated SDK:** [G25 + SDL2 prerelease](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260908-g25-sdl2-sampled) combines the
 frozen 1080p60 graphics runtime with a verified, relocatable SDL2 payload.
 It passed **204/204 sampled executions**, matched offscreen/3D profiles,
 bounded stability and a fresh native SDL2 example—not a new full CTS campaign.
-See [SDK releases](https://github.com/blackbearreloaded/ps5-opengl/releases)
-for compiled archives, complete sources, licenses, checksums and exact scope.
+Download compiled libraries, complete sources, licenses, checksums and the
+extraction report; read the [bundle guide](docs/sdk-bundle-g25.md) for exact scope.
 The [September 7 prerelease](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/v0.1.0-perf20260907-sampled)
 remains unchanged.
 

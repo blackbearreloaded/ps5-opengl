@@ -59,3 +59,7 @@ build tools. GitHub Actions are commit-pinned; build jobs have read-only reposit
 permission and no console access. Only the separate draft-release job can write
 release assets. The older sample-validated bundle remains a separate frozen
 artifact, documented in `docs/sdk-bundle.md`.
+
+The separately tested [G25 + SDL2 prerelease](sdk-bundle-g25.md) uses an `sdk-*`
+tag and exact preverified assets; it does not invoke this fresh-build workflow.
+Its compiled SDL2 payload and native acceptance are not inherited by CI builds.
