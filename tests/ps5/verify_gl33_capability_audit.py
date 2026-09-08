@@ -62,6 +62,7 @@ SDK_INSTALLER = (
     ROOT / "toolchain/install-ps5-opengl-core33.sh"
 ).read_text()
 SDK_VERIFY = (ROOT / "tools/verify-installed-sdk.sh").read_text()
+SDK_CONSUMERS = (ROOT / "tools/check-sdk-consumers.py").read_text()
 PSBC_HOST_CONFIG = (ROOT / "toolchain/opengnm-psbc-host.mak").read_text()
 PSBC_PS5_BUILD = (
     ROOT / "toolchain/build-opengnm-psbc-ps5.sh"
@@ -393,9 +394,22 @@ require("PS5_OPENGL_IMPORT_STUBS" in CORE33_MK and
         "manifest.sha256" in SDK_INSTALLER and
         "-lPS5OpenGLCore33" in INSTALLED_MK and
         "-lSceAgcDriver" in INSTALLED_MK and
-        "verify_gl33_link_surface.py" in SDK_VERIFY and
-        "Makefile.installed" in SDK_VERIFY,
+        'python3 "$root/tools/check-sdk-consumers.py"' in SDK_VERIFY and
+        '--sdk "$prefix" --payload-sdk "$sdk"' in SDK_VERIFY and
+        '--example-dir "$root/examples/core33-triangle"' in SDK_VERIFY and
+        '--registry "$root/third_party/mesa-26.2.0/src/mesa/glapi/glapi/registry/gl.xml"' in SDK_VERIFY,
         "relocatable Core 3.3 SDK lost archives, imports, or consumer proof")
+require("summary['manifest'] = verify_manifest(sdk)" in SDK_CONSUMERS and
+        "libraries = [sdk / 'lib' / name for name in ('libglapi_bridge.a', 'libglapi.a')]" in SDK_CONSUMERS and
+        "run(['nm', '-g', '--defined-only', *libraries]" in SDK_CONSUMERS and
+        "if len(commands) != 344 or commands - symbols:" in SDK_CONSUMERS and
+        "run(['make', '--no-print-directory', '-f', 'Makefile.installed'" in SDK_CONSUMERS and
+        "run(['pkg-config', '--cflags', 'ps5-opengl-core33']" in SDK_CONSUMERS and
+        "run(['pkg-config', '--libs', 'ps5-opengl-core33']" in SDK_CONSUMERS and
+        "find_package(PS5OpenGLCore33 CONFIG REQUIRED)" in SDK_CONSUMERS and
+        "target_link_libraries(triangle PRIVATE PS5OpenGLCore33::OpenGL)" in SDK_CONSUMERS and
+        "run(['cmake', '--build'" in SDK_CONSUMERS,
+        "delegated SDK checker lost installed integrity, exports, or consumer builds")
 
 geometry_build = MAKEFILE.split("egl_public_geometry_shader.elf:", 1)[1]
 geometry_build = geometry_build.split("\n\n", 1)[0]
