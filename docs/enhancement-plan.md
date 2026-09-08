@@ -15,6 +15,9 @@ no console interaction without the shared lock, and no graphics ELF injection.
 | G18 | Mip transfer/object-churn regression | 24 ordered native copy/upload/draw/sample cycles, exact mip/layer/base guards, balanced tracked GPU memory and clean teardown. |
 | G19 | Color-blit channel mappings | Same mip checks plus 18 format/conversion checks in one native batch; two balanced GPU-memory sessions and clean teardown. |
 | G20 | Corrected SDK distribution | Preserve G19 binaries and targeted evidence; verify archive integrity and all three consumers after fresh extraction. No new console run or inherited CTS acceptance. |
+| G21 | Frozen G19 acceptance | Reuse the 51-case smoke on four configurations, 30-second matched offscreen/3D profiles, a 600-second tracked-memory soak and three bounded launch/exit cycles. Freeze each native app; stop on failure, preserve all receipts. |
+| G22 | Latest-SDK application | Isolated Yamagi build using unchanged G19; bounded existing demo/game scenario and clean teardown. Keep game changes separate; no implied physical-input acceptance. |
+| G23 | Independent G19 build | Separate compilation and relocated consumers using independently built dependencies; identify reused inputs and binary differences. Do not substitute canonical compiled archives. |
 
 Keep G11/G12 separate from game-specific changes and preserve G9's copy optimization.
 Use existing tests and batching infrastructure. Hardware fault injection, console
