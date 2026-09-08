@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Check the actual diagnostic draw loop; optionally audit its native receipt."""
 from pathlib import Path
 import json

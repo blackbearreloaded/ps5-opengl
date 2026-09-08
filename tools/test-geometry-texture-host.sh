@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Same VS/GS pixel discriminator, with only the EGL surface changed for Mesa.
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)

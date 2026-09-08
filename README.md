@@ -159,9 +159,16 @@ integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
 | [PS5 GPU research](https://github.com/blackbearreloaded/ps5-gpu-research) | Companion research notes; access may be required |
 | [Hardware video decoding research](https://github.com/blackbearreloaded/ps5-hardware-video-decoding-research) | Related presentation/lifecycle work; not OpenGL validation |
 
+## Maintainer
+
+PS5 OpenGL is maintained by [BlackBearReloaded](https://github.com/blackbearreloaded).
+Project-specific implementation, platform integration, examples and validation
+work are credited in the source headers. Upstream projects retain their own
+authorship and licenses; see [Third-party notices](THIRD_PARTY_NOTICES.md).
+
 ## License
 
-Project-owned code is provided under [GPL-3.0](LICENSE). Upstream components and
+Project-owned code is provided under [GPL-3.0-or-later](LICENSE). Upstream components and
 derived patches retain their copyright and licenses; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [LICENSES](LICENSES).
 

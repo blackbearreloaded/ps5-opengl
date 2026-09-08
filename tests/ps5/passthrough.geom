@@ -1,4 +1,8 @@
 #version 450
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 
 layout(triangles) in;
 layout(triangle_strip, max_vertices = 3) out;

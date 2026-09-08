@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Verify that the tested Mesa tree is exactly the release archive plus our patch.
 set -euo pipefail
 export LC_ALL=C

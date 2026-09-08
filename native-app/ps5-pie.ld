@@ -1,3 +1,8 @@
+/* PS5 OpenGL - OpenGL implementation for PlayStation 5.
+ * Copyright (C) 2026 BlackBearReloaded
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 INCLUDE tooling/native/ps5-pie-base.ld
 
 PROVIDE(__eh_frame_start = ADDR(.eh_frame));

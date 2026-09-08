@@ -1,3 +1,8 @@
+PS5 OpenGL - upstream integration patch.
+PS5 modifications by BlackBearReloaded, 2026.
+Upstream copyrights and per-file licenses remain unchanged.
+See THIRD_PARTY_NOTICES.md for source and license references.
+
 diff --git a/framework/qphelper/qpDebugOut.c b/framework/qphelper/qpDebugOut.c
 --- a/framework/qphelper/qpDebugOut.c
 +++ b/framework/qphelper/qpDebugOut.c

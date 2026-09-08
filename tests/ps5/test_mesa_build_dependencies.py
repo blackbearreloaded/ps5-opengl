@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Exercise the real Make dependency graph without a PS5 compiler or console."""
 from pathlib import Path
 import subprocess

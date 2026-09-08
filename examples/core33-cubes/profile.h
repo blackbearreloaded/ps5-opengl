@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /* Optional matched workload; included after the shared draw/pixel helpers. */
 #ifndef PS5_CUBES_OBJECTS
 #define PS5_CUBES_OBJECTS 128

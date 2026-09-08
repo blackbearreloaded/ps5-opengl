@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /* Low-poly 3D frame benchmark using only public EGL/OpenGL interfaces. */
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>

@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /* Exercise the real profile loop with a deterministic clock and native counter.
  * Mock accounting only: this is not evidence of GPU retirement or performance. */
 #include <assert.h>

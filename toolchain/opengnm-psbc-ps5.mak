@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # PS5 target configuration for the pinned opengnm-psbc compiler subset.
 # Included from third_party/opengnm-psbc by Makefile.ps5.
 

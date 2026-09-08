@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Generate the disclosed platform adaptation; never edit the upstream checkout."""
 import json
 from pathlib import Path
@@ -27,5 +31,8 @@ for old, new, count in (
     source = source.replace(old, new)
 output = ROOT / "build/sokol-cube-source/cube.inc"
 output.parent.mkdir(parents=True, exist_ok=True)
-output.write_text("// Adapted from the pinned MIT-licensed Sokol sample; see LICENSES/Sokol-Samples.txt.\n" + source)
+output.write_text(
+    "// Adapted from the pinned MIT-licensed Sokol sample; see LICENSES/Sokol-Samples.txt.\n"
+    "// PS5 platform and OpenGL 3.3 adaptations by BlackBearReloaded, 2026.\n"
+    "// Upstream copyright and MIT license are unchanged.\n" + source)
 print(output)

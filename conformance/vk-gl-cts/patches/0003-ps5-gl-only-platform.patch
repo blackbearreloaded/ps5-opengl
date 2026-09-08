@@ -1,3 +1,8 @@
+PS5 OpenGL - upstream integration patch.
+PS5 modifications by BlackBearReloaded, 2026.
+Upstream copyrights and per-file licenses remain unchanged.
+See THIRD_PARTY_NOTICES.md for source and license references.
+
 diff --git a/framework/platform/CMakeLists.txt b/framework/platform/CMakeLists.txt
 index be7264c9a..cb3fcf3bf 100644
 --- a/framework/platform/CMakeLists.txt

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Build and install a relocatable PS5 OpenGL 3.3 developer package.
 
 set -euo pipefail

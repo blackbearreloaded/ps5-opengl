@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Changing runtime flags must rebuild objects; identical flags must not."""
 from pathlib import Path
 import os

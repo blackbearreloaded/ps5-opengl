@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 get_filename_component(PS5OpenGLCore33_PREFIX
   "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 

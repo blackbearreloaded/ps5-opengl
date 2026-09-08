@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Render-only matrix: same logical UI at each resolution, glFinish per frame.
 // Window previews are outside measurement; no high-refresh scanout claim.
 #include "benchmark_timing.h"

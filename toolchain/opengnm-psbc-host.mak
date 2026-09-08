@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Host build configuration for the pinned opengnm-psbc checkout.
 # Invoke from third_party/opengnm-psbc with:
 #   make CONFIG=../../toolchain/opengnm-psbc-host.mak

@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Run resumable bounded shards of the official Khronos GL 3.3 must-pass list.
 
 [CmdletBinding()]

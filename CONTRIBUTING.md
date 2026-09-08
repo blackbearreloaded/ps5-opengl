@@ -18,6 +18,8 @@ Start with [Building](docs/building.md), [Architecture](docs/architecture.md),
   generated binaries, raw device logs or personal machine paths.
 - Keep upstream license notices. Changes to derived compiler/Mesa files belong
   in their recorded patch with clear provenance, not anonymous copied source.
+- Use project copyright/SPDX headers only for original code whose rights you own.
+  Credit upstream adaptations separately, preserving existing notices and licenses.
 
 Pull requests should explain the problem, the smallest relevant change, checks
 performed and any remaining uncertainty. Console testing requires owner approval

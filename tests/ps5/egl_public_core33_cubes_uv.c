@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /* Reuse the cube scene, replacing only fragment color with UV/material values. */
 #define PS5_CUBES_UV_DIAGNOSTIC 1
 #ifndef PS5_CUBES_HOST_REFERENCE

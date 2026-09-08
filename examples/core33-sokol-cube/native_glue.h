@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Only the window calls used by the bounded upstream cube, not a GLFW port.
 typedef struct { int unused; } GLFWwindow;
 typedef struct {

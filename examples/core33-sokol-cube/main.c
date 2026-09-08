@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Upstream geometry, transforms, Sokol pipeline and draw loop; native EGL glue.
 #include <stdio.h>
 #include <stdlib.h>

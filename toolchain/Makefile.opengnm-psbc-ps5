@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Build only the target-side compiler archive with PS5-specific object names.
 
 OPENGNM_PSBC_ORBIS := 1

@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Reuse the complete six-frame oracle, including EGL teardown, in one process.
 #define main imgui_session
 #include "main.cpp"

@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Relocatable consumer fragment installed under share/ps5-opengl-core33.
 
 ps5_opengl_installed_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))

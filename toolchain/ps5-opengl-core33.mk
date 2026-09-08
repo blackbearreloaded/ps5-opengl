@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Reusable PS5 OpenGL 3.3 runtime build/link fragment.
 # Include prospero.mk before this file, then link with PS5_OPENGL_LDLIBS.
 

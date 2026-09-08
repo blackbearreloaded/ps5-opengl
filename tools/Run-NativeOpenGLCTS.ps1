@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Run one frozen PPSA99005 Khronos GL33 CTS shard through the native-title protocol.
 
 [CmdletBinding()]

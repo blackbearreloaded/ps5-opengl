@@ -1,8 +1,14 @@
 # Third-party projects and notices
 
-Project-owned code uses the repository's [GPL-3.0 license](LICENSE). This does not
+Project-owned code uses the repository's [GPL-3.0-or-later license](LICENSE). This does not
 relicense upstream components. Preserve their notices and applicable per-file
 licenses in derived sources and redistributed builds.
+
+BlackBearReloaded's project headers identify project-owned files. Contribution
+notices on upstream patches and the generated Sokol adaptation credit only the
+PS5 changes, not upstream authorship. Those changes remain subject to the
+applicable upstream per-file licenses; generated Khronos declarations and
+unmodified dependencies are not claimed as project-owned code.
 
 Sources are fetched at immutable revisions from [dependencies.json](dependencies.json).
 No complete upstream source checkout, public payload SDK, vendor SDK or firmware

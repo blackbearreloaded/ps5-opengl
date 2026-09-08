@@ -1,3 +1,7 @@
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 /* Bounded clear regression: exact RGBA8 sweep, shader-state reuse, query exclusion. */
 #include <stdint.h>
 #include <stdio.h>

@@ -1,4 +1,8 @@
 #version 450
+// PS5 OpenGL - OpenGL implementation for PlayStation 5.
+// Copyright (C) 2026 BlackBearReloaded
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 
 layout(location = 0) in vec2 position;
 layout(set = 0, binding = 0) uniform sampler2D source_texture;
