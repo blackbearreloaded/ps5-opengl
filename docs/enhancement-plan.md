@@ -18,6 +18,9 @@ no console interaction without the shared lock, and no graphics ELF injection.
 | G21 | Frozen G19 acceptance | Reuse the 51-case smoke on four configurations, 30-second matched offscreen/3D profiles, a 600-second tracked-memory soak and three bounded launch/exit cycles. Freeze each native app; stop on failure, preserve all receipts. |
 | G22 | Latest-SDK application | Isolated Yamagi build using unchanged G19; bounded existing demo/game scenario and clean teardown. Keep game changes separate; no implied physical-input acceptance. |
 | G23 | Independent G19 build | Separate compilation and relocated consumers using independently built dependencies; identify reused inputs and binary differences. Do not substitute canonical compiled archives. |
+| G24 | Display-path verification | Correlate exact render dimensions, VideoOut status and title-scoped HDMI negotiation/restoration in a bounded native run; keep sink confirmation separate. No Settings or forced unsupported modes. |
+| G25 | Broader offscreen performance | Reuse staging/layout checks and matched workloads; extend one proven adjacent format path only with pixel/transfer/ownership regressions. Mips/layers stay guarded until separately validated. |
+| G26 | Reusable SDL2 integration | Use the existing PS5 SDL2/public EGL foundations for a standard SDL window/context/swap/event consumer; check failures and teardown, document platform limits. No pretend GLFW compatibility. |
 
 Keep G11/G12 separate from game-specific changes and preserve G9's copy optimization.
 Use existing tests and batching infrastructure. Hardware fault injection, console
