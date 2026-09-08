@@ -5,6 +5,7 @@
 """Bundles must never inherit acceptance from another binary or incomplete run."""
 import copy
 import importlib
+import io
 import json
 from pathlib import Path
 import tarfile
@@ -166,6 +167,50 @@ class SDLBundleTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaisesRegex(ValueError, "SDL .*changed"):
                 BUNDLE.copy_sdl(self.native, self.stage(f"tamper-{index}"), checked, "123")
             path.write_bytes(original)
+
+    def test_current_sdl_instructions_are_extracted_only_with_option(self):
+        current = {"docs/consumer-build.md": b"See ../integration/SDL2/README.md\n",
+                   "examples/main.c": b"/* current example */\n",
+                   "integration/SDL2/README.md": b"Current SDL consumer instructions\n",
+                   "integration/SDL2/build.py": b"# current companion, distinct from frozen build\n",
+                   "integration/other/README.md": b"Not selected\n"}
+
+        def snapshot(repo, revision, name, destination):
+            with tarfile.open(destination, "w") as archive:
+                for relative, data in current.items():
+                    member = tarfile.TarInfo(name + "/" + relative)
+                    member.size = len(data)
+                    archive.addfile(member, io.BytesIO(data))
+
+        digest = BUNDLE.digest
+        for enabled in (False, True):
+            destination = self.root / f"instructions-{enabled}"
+            stage = destination / ("ps5-opengl-sdk-" + BUNDLE.VERSION)
+            with mock.patch("sys.argv", self.argv(destination, sdl=enabled) +
+                            ["--candidate", "unused", "--results", "unused"]), \
+                    mock.patch.object(BUNDLE.CHECK, "verify_manifest", return_value={"sha256": "a" * 64}), \
+                    mock.patch.object(BUNDLE, "digest", side_effect=lambda p:
+                                      "b" * 64 if p == self.sdk / "lib/libps5_opengl_core33.a" else digest(p)), \
+                    mock.patch.object(BUNDLE, "require_frozen_sdk"), \
+                    mock.patch.object(BUNDLE, "sample_report", return_value={}), \
+                    mock.patch.object(BUNDLE, "snapshot", side_effect=snapshot), \
+                    mock.patch.object(BUNDLE.subprocess, "run"), \
+                    mock.patch.object(BUNDLE.subprocess, "check_output", return_value="123"):
+                # Stop after extraction/README: the fixture omits dependencies.json.
+                # No runtime build or final release archive is needed for this check.
+                with self.assertRaises(FileNotFoundError) as stopped:
+                    BUNDLE.main()
+                self.assertEqual(Path(stopped.exception.filename), stage / "dependencies.json")
+            for relative, data in current.items():
+                included = relative.startswith(("docs/", "examples/")) or \
+                    enabled and relative.startswith("integration/SDL2/")
+                self.assertEqual((stage / relative).exists(), included)
+                if included:
+                    self.assertEqual((stage / relative).read_bytes(), data)
+            if enabled:
+                with tarfile.open(stage / "sources/SDL2-integration.tar") as archive:
+                    self.assertEqual(archive.extractfile("SDL2-integration/build.py").read(),
+                                     (self.native / "integration/build.py").read_bytes())
 
 
 class SampleGateTests(unittest.TestCase):

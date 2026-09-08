@@ -337,7 +337,8 @@ def main():
         for member in archive.getmembers():
             relative = member.name.removeprefix("ps5-opengl/")
             if member.isfile() and (relative in selected or relative.startswith(
-                    ("LICENSES/", "docs/", "examples/"))):
+                    ("LICENSES/", "docs/", "examples/")) or
+                    args.sdl_build is not None and relative.startswith("integration/SDL2/")):
                 require(".." not in Path(relative).parts and not Path(relative).is_absolute(),
                         "unsafe source path")
                 copy_member(archive, member, stage / relative)
