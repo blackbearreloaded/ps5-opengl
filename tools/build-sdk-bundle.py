@@ -298,7 +298,7 @@ def main():
         write_json(stage / "consumer-validation.json", consumers)
         shutil.copyfile(args.runtime_config, stage / "runtime-config.txt")
         provenance.update(
-            version=version, status="CI-built and host-checked; NOT console-validated",
+            version=version, status="Host-built and host-checked; NOT console-validated",
             runtime_source_commit=args.source_commit, sdk_manifest_sha256=sdk_hash,
             runtime_archive_sha256=runtime_hash, build_flags="runtime-config.txt",
             validation="consumer-validation.json: compile/link only; no GPU execution",
