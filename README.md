@@ -105,6 +105,7 @@ integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
 | --- | --- |
 | [Building](docs/building.md) | Dependencies, source setup, SDK and native apps |
 | [Using the SDK](docs/consumer-build.md) | Make, pkg-config and CMake integration |
+| [Sample-validated SDK bundle](docs/sdk-bundle.md) | Frozen 1080p60 package contents, verification and scope |
 | [Architecture](docs/architecture.md) | Frontend, shader compiler, driver and platform boundaries |
 | [Testing](docs/testing.md) | Host checks, bounded hardware cases and acceptance |
 | [Validation report](docs/validation.md) | Exact results, identity and exceptions |
