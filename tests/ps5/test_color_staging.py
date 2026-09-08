@@ -59,7 +59,7 @@ static void reference(const struct pipe_surface *s, bool to_staging) {
 }
 static void check(enum pipe_format format, unsigned w, unsigned h, unsigned level) {
     struct ps5_resource r={.base={w<<level,h<<level,3,level}};
-    size_t size=32;
+    size_t size=32+(w&3); /* Exercise aligned and unaligned linear storage. */
     for (unsigned l=0; l<=level; ++l) {
         r.level_offset[l]=size;
         r.level_stride[l]=(((w<<level)>>l)*format+255u)&~255u;
@@ -116,6 +116,10 @@ int main(void) {
         check(bpp,8192,3,0);
     }
     check(RGBA8,1920,1080,0);
+    const unsigned edges[]={2,3,4,5,7,8,9,127,128,129,255,256,257};
+    for (unsigned i=0; i<ARRAY_SIZE(edges); ++i)
+        for (unsigned level=0; level<3; ++level)
+            check(RGBA8,edges[i],129,level);
     puts("color-staging: PASS scalar equivalence, 1/2/4/8/16-byte formats, tiles, mip/layer slices, bounds, flushes");
 }
 '''

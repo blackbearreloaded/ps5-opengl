@@ -4306,8 +4306,14 @@ ps5_stage_color_surface(const struct pipe_surface *surface, bool to_staging)
               first_x += ARRAY_SIZE(x_offsets)) {
             size_t row = tiled_base +
                ps5_tiled_color_offset(surface->format, first_x, y, width);
-            for (unsigned x = 0;
-                 x < MIN2(width - first_x, ARRAY_SIZE(x_offsets)); ++x) {
+            unsigned count = MIN2(width - first_x, ARRAY_SIZE(x_offsets));
+            for (unsigned x = 0; x < count;) {
+               /* Four 32-bit pixels are contiguous: X bits 0/1 map to
+                * address bits 2/3, and every Y term leaves those bits clear.
+                * Each group starts on a four-pixel boundary; keep the tail
+                * scalar. memcpy also supports unaligned linear storage. */
+               unsigned pixels = format_size == 4 && count - x >= 4 ? 4 : 1;
+               unsigned bytes = pixels * format_size;
                size_t linear = linear_base +
                   (size_t)y * resource->level_stride[surface->level] +
                   (size_t)(first_x + x) * format_size;
@@ -4316,20 +4322,22 @@ ps5_stage_color_surface(const struct pipe_surface *surface, bool to_staging)
                   ((row ^ x_offsets[x]) & 0xffff);
 
                if (linear > resource->size ||
-                   resource->size - linear < format_size ||
+                   resource->size - linear < bytes ||
                    tiled > resource->render_staging_size ||
-                   resource->render_staging_size - tiled < format_size)
+                   resource->render_staging_size - tiled < bytes)
                   return false;
                uint8_t *dst = to_staging ? staging + tiled
                                          : resource->data + linear;
                const uint8_t *src = to_staging ? resource->data + linear
                                                : staging + tiled;
-               /* ponytail: inline the measured four-byte hot path; other
-                * byte sizes retain memcpy until profiling justifies more. */
-               if (format_size == 4)
+               /* ponytail: only group the measured 32-bit hot path. */
+               if (pixels == 4)
+                  memcpy(dst, src, 16);
+               else if (format_size == 4)
                   memcpy(dst, src, 4);
                else
                   memcpy(dst, src, format_size);
+               x += pixels;
             }
          }
       }
