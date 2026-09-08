@@ -48,3 +48,28 @@ and repeat only the two display checks after a relevant condition changes;
 record both negotiated timing and the sink's signal information. A 1440p render
 upscaled to 4K HDMI must remain labelled as such. Do not force an undocumented
 mode or repeat identical runs to turn the existing mismatch into a pass.
+
+## G33: title-profile negotiation diagnostic
+
+Both implementations use request 15, SDR buffer format `0x8000000000000000`
+and `attribute3=0x80040`. The known-good ProsperoLight title also uses main
+`attribute=0x62000000`; OpenGL uses zero. Its successful log has `HDR:o` and
+HDCP23 preference, while G31 has `HDR:x` and no preference. These are correlated
+differences, not proof that HDR or a particular protection mode is required.
+
+Freeze one diagnostic copy of the G31 2160p120 ImGui app, changing only the
+main JSON `attribute` from zero to that already-tested profile. Preserve the
+executable, libc, shaders, rendering, title identity and HFR request. Run one
+30-second measurement under the same bounded protocol and require the usual
+pixels/cleanup/health plus a changed title-profile log and independently parsed
+HDMI timing. Record whether registration consumed the metadata. Do not ship
+this multi-bit profile as a minimal fix or claim HDR correctness from this test.
+Candidate: `.local/g33-title-profile-2160/candidate.json`; results:
+`results/g33-title-profile-2160-20260908`.
+
+If negotiation stays low, retain the failed hypothesis and inspect the owner's
+display path. Sony's [output guide](https://www.playstation.com/en-us/support/hardware/ps5-4k-resolution-guide/)
+specifically addresses 4K120 falling back to 1080p120: the direct supported HDMI
+input/cable and owner-selected resolution/transfer-rate settings matter.
+Its separate 1440p output test/selection is necessary to qualify native 1440p
+HDMI; a 1440p framebuffer alone does not select it. Agents do not enter Settings.
