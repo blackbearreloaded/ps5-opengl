@@ -17,9 +17,15 @@ directories; add only milestone summaries here.
 
 ## Milestones
 
-- G9 candidate `891dab7`: full host checks and actual-helper ASan/UBSan scalar equivalence pass; console comparison pending.
+- G9 candidate `891dab7`: full host checks and actual-helper ASan/UBSan scalar equivalence pass.
 - G9 published-SDK control: 14.095217 FPS, 423 frames/30.010180 s; probes, teardown and health pass (`results/g9-fbo-control-20260907`).
 - G10 instrumentation: owned-heap live/peak bytes, blocks and failure/ambiguity flags; host allocator and ImGui TV/three-session lifecycle checks pass. Hardware pending.
+- G9 `891dab7`: 19.981406 FPS, 600 frames/30.027917 s (+41.8% vs matched control); 1,200 draws, probes, teardown/health pass (`results/g9-fbo-copy4-20260907`).
+
+G9 render mean/p95/p99: **50.042 / 51.066 / 51.472 ms**, versus
+70.942 / 83.484 / 85.288 ms for the control. This is completed offscreen
+throughput, not TV refresh or a game-FPS claim. Full-surface CPU transfers remain;
+the 60 FPS target is not met. The published SDK is unchanged.
 
 ## G10 checks
 

@@ -1,5 +1,11 @@
 # Performance
 
+Latest focused offscreen result: four-pixel color staging (`891dab7`) improves
+the matched 1080p ImGui FBO workload from **14.10 to 19.98 FPS**. Both 30-second
+runs pass pixel/completion and lifecycle checks; see the
+[offscreen and stability gates](offscreen-stability.md). CPU transfers remain,
+and this candidate is not a new full-validation or published SDK result.
+
 The September 7 baseline completes the [frozen Core 3.3 validation campaign](validation.md).
 Correctness coverage does not imply desktop-driver performance or predictable game FPS.
 
