@@ -59,6 +59,7 @@ test:
 	python3 tests/ps5/test_resource_release.py
 	python3 tests/ps5/test_app_heap.py
 	python3 tools/summarize-imgui-profile.py --self-test
+	python3 tools/summarize-app-heap.py --self-test
 	python3 tools/summarize-cubes.py --self-test
 	python3 tools/verify-cts-candidate.py --self-test
 	python3 tools/verify-published-validation.py

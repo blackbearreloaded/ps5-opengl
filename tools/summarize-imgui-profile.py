@@ -9,10 +9,12 @@ import re
 
 def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False,
               clear_batches=False, soak=False, window_target=None, window_height=1080,
-              output_status=False, prepare_profile=False):
+              output_status=False, prepare_profile=False, soak_seconds=300):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
+
+    require(60 <= soak_seconds <= 1800 and soak_seconds % 30 == 0, "invalid soak duration")
 
     if window_target is not None and not host:
         present_profile = clear_batches = True
@@ -39,7 +41,7 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
     require(fields["status"] == "0", "profile failed")
     probes = re.findall(r"\[ps5-imgui-tv\] readback frame=(\d+) rgba=[0-9,]+ (\w+)", text)
     require(probes[:2] == [("0", "PASS"), ("10", "PASS")] and
-            len(probes) == (11 if soak else 2) and all(p[1] == "PASS" for p in probes),
+            len(probes) == (soak_seconds // 30 + 1 if soak else 2) and all(p[1] == "PASS" for p in probes),
             "pixel probes missing or failed")
     finished = re.findall(r"\[ps5-imgui-tv\] finished frames=(\d+) changes=\d+ status=(\d+)", text)
     require(finished == [(str(frames + warmup), "0")], "frame count or cleanup mismatch")
@@ -51,18 +53,18 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
     if soak:
         require(not host, "soak requires the native workload")
         windows = re.findall(r"^\[ps5-imgui-tv\] visible frame=(\d+) elapsed=([0-9.]+) .+$", text, re.M)
-        require(len(windows) == text.count("[ps5-imgui-tv] visible") == 10,
+        require(len(windows) == text.count("[ps5-imgui-tv] visible") == soak_seconds // 30,
                 "missing or duplicate 30-second cadence windows")
         points = [(int(n), float(t)) for n, t in windows]
         require(points[0] == (0, 0) and all(abs(t - i * 30) <= 0.15 for i, (_, t) in enumerate(points)),
                 "invalid cadence timestamps")
         require([int(n) for n, _ in probes[2:]] == [n for n, _ in points[1:]],
                 "periodic pixel probes do not match cadence windows")
-        points.append((frames + warmup, 300.0))
+        points.append((frames + warmup, float(soak_seconds)))
         fps = [(n1 - n0) / (t1 - t0) for (n0, t0), (n1, t1) in zip(points, points[1:])]
         require(all(59.0 <= rate <= 60.5 for rate in fps) and values["cpu_wall_ms"] <= 1000 / 59.0,
                 "sustained 60 Hz performance target not met")
-        report["soak"] = dict(seconds=300, window_fps=fps, pixel_probes=len(probes))
+        report["soak"] = dict(seconds=soak_seconds, window_fps=fps, pixel_probes=len(probes))
     if deferred_batches or clear_batches:
         chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
         native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
@@ -335,6 +337,12 @@ def self_test():
             soak_text += f"[ps5-imgui-tv] readback frame={i * 1800} rgba=45,215,245,255 PASS\n"
     soak_text += "[ps5-gpu-present] frames=17989\n"
     assert summarize(soak_text, soak=True)["soak"]["window_fps"] == [60.0] * 10
+    longer = soak_text.replace("frames=17970", "frames=35970").replace(
+        "frames=18000", "frames=36000").replace("frames=17989", "frames=35979")
+    for i in range(10, 20):
+        longer += f"[ps5-imgui-tv] visible frame={i * 1800} elapsed={i * 30:.1f} pad=0 changes=0 vertices=100\n"
+        longer += f"[ps5-imgui-tv] readback frame={i * 1800} rgba=45,215,245,255 PASS\n"
+    assert summarize(longer, soak=True, soak_seconds=600)["soak"]["window_fps"] == [60.0] * 20
     for bad in (soak_text.replace("frame=1800 elapsed=30.0", "frame=900 elapsed=30.0"),
                 soak_text.replace("readback frame=1800", "readback frame=1801"),
                 soak_text.replace("elapsed=270.0", "elapsed=275.0"),
@@ -450,6 +458,7 @@ if __name__ == "__main__":
     parser.add_argument("--prepare-profile", action="store_true")
     parser.add_argument("--clear-batches", action="store_true")
     parser.add_argument("--soak", action="store_true")
+    parser.add_argument("--soak-seconds", type=int, default=300)
     parser.add_argument("--window-target", type=int, choices=(30, 60, 90, 120))
     parser.add_argument("--window-height", type=int, choices=(1080, 1440, 2160), default=1080)
     parser.add_argument("--output-status", action="store_true")
@@ -463,4 +472,4 @@ if __name__ == "__main__":
         print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
                                    args.deferred_batches, args.present_profile, args.clear_batches, args.soak,
                                    args.window_target, args.window_height, args.output_status,
-                                   args.prepare_profile), indent=2))
+                                   args.prepare_profile, args.soak_seconds), indent=2))

@@ -105,7 +105,12 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     unsigned frame = 0;
 #ifdef PS5_IMGUI_PROFILE
 #ifdef PS5_IMGUI_PROFILE_SOAK
-    const double duration = 300.0;
+#ifndef PS5_IMGUI_SOAK_SECONDS
+#define PS5_IMGUI_SOAK_SECONDS 300
+#endif
+    static_assert(PS5_IMGUI_SOAK_SECONDS >= 60 && PS5_IMGUI_SOAK_SECONDS <= 1800 &&
+                  PS5_IMGUI_SOAK_SECONDS % 30 == 0, "bounded soak in 30-second windows");
+    const double duration = PS5_IMGUI_SOAK_SECONDS;
 #else
     const double duration = 30.0;
 #endif
@@ -121,7 +126,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
 #endif
     double start = demo_seconds(), previous = start, next_log = 0;
     ok = check(start >= 0, "monotonic clock");
-    // ponytail: five-minute demo, not a permanent shell/input platform backend.
+    // ponytail: bounded demo, not a permanent shell/input platform backend.
     // Reuse a real application's event loop for long-lived application ports.
     while (ok) {
         double now = demo_seconds();
@@ -280,6 +285,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         if (frame >= warmup) ++measured;
 #endif
         if (elapsed >= next_log) {
+            if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("steady", frame);
             printf("[ps5-imgui-tv] visible frame=%u elapsed=%.1f pad=%d changes=%d vertices=%d\n",
                    frame, elapsed, connected, changes, ImGui::GetDrawData()->TotalVtxCount);
             next_log += 30.0;

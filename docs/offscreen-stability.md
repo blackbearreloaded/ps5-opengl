@@ -18,3 +18,21 @@ directories; add only milestone summaries here.
 ## Milestones
 
 - G9 candidate `891dab7`: full host checks and actual-helper ASan/UBSan scalar equivalence pass; console comparison pending.
+- G9 published-SDK control: 14.095217 FPS, 423 frames/30.010180 s; probes, teardown and health pass (`results/g9-fbo-control-20260907`).
+- G10 instrumentation: owned-heap live/peak bytes, blocks and failure/ambiguity flags; host allocator and ImGui TV/three-session lifecycle checks pass. Hardware pending.
+
+## G10 checks
+
+Build the existing TV gate with `PS5_IMGUI_PROFILE=1`,
+`PS5_IMGUI_PROFILE_SOAK=1`, `PS5_IMGUI_SOAK_SECONDS=600` and an explicitly frozen
+`PS5_OPENGL_PREFIX`. Audit with `tools/summarize-imgui-profile.py RECEIPT --soak
+--soak-seconds 600` and `tools/summarize-app-heap.py RECEIPT --steady-samples 20`.
+Then build the existing `egl_public_core33_imgui_lifecycle.o` gate and run five
+separately locked native-title cycles; each performs three complete EGL sessions.
+Audit each heap receipt with `--sessions 3` and require all 18 frame oracles and
+three EGL cleanups. Compare post-session live bytes and blocks across sessions
+and processes; report any growth, not just whether allocations fit in the heap.
+
+Memory observations exclude GPU mappings, foreign heaps and process RSS; ambiguous
+zero-size realloc behavior invalidates the accounting instead of changing allocator
+semantics. Flat owned-heap samples alone are not proof of a leak-free driver.

@@ -1,4 +1,5 @@
 /* Shared native-app allocator integration, originally used by the CTS runner. */
+#include <errno.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,6 +30,31 @@ size_t sceLibcMspaceMallocUsableSize(const void *address);
 static atomic_int pss_heap_state;
 static void *pss_heap_base;
 static void *pss_heap_mspace;
+/* Owned-heap usable bytes only: not GPU mappings, foreign heaps or process RSS.
+ * Relaxed snapshots are observations, not an allocator synchronization fence. */
+static atomic_size_t pss_heap_live_bytes, pss_heap_peak_bytes, pss_heap_blocks;
+static atomic_size_t pss_heap_failures, pss_heap_ambiguous_zero_reallocs;
+
+static void pss_heap_resize_stats(size_t before, size_t after) {
+  size_t live = after >= before
+      ? atomic_fetch_add_explicit(&pss_heap_live_bytes, after - before,
+                                  memory_order_relaxed) + after - before
+      : atomic_fetch_sub_explicit(&pss_heap_live_bytes, before - after,
+                                  memory_order_relaxed) - (before - after);
+  size_t peak = atomic_load_explicit(&pss_heap_peak_bytes, memory_order_relaxed);
+  while (live > peak && !atomic_compare_exchange_weak_explicit(
+      &pss_heap_peak_bytes, &peak, live, memory_order_relaxed, memory_order_relaxed)) {}
+}
+
+static void *pss_heap_record_allocation(void *address, int nonzero) {
+  if (address) {
+    pss_heap_resize_stats(0, sceLibcMspaceMallocUsableSize(address));
+    atomic_fetch_add_explicit(&pss_heap_blocks, 1, memory_order_relaxed);
+  } else if (nonzero) {
+    atomic_fetch_add_explicit(&pss_heap_failures, 1, memory_order_relaxed);
+  }
+  return address;
+}
 
 static int pss_heap_ready(void) {
   int state = atomic_load_explicit(&pss_heap_state, memory_order_acquire);
@@ -74,35 +100,54 @@ static int pss_heap_owns(const void *address) {
 }
 
 void *__wrap_malloc(size_t size) {
-  return pss_heap_ready() ? sceLibcMspaceMalloc(pss_heap_mspace, size)
-                          : __real_malloc(size);
+  return pss_heap_ready()
+      ? pss_heap_record_allocation(sceLibcMspaceMalloc(pss_heap_mspace, size), size != 0)
+      : __real_malloc(size);
 }
 
 void *__wrap_calloc(size_t count, size_t size) {
-  return pss_heap_ready() ? sceLibcMspaceCalloc(pss_heap_mspace, count, size)
-                          : __real_calloc(count, size);
+  return pss_heap_ready()
+      ? pss_heap_record_allocation(sceLibcMspaceCalloc(pss_heap_mspace, count, size),
+                                   count != 0 && size != 0)
+      : __real_calloc(count, size);
 }
 
 void *__wrap_realloc(void *address, size_t size) {
   if (address == NULL)
     return __wrap_malloc(size);
-  return pss_heap_owns(address)
-             ? sceLibcMspaceRealloc(pss_heap_mspace, address, size)
-             : __real_realloc(address, size);
+  if (!pss_heap_owns(address))
+    return __real_realloc(address, size);
+  size_t before = sceLibcMspaceMallocUsableSize(address);
+  void *result = sceLibcMspaceRealloc(pss_heap_mspace, address, size);
+  if (result)
+    pss_heap_resize_stats(before, sceLibcMspaceMallocUsableSize(result));
+  else if (size)
+    atomic_fetch_add_explicit(&pss_heap_failures, 1, memory_order_relaxed);
+  else
+    /* Preserve platform realloc(p,0) behavior; NULL does not tell us whether
+     * p was freed. Mark the counters inconclusive instead of guessing. */
+    atomic_fetch_add_explicit(&pss_heap_ambiguous_zero_reallocs, 1, memory_order_relaxed);
+  return result;
 }
 
 void __wrap_free(void *address) {
-  if (pss_heap_owns(address))
+  if (pss_heap_owns(address)) {
+    pss_heap_resize_stats(sceLibcMspaceMallocUsableSize(address), 0);
+    atomic_fetch_sub_explicit(&pss_heap_blocks, 1, memory_order_relaxed);
     sceLibcMspaceFree(pss_heap_mspace, address);
-  else
+  } else
     __real_free(address);
 }
 
 int __wrap_posix_memalign(void **address, size_t alignment, size_t size) {
-  return pss_heap_ready()
-             ? sceLibcMspacePosixMemalign(pss_heap_mspace, address, alignment,
-                                          size)
-             : __real_posix_memalign(address, alignment, size);
+  if (!pss_heap_ready())
+    return __real_posix_memalign(address, alignment, size);
+  int result = sceLibcMspacePosixMemalign(pss_heap_mspace, address, alignment, size);
+  if (result == 0)
+    pss_heap_record_allocation(*address, size != 0);
+  else if (result == ENOMEM)
+    atomic_fetch_add_explicit(&pss_heap_failures, 1, memory_order_relaxed);
+  return result;
 }
 
 size_t __wrap_malloc_usable_size(const void *address) {
@@ -116,4 +161,15 @@ void pss_opengl_heap_stats_print(unsigned iteration) {
     printf("[pss-opengl-cts] mspace state=%d base=%p size=%u\n",
            state, state == 2 ? pss_heap_base : NULL, PSS_OPENGL_HEAP_SIZE);
   }
+}
+
+void pss_opengl_heap_snapshot(const char *phase, unsigned iteration) {
+  printf("[pss-opengl-heap] phase=%s sample=%u state=%d live_bytes=%zu peak_bytes=%zu "
+         "blocks=%zu failures=%zu ambiguous_zero_reallocs=%zu\n", phase, iteration,
+         atomic_load_explicit(&pss_heap_state, memory_order_acquire),
+         atomic_load_explicit(&pss_heap_live_bytes, memory_order_relaxed),
+         atomic_load_explicit(&pss_heap_peak_bytes, memory_order_relaxed),
+         atomic_load_explicit(&pss_heap_blocks, memory_order_relaxed),
+         atomic_load_explicit(&pss_heap_failures, memory_order_relaxed),
+         atomic_load_explicit(&pss_heap_ambiguous_zero_reallocs, memory_order_relaxed));
 }
