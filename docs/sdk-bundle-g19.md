@@ -55,6 +55,17 @@ The memory wrapper is app-only and excludes module allocations, CPU mmap and RSS
 The diagnostic soak is not a matched performance benchmark. The p95 also means
 the offscreen average is not a guarantee of every frame meeting 16.67 ms.
 
+G22 also links unchanged G19 into an isolated current Yamagi game build. One
+cold `demo2` replay reaches EOF with the reference's **632 timedemo frames**:
+11.3 seconds / **55.9 FPS**, plus 649 independently recorded successful presents.
+Renderer/engine shutdown, native teardown and post-health pass. This uses
+single-level textures; it is not a comparison with the older private game SDK,
+a guaranteed 60-FPS result, or a fresh pixel/controller/audio oracle. Final logs
+were extracted from the saved per-title archive after unmount. The separate game
+package/assets are not in this SDK archive and the installed game/saves were not
+altered. Source identities and the private receipt location are in the
+[milestone record](enhancement-plan.md).
+
 G13's older sample/soak and the historical 39,544 accounted results belong to
 different binaries. G19 has no fresh HDMI-mode, physical-input, multi-hour,
 suspend/resume, device-loss or cross-firmware qualification. CPU
