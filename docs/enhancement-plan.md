@@ -59,7 +59,7 @@ is a manual cold launch of PPSA77800 with TV/controller confirmation. No blanket
 | Area | Current state | Remaining acceptance |
 | --- | --- | --- |
 | Core implementation and focused regressions | G19 additionally fixes mip copies and color mappings; its 24 mip cycles and 18 format checks pass | No new full-matrix claim; retain each older candidate's evidence separately. |
-| Distribution | Corrected G19 SDK and targeted bundle procedure available; G13 archive is historical | Verify fresh extraction before handoff. Local only; publication requires a separate request. |
+| Distribution | Corrected G19 bundle verified: 120 file checksums and all three relocated consumers pass; G13 archive is historical | Local only; publication requires a separate request. |
 | Manual startup and controls | G14 automated supported-mode/exit runs pass; owner reports TV-only launches always work | Fresh physical-control acceptance remains separate. Earlier zero support occurred with a capture card; do not force an unsupported display mode. |
 | Broader platform coverage | Explicitly unqualified | Separate safe conditions for suspend/resume, device loss, hardware OOM, multi-hour sessions and another firmware. |
 | Application integration | Fullscreen EGL and public GL examples supplied | SDL/GLFW are separate platform ports, not missing Core 3.3 commands. |
@@ -117,3 +117,12 @@ The independent package is an older source baseline, not the G18/G19 runtime,
 and has no hardware acceptance. All four agent lanes are integrated and closed.
 The [G19 bundle procedure](sdk-bundle-g19.md) uses the corrected runtime and its
 own evidence; do not publish or relabel the preserved G13 or independent archives.
+
+- 2026-09-08 | G20 distribution | source companion `fdf3696`, unchanged G19 SDK; 24 mip cycles + 18 format checks audited, full host tests pass, 120/120 extracted file checks and Make/pkg-config/CMake consumers pass with original checkout forbidden | `.local/g20-{package,host,extracted-*}.log`; no console access or publication.
+
+Current local archive: `build/bundles/g19-targeted-20260908/ps5-opengl-sdk-0.1.0-perf20260908-targeted.tar.gz`,
+239,313,840 bytes, SHA-256 `382d88ad2097a1b7ba2eaf0a74dc6d313e3d5a7016941fb81f5a68fadd553f2a`.
+The source companion contains both fixes and the exact accepted batch sources;
+its preparation-time documentation precedes this verification note. Hardware
+scope is G19's targeted batch, not the historical full campaign, G13 sample/soak
+or a new performance measurement. The archive includes no raw logs or PPSA77800 app.
