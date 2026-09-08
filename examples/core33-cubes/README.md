@@ -94,8 +94,9 @@ PS5_CUBES_OBJECTS=128 PS5_CUBES_SECONDS=30 PS5_CUBES_SWAP_COMPLETED=1 \
   bash tools/build-native-test-app.sh egl_public_core33_cubes_profile
 ```
 
-This cube target uses the **source runtime** through `tests/ps5/native-app.mk`;
-setting `PS5_OPENGL_PREFIX` does not switch that builder to an installed SDK.
+Without `PS5_OPENGL_PREFIX`, this cube target uses the **source runtime** through
+`tests/ps5/native-app.mk`. Set `PS5_OPENGL_PREFIX=/path/to/frozen/sdk` to validate
+its manifest and link the installed SDK without rebuilding that runtime.
 Freeze the resulting native folder and runtime hashes for each comparison. The
 profile object always rebuilds when requested, so changing its variables cannot
 silently reuse the other completion mode. Runtime build/deployment ownership
