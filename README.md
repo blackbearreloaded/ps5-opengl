@@ -36,11 +36,13 @@ at 1080p, 1440p and 4K**, measured for 30 seconds per size. See the
 and [benchmark build instructions](examples/core33-imgui/README.md#high-refresh-window-benchmark-opt-in).
 This is small-scene throughput, not a guarantee of game FPS or perfect frame pacing.
 
-**Latest focused checks:** the matched 1080p offscreen workload improved from
-14.10 to **19.98 FPS**. A ten-minute TV-demo session sustained approximately
-**59.90 FPS**, and **five native launch/exit cycles** passed without post-session
-owned-heap growth. These are bounded results, not exhaustive stability or OOM
-coverage; see [offscreen and stability findings](docs/offscreen-stability.md).
+**Latest local candidate (September 8, not published):** the matched 1080p
+offscreen workload improved from 19.98 to **59.95 FPS**. Its ten-minute soak
+and **204/204 focused conformance executions** passed, with no steady tracked
+heap/GPU-memory growth. These results belong to the frozen G13 SDK, not the older
+download above. See [offscreen and stability findings](docs/offscreen-stability.md)
+and the [local sampled bundle](docs/sdk-bundle-g13.md). Manual 4K-app startup/input
+acceptance remains open; these checks do not establish exhaustive stability.
 
 ## Project Foundation
 

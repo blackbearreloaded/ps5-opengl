@@ -23,6 +23,25 @@ SDK_HASH = "03e535ec8853475385034759e7bc7e63b37ef275591912e3391669b027bd09fc"
 RUNTIME_HASH = "9fe92335c3b18043eea989df009ab3ca21cfba1d7831fc0150bebd1c0b8878d1"
 CANDIDATE_HASH = "790e9f56ae71a3153044557c2280644786b5fe7dd3b5c782b8591acaf24f6398"
 SAMPLE_HASH = "915d9f79c90d2ff9ec1c900e59f1e34ed3894747beddc8a53419f8b98710c4c9"
+SAMPLES = {
+    VERSION: dict(runtime=RUNTIME, sdk=SDK_HASH, archive=RUNTIME_HASH,
+                  candidate=CANDIDATE_HASH, guide="sdk-bundle.md",
+                  native_paths=["native-app"]),
+    "0.1.0-perf20260908-sampled": dict(
+        runtime="16e651b3d6e871c3986dc5710a9ca897fbb6e4ab",
+        sdk="5dcdd41a1e26d714de88e8628e449098055f72dce842bd70106ada73140d9827",
+        archive="dd636df0119009173ace9b196b4903fd5da5e515e7e9ae3f1bea5273a871251a",
+        candidate="433d1241136532b87985567f663e69a4f421fb33eaa4039c950457c38cf65290",
+        guide="sdk-bundle-g13.md",
+        # Only these native-app sources enter the SDK. Heap/GPU diagnostics
+        # belong to the separately versioned application source companion.
+        native_paths=["native-app/agc_link_stub.c", "native-app/agc_driver_link_stub.c"]),
+}
+
+
+def require_frozen_sdk(profile, sdk_hash, runtime_hash):
+    require(sdk_hash == profile["sdk"] and runtime_hash == profile["archive"],
+            "SDK differs from the selected frozen candidate")
 
 
 def require_sample(report):
@@ -46,8 +65,8 @@ def require_consumers(report, sdk_hash):
             "expected three linked consumers and 344 Core exports")
 
 
-def sample_report(repo, candidate, results):
-    require(digest(candidate) == CANDIDATE_HASH, "not the frozen sampled candidate")
+def sample_report(repo, candidate, results, profile):
+    require(digest(candidate) == profile["candidate"], "not the frozen sampled candidate")
     manifest = json.loads(candidate.read_text())
     mustpass = repo / "third_party/VK-GL-CTS/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass/main/gl33-main.txt"
     require(digest(mustpass) == manifest["mustpass_sha256"], "must-pass identity mismatch")
@@ -76,7 +95,7 @@ def sample_report(repo, candidate, results):
                 sample_complete=True, full_matrix_complete=False,
                 executed=204, counts={"Pass": 204}, clean_cycles=4,
                 hardware="one recorded firmware-6.02 console; numerical checks",
-                candidate_sha256=CANDIDATE_HASH, eboot_sha256=manifest["eboot_sha256"],
+                candidate_sha256=profile["candidate"], eboot_sha256=manifest["eboot_sha256"],
                 cts_commit=manifest["cts_commit"], mustpass_sha256=manifest["mustpass_sha256"],
                 selected_cases_sha256=SAMPLE_HASH, configurations=configurations)
 
@@ -106,10 +125,15 @@ def main():
     parser.add_argument("--candidate", type=Path)
     parser.add_argument("--results", type=Path)
     parser.add_argument("--ci-version", help="distinct CI-built, NOT console-validated bundle")
+    parser.add_argument("--sample-version", choices=SAMPLES,
+                        help="frozen sampled release (default: September 7)")
     parser.add_argument("--consumer-report", type=Path, help="CI SDK consumer summary.json")
     parser.add_argument("--runtime-config", type=Path, help="CI runtime-config.txt")
     parser.add_argument("--destination", type=Path, required=True, help="new output directory")
     args = parser.parse_args()
+    require(not (args.ci_version and args.sample_version),
+            "CI and sampled release modes are mutually exclusive")
+    profile = SAMPLES[args.sample_version or VERSION]
     repo = Path(__file__).resolve().parents[1]
     sdk, output = args.sdk.resolve(), args.destination.resolve()
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_commit), "use a full source commit")
@@ -133,13 +157,13 @@ def main():
         require(args.candidate and args.results and
                 not args.consumer_report and not args.runtime_config,
                 "sampled mode requires the frozen candidate and hardware receipts")
-        require(sdk_hash == SDK_HASH and runtime_hash == RUNTIME_HASH,
-                "SDK differs from the frozen optimized candidate")
-        subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", RUNTIME,
-                        args.source_commit, "--", "src", "native-app", "toolchain",
-                        "tests/ps5/native-app.mk", "dependencies.json"], check=True)
-        sampled = sample_report(repo, args.candidate, args.results)
-        version = VERSION
+        require_frozen_sdk(profile, sdk_hash, runtime_hash)
+        subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", profile["runtime"],
+                        args.source_commit, "--", "src", "toolchain",
+                        "tests/ps5/native-app.mk", "dependencies.json",
+                        *profile["native_paths"]], check=True)
+        sampled = sample_report(repo, args.candidate, args.results, profile)
+        version = args.sample_version or VERSION
     epoch = subprocess.check_output(["git", "-C", str(repo), "show", "-s", "--format=%ct",
                                      args.source_commit], text=True).strip()
     require(epoch.isdecimal(), "invalid source timestamp")
@@ -162,7 +186,7 @@ def main():
                 require(".." not in Path(relative).parts and not Path(relative).is_absolute(),
                         "unsafe source path")
                 copy_member(archive, member, stage / relative)
-    guide = "ci-releases.md" if args.ci_version is not None else "sdk-bundle.md"
+    guide = "ci-releases.md" if args.ci_version is not None else profile["guide"]
     shutil.copyfile(stage / "docs" / guide, stage / "README.md")
     pins = json.loads((stage / "dependencies.json").read_text())
     mesa = repo / "third_party/mesa-26.2.0.tar.xz"
@@ -180,9 +204,9 @@ def main():
             copy_member(archive, archive.getmember(dep + "/" + license_name),
                         stage / "LICENSES" / (dep + ".txt"))
     provenance = dict(
-        version=VERSION, status="local sample-validated distribution candidate; not published",
-        runtime_source_commit=RUNTIME, source_snapshot_commit=args.source_commit,
-        sdk_manifest_sha256=SDK_HASH, runtime_archive_sha256=RUNTIME_HASH,
+        version=version, status="local sample-validated distribution candidate; not published",
+        runtime_source_commit=profile["runtime"], source_snapshot_commit=args.source_commit,
+        sdk_manifest_sha256=sdk_hash, runtime_archive_sha256=runtime_hash,
         psbc_archive_sha256=digest(stage / "sdk/lib/libpsbc.ps5.a"),
         build_flags=dict(PS5_NATIVE_TITLE_RUNTIME=1, PS5_GPU_PRESENT_BATCH=1, PS5_DRAW_PROFILE=1,
                          PS5_SCANOUT_HEIGHT=1080, PS5_SCANOUT_FPS=60,

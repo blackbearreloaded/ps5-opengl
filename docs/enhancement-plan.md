@@ -50,3 +50,19 @@ The sample audit deliberately reports full-matrix `complete=false`; it does not
 requalify all 39,544 historical executions. The remaining interactive acceptance
 is a manual cold launch of PPSA77800 with TV/controller confirmation. No blanket
 100% compatibility, multi-hour, suspend/resume, device-loss or cross-firmware claim.
+
+## Completion boundary
+
+| Area | Current state | Remaining acceptance |
+| --- | --- | --- |
+| Core implementation and focused regressions | G11/G12/G13/G15/G16 pass for their frozen candidates | No new full-matrix claim; retain historical baseline separately. |
+| Distribution | Local G13 sampled-bundle recipe added; older release unchanged | Package, verify every file, and link relocated consumers before marking the archive prepared. |
+| Manual startup and controls | G14 automated supported-mode/exit run passes | Cold launch, visible animation, controls and clean exit; earlier zero-support cause remains unresolved. |
+| Broader platform coverage | Explicitly unqualified | Separate safe conditions for suspend/resume, device loss, hardware OOM, multi-hour sessions and another firmware. |
+| Application integration | Fullscreen EGL and public GL examples supplied | SDL/GLFW are separate platform ports, not missing Core 3.3 commands. |
+
+2026-09-08 manual attempt: **no-run**; Chiaki connected to the Store-selected
+home screen with a sign-in prompt. No PPSA77800 launch event occurred; services
+remained healthy, Remote Play disconnected without sleep, and exact lock released.
+Evidence: local app `results/manual-acceptance-20260908/`. Owner approval covers
+home navigation and title control, but the protocol's Store/sign-in stop remains.

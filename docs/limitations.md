@@ -21,7 +21,7 @@ distinct when reporting compatibility.
   The opt-in performance candidate averages ~119.88 FPS at 1080p, 1440p and 4K
   in 30-second windowed ImGui runs. Frame-time variation remains;
   this is not a long-session or full-game result. In contrast,
-  sampleable offscreen render targets still copy linear/tiled surfaces on the
+  older sampleable offscreen render targets copy linear/tiled surfaces on the
   CPU around each draw. Initial high-resolution ImGui FBO measurements are much
   slower; window throughput must not be generalized to render-to-texture workloads.
   The G7 CPU-copy optimization improves the matched 1080p FBO case from 3.54 to
@@ -34,6 +34,11 @@ distinct when reporting compatibility.
   not sustained performance at that count.
   The later G9 copy4 change improves a matched 1080p offscreen run from 14.10 to
   19.98 FPS, still CPU-copy limited. See [G9/G10 results](offscreen-stability.md).
+  The local G13 successor removes staging for eligible single-mip 2D RGBA8
+  images: the matched case reaches 59.95 FPS, with p95 17.20 ms. Other formats,
+  mips and layers retain staging. This focused improvement is not a universal
+  render-to-texture or full-game speed guarantee, and is not in the older SDK
+  download. See [the separately identified local candidate](sdk-bundle-g13.md).
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.
@@ -52,8 +57,14 @@ distinct when reporting compatibility.
   (15 EGL sessions). Owned-heap use stabilized during the soak and returned to
   the same post-session level across lifecycle runs. This accounting excludes
   direct GPU mappings, foreign heaps and process RSS.
+  Local G15/G16 diagnostics extend accounting to linked-title GPU direct
+  allocations/mappings: three sessions return tracked bytes/counts to zero, and
+  a ten-minute G13 soak has no steady heap/GPU growth. Foreign/module-internal
+  allocations and process RSS remain unmeasured; diagnostic builds do not
+  establish performance. These results do not explain the local 4K demo's
+  earlier intermittent unsupported-refresh result or replace manual cold launch.
 - **Stress:** maximum-axis framebuffers were tested, not an 8192x8192 allocation
-  or deliberate hardware OOM exhaustion. Five-minute runs and bounded recreation
+  or deliberate hardware OOM exhaustion. Ten-minute runs and bounded recreation
   are tested, not exhaustive long sessions, suspend/resume or device-loss recovery.
 - **Application memory:** the final SDK passes the original 8.3 MB live-malloc
   cube scenario through shader setup and 180 frames/2,596 pixel checks. Native

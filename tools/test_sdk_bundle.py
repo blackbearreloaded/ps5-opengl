@@ -6,11 +6,28 @@
 import copy
 import importlib
 import unittest
+from unittest import mock
 
 BUNDLE = importlib.import_module("build-sdk-bundle")
 
 
 class SampleGateTests(unittest.TestCase):
+    def test_frozen_versions_cannot_share_sdk_acceptance(self):
+        profiles = list(BUNDLE.SAMPLES.values())
+        for index, profile in enumerate(profiles):
+            BUNDLE.require_frozen_sdk(profile, profile["sdk"], profile["archive"])
+            other = profiles[1 - index]
+            for sdk, archive in [(other["sdk"], profile["archive"]),
+                                 (profile["sdk"], other["archive"]),
+                                 (other["sdk"], other["archive"])]:
+                with self.assertRaises(ValueError):
+                    BUNDLE.require_frozen_sdk(profile, sdk, archive)
+        self.assertNotEqual(profiles[0]["candidate"], profiles[1]["candidate"])
+        for profile, other in (profiles, profiles[::-1]):
+            with mock.patch.object(BUNDLE, "digest", return_value=other["candidate"]):
+                with self.assertRaises(ValueError):
+                    BUNDLE.sample_report(None, None, None, profile)
+
     def test_ci_requires_matching_complete_host_checks(self):
         report = dict(status="PASS", manifest={"sha256": "sdk-hash"},
                       consumers=dict.fromkeys(("make", "pkgconfig", "cmake"), {}),
