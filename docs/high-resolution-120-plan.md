@@ -31,6 +31,7 @@ separate from console logs. Keep changes local unless publication is requested.
 - 2026-09-08 | G35 | 85f0a97 | pass: read-only installed identity; saved output requests match despite different HDMI | results/g35-prosperolight-installed-20260908/comparison.json | capture working stream.
 - 2026-09-08 | G36 | a53133a | inconclusive: live ProsperoLight logs 1080p120; owner TV reports 4K120 | results/g36-prosperolight-live-20260908/comparison.json | reconcile sink evidence.
 - 2026-09-08 | G36 resolved | 7e0c339 | partial-pass: TV now confirms 1080p; its game bar showed refresh, app HUD showed render size | results/g36-prosperolight-live-20260908/photo-review.json | check HDMI path.
+- 2026-09-08 | G37 | f8f5949 | pass: unchanged 4K ImGui 119.884 FPS, HDMI 2160p119.88, pixels/restore/teardown/health/unlock | results/g37-hdmi4-opengl-2160-20260908/comparison.json | native 1440p next.
 
 ## Current boundary and next check
 
@@ -41,26 +42,21 @@ functional integration, not measured SDL frame rate or arbitrary-game performanc
 No new exhaustive CTS or extended high-resolution soak is claimed. Published
 G25 binaries remain unchanged; none of this work has been pushed or released.
 
-All four native cycles negotiated **1920x1080 at 119.88 Hz** over HDMI, then
-restored 3840x2160 at 59.94 Hz. VideoOut's reported 4K dimensions alone do not
-override that evidence. This is a rendering pass, not end-to-end 1440p120 or
-2160p120 output acceptance; independent sink verification is still absent.
+The earlier HDMI1 runs negotiated 1080p119.88. After the owner moved the Hisense
+55U78N connection to HDMI4, G37's unchanged original G31 OpenGL app rendered
+3840x2160 at **119.883639 FPS** for 30.004094 seconds and negotiated
+**2160P_11988**, restoring 4K59.94 afterward. Pixels, lifecycle and health passed.
+The log consumed the original `attribute=0` profile (`HDR:x HFR:o`, `0x2a0057`);
+the G33 multi-bit metadata change is unnecessary. No renderer fix or rebuild
+was needed. The owner and logs confirmed 4K120 for the preceding ProsperoLight
+control; a separate TV confirmation of the OpenGL run was requested, not assumed.
 
-Next: qualify the current HDMI path before changing output code. G36's photo
-and owner follow-up resolve the discrepancy: the current TV input is 1080p,
-matching the 119.88-Hz console log; 4K appeared in the app's render-target HUD.
-The owner identifies a Hisense 55U78N on HDMI 1. Its official port diagram labels
-HDMI 1/2 as 4K60 and HDMI 3/4 as 4K144: the current input cannot qualify 4K120.
-Have the owner connect the PS5 to HDMI 3 or 4 with the appropriate enhanced input
-format, ideally directly using its supplied cable. Sony's output guide also
-identifies non-Automatic Video Transfer Rate as a 4K120 limitation; that setting
-has not been read from this console. Only the owner handles Settings.
-After the path change, reuse the original frozen G31 2160p120 app for one
-30-second test with HDMI-log and TV input confirmation; no rebuild or CTS rerun.
-Use the G33 metadata-only candidate only if comparison evidence warrants it;
-do not silently promote its diagnostic multi-bit profile.
-A 1440p render upscaled to 4K HDMI must remain labelled as such. Do not force an
-undocumented mode or repeat identical runs to turn the mismatch into a pass.
+Next: verify **native 2560x1440 HDMI at 120 Hz**, distinct from rendering 1440p
+and upscaling to 4K. Sony's documented PS5 1440p test/selection is owner-operated;
+the agent never enters Settings. Once the owner selects a supported 1440p output,
+reuse the frozen G31 1440p120 app for one 30-second check, followed by the short
+SDL adapter check if needed. No renderer rebuild or full CTS rerun is indicated.
+Keep the original profile and request 15; do not force unsupported modes.
 
 ## G33: title-profile negotiation diagnostic
 
