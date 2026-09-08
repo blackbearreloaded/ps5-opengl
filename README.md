@@ -37,6 +37,9 @@ per size. See the
 and [benchmark build instructions](examples/core33-imgui/README.md#high-refresh-window-benchmark-opt-in).
 These are render sizes, not verified HDMI modes. This is small-scene throughput,
 not a guarantee of game FPS or perfect frame pacing.
+The [September 8 display audit](docs/performance.md#display-negotiation-audit-september-8-local)
+reproduces 4K rendering at 119.884 FPS but records **1080p120 HDMI negotiation**;
+independent TV/capture-device verification remains separate.
 
 **Latest local candidate (September 8, not published):** G19 fixes nonzero-mip
 copies and color-blit channel mappings. **24 mip cycles plus 18 format checks**

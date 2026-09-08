@@ -20,6 +20,25 @@ These render-throughput measurements do not qualify the 1080p60 SDK bundles or
 establish 4K120 HDMI output. The September 7 milestones below retain their original
 candidates and decisions; later acceptance does not rewrite those receipts.
 
+## Display negotiation audit (September 8, local)
+
+G24's new 2160p120 build of the G19 graphics logic rendered **3840x2160 at
+119.884 FPS** for 30 seconds (completed-frame p95 **9.178 ms**). Both VideoOut
+snapshots reported 3840x2160/119.88, but the same title's HDMI negotiation was
+**1920x1080 at 119.88 Hz**, followed by restoration to 3840x2160/59.94 at exit.
+Rendering, cleanup, service health and exact-token release passed. The distinction
+is now checked by `tools/summarize-display.py`, not inferred from buffer size.
+
+This is a verified console-log mismatch, not a 4K120 HDMI success or a renderer
+failure. Direct TV/capture-device signal confirmation and the current connection
+path remain unverified; no cause or forced-mode fix is claimed. The saved older
+standalone ImGui receipt shows the same mismatch; a separate older ProsperoLight
+receipt demonstrates 2160p119.88 negotiation under its then-current setup.
+Neither receipt establishes the capabilities of today's connected display path.
+Source companion `3c92754`, exact app/SDK identity in `.local/g24-candidate.json`,
+hashed native evidence in `results/g24-display-20260908/display-report.json`.
+The accepted 1080p60 SDK bundles remain unchanged.
+
 ## Frozen validation-baseline measurements
 
 The final SDK's 1080p ImGui demo rendered **5,997 frames in 300 seconds (~19.99 FPS)**.
