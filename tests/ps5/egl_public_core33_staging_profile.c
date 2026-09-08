@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -28,26 +29,27 @@
 #endif
 
 /* Transfer/FBO sequence follows transfer_workload and layered_mip_fbo.
- * Only the tested texture's format/subresource changes. Source and sample
- * renderbuffers stay RGBA8, with identical dimensions, calls and pixel regions.
+ * Only the tested texture's format/subresource and framebuffer-sRGB state change.
+ * Source/sample renderbuffers stay RGBA8; dimensions, calls and regions match.
  * This is composite CPU-wall throughput, including glFinish each cycle, not
  * isolated transfer bandwidth, GPU timestamps, presentation or game FPS.
- * ponytail: six fixed cases, sampled guards only; use the existing transfer
+ * ponytail: seven fixed cases, sampled guards only; use the existing transfer
  * regression gate for exhaustive images, not this short diagnostic batch.
  */
 static const struct test_case {
    const char *name, *sampler, *coordinate;
    GLenum target, format;
-   int level, layer, depth, channels;
+   int level, layer, depth, channels, framebuffer_srgb;
 } cases[] = {
-   {"rgba8-2d", "sampler2D", "uv", GL_TEXTURE_2D, GL_RGBA8, 0, 0, 1, 4},
-   {"r8-2d", "sampler2D", "uv", GL_TEXTURE_2D, GL_R8, 0, 0, 1, 1},
-   {"rgba16f-2d", "sampler2D", "uv", GL_TEXTURE_2D, GL_RGBA16F, 0, 0, 1, 4},
-   {"rgba8-2d-mip1", "sampler2D", "uv", GL_TEXTURE_2D, GL_RGBA8, 1, 0, 1, 4},
+   {"rgba8-2d", "sampler2D", "uv", GL_TEXTURE_2D, GL_RGBA8, 0, 0, 1, 4, 0},
+   {"srgb8-2d", "sampler2D", "uv", GL_TEXTURE_2D, GL_SRGB8_ALPHA8, 0, 0, 1, 4, 1},
+   {"r8-2d", "sampler2D", "uv", GL_TEXTURE_2D, GL_R8, 0, 0, 1, 1, 0},
+   {"rgba16f-2d", "sampler2D", "uv", GL_TEXTURE_2D, GL_RGBA16F, 0, 0, 1, 4, 0},
+   {"rgba8-2d-mip1", "sampler2D", "uv", GL_TEXTURE_2D, GL_RGBA8, 1, 0, 1, 4, 0},
    {"rgba8-array-layer1", "sampler2DArray", "vec3(uv, 1.0)",
-    GL_TEXTURE_2D_ARRAY, GL_RGBA8, 0, 1, 3, 4},
+    GL_TEXTURE_2D_ARRAY, GL_RGBA8, 0, 1, 3, 4, 0},
    {"rgba8-3d-layer1", "sampler3D", "vec3(uv, 0.5)",
-    GL_TEXTURE_3D, GL_RGBA8, 0, 1, 3, 4},
+    GL_TEXTURE_3D, GL_RGBA8, 0, 1, 3, 4, 0},
 };
 static const uint8_t zeroes[WIDTH * 2 * HEIGHT * 2 * 4];
 static const int probes[][2] = {
@@ -55,6 +57,14 @@ static const int probes[][2] = {
    {WIDTH / 2, HEIGHT / 2}, {WIDTH - 9, HEIGHT - 12}, {WIDTH - 8, HEIGHT - 12},
 };
 static const uint8_t colors[2][4] = {{64, 128, 192, 255}, {192, 64, 128, 255}};
+/* Rounded standard sRGB transfer values for these fixed oracle colors.
+ * Copies/uploads retain encoded bytes; sampling decodes RGB regardless of
+ * GL_FRAMEBUFFER_SRGB. Only FBO writes encode when enabled; alpha stays linear.
+ */
+static const uint8_t decoded_colors[2][4] = {{13, 55, 134, 255}, {134, 13, 55, 255}};
+static const uint8_t patch[4] = {64, 128, 192, 128};
+static const uint8_t encoded_patch[4] = {137, 188, 225, 128};
+static const uint8_t decoded_patch[4] = {13, 55, 134, 128};
 
 static uint64_t now_ns(void)
 {
@@ -131,7 +141,8 @@ static int cycle(const struct test_case *c, const GLuint fbo[3], GLuint render,
    glBindFramebuffer(GL_FRAMEBUFFER, fbo[1]);
    glEnable(GL_SCISSOR_TEST);
    glScissor(WIDTH - 8, HEIGHT - 12, 5, 7);
-   glUniform4f(color, 0, 0, 1, 1);
+   glUniform4f(color, patch[0] / 255.0f, patch[1] / 255.0f,
+               patch[2] / 255.0f, patch[3] / 255.0f);
    glDrawArrays(GL_TRIANGLES, 0, 3);
    glDisable(GL_SCISSOR_TEST);
    /* Sample before readback, with the tested texture detached from the draw FBO. */
@@ -145,15 +156,22 @@ static int cycle(const struct test_case *c, const GLuint fbo[3], GLuint render,
 static int check_pixels(const struct test_case *c, const char *phase,
                         const char *image, unsigned index, int guard)
 {
+   const int srgb = c->format == GL_SRGB8_ALPHA8;
+   const int sampled = !strcmp(image, "sample");
+   const uint8_t *copied = srgb && sampled ? decoded_colors[index % 2] : colors[index % 2];
+   const uint8_t *drawn = patch;
+   if (srgb) {
+      if (c->framebuffer_srgb) drawn = sampled ? patch : encoded_patch;
+      else if (sampled) drawn = decoded_patch;
+   }
    for (unsigned p = 0; p < sizeof(probes) / sizeof(probes[0]); ++p) {
       const int x = probes[p][0], y = probes[p][1];
       uint8_t actual[4] = {0xa5, 0xa5, 0xa5, 0xa5};
       uint8_t expected[4] = {0, 0, 0, 0};
       if (!guard && x >= 3 && x < WIDTH - 3 && y >= 5 && y < HEIGHT - 5) {
-         for (unsigned k = 0; k < 4; ++k) expected[k] = colors[index % 2][k];
-         if (x >= WIDTH - 8 && y >= HEIGHT - 12) {
-            expected[0] = expected[1] = 0; expected[2] = expected[3] = 255;
-         }
+         for (unsigned k = 0; k < 4; ++k) expected[k] = copied[k];
+         if (x >= WIDTH - 8 && y >= HEIGHT - 12)
+            for (unsigned k = 0; k < 4; ++k) expected[k] = drawn[k];
          if (x == 3 && y == 5)
             for (unsigned k = 0; k < 4; ++k) expected[k] = 255;
       }
@@ -173,7 +191,7 @@ static int check_pixels(const struct test_case *c, const char *phase,
 }
 
 static int oracle(const struct test_case *c, const GLuint fbo[3], GLuint texture,
-                  const char *phase, unsigned index)
+                  const char *phase, unsigned index, GLuint render, GLint color, GLuint sample)
 {
    int count = 16;
    glBindFramebuffer(GL_FRAMEBUFFER, fbo[2]);
@@ -189,6 +207,22 @@ static int oracle(const struct test_case *c, const GLuint fbo[3], GLuint texture
       if (!attach(c, texture, c->level, z) || !check_pixels(c, phase, "layer-guard", index, 1)) return 0;
       count += 8;
    }
+   if (c->format == GL_SRGB8_ALPHA8) {
+      /* Check disabled encoding after the measured-state samples. This extra
+       * diagnostic cycle runs only in the before/after oracle, never in timing.
+       * The next measured cycle rewrites the interior and restores its patch.
+       */
+      struct test_case off = *c;
+      off.framebuffer_srgb = 0;
+      glDisable(GL_FRAMEBUFFER_SRGB);
+      if (!cycle(&off, fbo, render, color, sample, index)) return 0;
+      glBindFramebuffer(GL_FRAMEBUFFER, fbo[2]);
+      if (!check_pixels(&off, phase, "sample", index, 0)) return 0;
+      glBindFramebuffer(GL_FRAMEBUFFER, fbo[1]);
+      if (!check_pixels(&off, phase, "selected", index, 0)) return 0;
+      glEnable(GL_FRAMEBUFFER_SRGB);
+      count += 16;
+   }
    return attach(c, texture, c->level, c->layer) && glGetError() == GL_NO_ERROR ? count : 0;
 }
 
@@ -202,6 +236,8 @@ static int run_case(const struct test_case *c, GLuint render, GLint color)
    const char *stage = "setup";
    char fragment[512];
    if (!start) goto cleanup;
+   if (c->framebuffer_srgb) glEnable(GL_FRAMEBUFFER_SRGB);
+   else glDisable(GL_FRAMEBUFFER_SRGB);
    snprintf(fragment, sizeof(fragment), "#version 330 core\nuniform %s u_texture;\n"
             "layout(location=0) out vec4 color;\nvoid main() {\n"
             "vec2 uv = gl_FragCoord.xy / vec2(640.0, 360.0);\n"
@@ -238,6 +274,10 @@ static int run_case(const struct test_case *c, GLuint render, GLint color)
    }
    glBindFramebuffer(GL_FRAMEBUFFER, fbo[1]);
    if (!attach(c, texture, c->level, c->layer)) goto cleanup;
+   GLint encoding = 0;
+   glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                         GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING, &encoding);
+   if (encoding != (c->format == GL_SRGB8_ALPHA8 ? GL_SRGB : GL_LINEAR)) goto cleanup;
    glViewport(0, 0, WIDTH, HEIGHT);
    glFinish();
    end = now_ns();
@@ -251,7 +291,7 @@ static int run_case(const struct test_case *c, GLuint render, GLint color)
    if (!start || end <= start) goto cleanup;
    warmup_ns = end - start;
    stage = "before";
-   before = oracle(c, fbo, texture, stage, WARMUP - 1);
+   before = oracle(c, fbo, texture, stage, WARMUP - 1, render, color, sample);
    if (!before) goto cleanup;
    glFinish(); /* Exclude oracle work and its attachment restoration. */
    if (glGetError() != GL_NO_ERROR) goto cleanup;
@@ -268,13 +308,14 @@ static int run_case(const struct test_case *c, GLuint render, GLint color)
    } while (elapsed < TARGET_NS && cycles < MAX_CYCLES);
    if (elapsed < TARGET_NS || elapsed > MAX_NS) goto cleanup;
    stage = "after";
-   after = oracle(c, fbo, texture, stage, cycles - 1);
+   after = oracle(c, fbo, texture, stage, cycles - 1, render, color, sample);
    passed = after == before;
 
 cleanup:
    glFinish(); /* Drain probes separately from deletion timing. */
    cleanup_start = now_ns();
    glDisable(GL_SCISSOR_TEST);
+   glDisable(GL_FRAMEBUFFER_SRGB);
    glUseProgram(0);
    glBindFramebuffer(GL_FRAMEBUFFER, 0);
    glBindRenderbuffer(GL_RENDERBUFFER, 0);
@@ -289,9 +330,10 @@ cleanup:
    if (cleanup_start && end > cleanup_start) cleanup_ns = end - cleanup_start;
    passed &= error == GL_NO_ERROR && cleanup_ns > 0;
    if (!passed) printf(TAG " failure case=%s stage=%s error=0x%x\n", c->name, stage, error);
-   printf(TAG " case=%s setup_ns=%" PRIu64 " warmup_ns=%" PRIu64
+   printf(TAG " case=%s framebuffer_srgb=%d encoding=%s setup_ns=%" PRIu64 " warmup_ns=%" PRIu64
           " before=%d cycles=%u previous_ns=%" PRIu64 " measured_ns=%" PRIu64
-          " after=%d cleanup_ns=%" PRIu64 " result=%d\n", c->name, setup_ns, warmup_ns,
+          " after=%d cleanup_ns=%" PRIu64 " result=%d\n", c->name, c->framebuffer_srgb,
+          c->format == GL_SRGB8_ALPHA8 ? "srgb" : "linear", setup_ns, warmup_ns,
           before, cycles, previous, elapsed, after, cleanup_ns, passed ? 0 : 1);
    fflush(stdout);
    return passed;
@@ -318,7 +360,7 @@ int main(void)
    int made_current = 0, passed = 0;
    EGLBoolean cleanup_ok = EGL_TRUE;
    uint64_t start = now_ns(), end = 0;
-   printf(TAG " config version=1 host=%d cases=6 width=640 height=360 warmup=4 "
+   printf(TAG " config version=2 host=%d cases=7 width=640 height=360 warmup=4 "
           "target_ns=3000000000 max_ns=5000000000 max_cycles=100000 completion=glFinish\n", HOST);
    if (!start) goto cleanup;
    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -362,7 +404,7 @@ int main(void)
       if (!run_case(&cases[i], render, color)) goto cleanup;
       ++completed;
    }
-   passed = completed == 6;
+   passed = completed == 7;
 
 cleanup:
    start = now_ns();

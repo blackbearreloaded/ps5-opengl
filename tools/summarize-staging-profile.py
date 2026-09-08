@@ -10,9 +10,10 @@ from pathlib import Path
 import re
 
 TAG = "[ps5-egl-staging-profile]"
-CASES = (("rgba8-2d", 16), ("r8-2d", 16), ("rgba16f-2d", 16),
+CASES = (("rgba8-2d", 16), ("srgb8-2d", 32),
+         ("r8-2d", 16), ("rgba16f-2d", 16),
          ("rgba8-2d-mip1", 24), ("rgba8-array-layer1", 32), ("rgba8-3d-layer1", 32))
-CONFIG = ("config version=1 host={host} cases=6 width=640 height=360 warmup=4 "
+CONFIG = ("config version=2 host={host} cases=7 width=640 height=360 warmup=4 "
           "target_ns=3000000000 max_ns=5000000000 max_cycles=100000 completion=glFinish")
 
 
@@ -39,8 +40,11 @@ def summarize(text, host=False):
     require(0 < setup < 2**63, "Invalid session setup time")
     rows = []
     for name, probes in CASES:
+        framebuffer_srgb = int(name == "srgb8-2d")
+        encoding = "srgb" if name.startswith("srgb8-") else "linear"
         values = match(
-            rf"case={name} setup_ns=(\d+) warmup_ns=(\d+) before=(\d+) cycles=(\d+) "
+            rf"case={name} framebuffer_srgb={framebuffer_srgb} encoding={encoding} "
+            r"setup_ns=(\d+) warmup_ns=(\d+) before=(\d+) cycles=(\d+) "
             r"previous_ns=(\d+) measured_ns=(\d+) after=(\d+) cleanup_ns=(\d+) result=0",
             f"Missing, reordered or failed case: {name}")
         setup_ns, warmup, before, cycles, previous, elapsed, after, cleanup = map(int, values.groups())
@@ -49,14 +53,15 @@ def summarize(text, host=False):
         require(before == after == probes, f"Pixel/guard coverage mismatch: {name}")
         require(1 <= cycles <= 100000 and 0 <= previous < 3_000_000_000 <= elapsed <= 5_000_000_000
                 and ((previous == 0) == (cycles == 1)), f"Invalid bounded measurement: {name}")
-        rows.append(dict(case=name, setup_ms=setup_ns / 1e6, warmup_ms=warmup / 1e6,
+        rows.append(dict(case=name, framebuffer_srgb=bool(framebuffer_srgb), encoding=encoding,
+                         setup_ms=setup_ns / 1e6, warmup_ms=warmup / 1e6,
                          before_probes=before, after_probes=after, cycles=cycles,
                          measured_seconds=elapsed / 1e9, completed_cycles_per_second=cycles * 1e9 / elapsed,
                          completed_cycle_mean_ms=elapsed / cycles / 1e6, cleanup_ms=cleanup / 1e6))
-    cleanup = int(match(r"finished cases=6 session_cleanup_ns=(\d+) cleanup=1 result=0",
+    cleanup = int(match(r"finished cases=7 session_cleanup_ns=(\d+) cleanup=1 result=0",
                         "Incomplete batch or failed cleanup")[1])
     require(0 < cleanup < 2**63 and not take(), "Invalid cleanup time or extra profile records")
-    return dict(version=1, mode="host-reference" if host else "native-receipt",
+    return dict(version=2, mode="host-reference" if host else "native-receipt",
                 renderer=renderer[0], gl_version=renderer[1], width=640, height=360,
                 warmup_cycles=4, target_seconds=3, completion="glFinish-per-cycle",
                 draws_per_cycle=3, copied_pixels_per_cycle=634 * 350, uploaded_pixels_per_cycle=1,
@@ -64,7 +69,11 @@ def summarize(text, host=False):
                 note="Composite draw/copy/upload/FBO-draw/sample CPU wall time, including completion, "
                      "error checks and loop overhead. Setup, warmup, probes and cleanup are excluded. "
                      "Formats include conversion costs; storage footprints differ. Sampled pixels use "
-                     "RGBA8 readback with +/-1 tolerance. No bandwidth, HDMI, game-FPS, GPU-internals, "
+                     "RGBA8 readback with +/-1 tolerance; sRGB cases check raw stored RGB, sampled "
+                     "linear RGB, framebuffer-sRGB off/on and unchanged fractional alpha. "
+                     "The single sRGB case measures enabled encoding; its disabled control cycle "
+                     "and 16 additional probes run in each untimed before/after oracle. "
+                     "No bandwidth, HDMI, game-FPS, GPU-internals, "
                      "exhaustive-image or native-launch/teardown claims.")
 
 
