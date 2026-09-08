@@ -24,6 +24,8 @@ safe test conditions and evidence; untested behavior is not complete.
 - 2026-09-08 | G11 | host and native deferred-draw regression passed; clean teardown/health, lock released | `.local/g11-*.log`, `results/g11-arena-20260908/`.
 - 2026-09-08 | G12 | host and native deferred-draw regression passed, including texture updates; clean teardown/health and exact-token release | `.local/g12-*.log`, `results/g12-texture-flush-20260908/`; larger-texture performance comparison still pending.
 - 2026-09-08 | G13 | native hazards pass; identical 1080p offscreen workload improves 19.981309 to 59.947540 FPS (600 vs 1,799 frames/30 s), pixels/teardown/health pass | `results/g13-{tiled-rgba8,fbo-control,fbo-native}-20260908/`. Mean target met, not every frame: p95 17.20 ms; broader affected sample pending.
+- 2026-09-08 | G14 local app | `1fdf0f7`: 300 s, 35,693 frames, 11 probes, 119.60–119.77 steady FPS; native exit and restored output/teardown/health pass | sibling `workspace/dev/ps5-imgui-4k120/results/g14-exit-20260908/`; manual cold launch and earlier zero-support cause remain open.
+- 2026-09-08 | G15 `d1d3eef` | 3 EGL sessions / 18 frames pass; tracked GPU direct/mapped peak 90,783,744 bytes, both return to zero bytes/counts every session; heap cleanup 9,455 bytes/22 blocks, no inter-session growth; zero failures/invalid flags, clean teardown/health/unlock | `results/g15-gpu-lifecycle-20260908/`.
 
 G15 diagnostic builds set `PS5_GPU_MEMORY_PROFILE=1`; the existing heap snapshot
 also records linked-title direct allocations and mappings. Audit receipts with

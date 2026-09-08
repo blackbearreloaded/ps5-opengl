@@ -1,5 +1,13 @@
 # Offscreen performance and sustained stability
 
+Local follow-up (not published): the single-mip RGBA8 native-layout candidate
+`16e651b` improves the same 1080p FBO case from **19.98 to 59.95 FPS**.
+Mean render time is 16.43 ms; p95 is 17.20 ms, so this is not a guarantee that
+every frame meets 16.67 ms. Pixels, retirement and teardown passed. Other formats,
+mips and layers retain staging. The three-session GPU-memory diagnostic returns
+tracked allocations/mappings to zero after every cleanup. Broader current-candidate
+acceptance remains in [the local enhancement gates](enhancement-plan.md).
+
 ## Validation plan
 
 | Gate | Change | Acceptance |
