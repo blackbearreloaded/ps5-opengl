@@ -22,6 +22,32 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def display_profile(sdk):
+    """Fixed render/presentation build profile, never negotiated HDMI status."""
+    path = sdk / 'include/ps5_opengl_display.h'
+    if path.is_symlink():
+        raise ValueError('Symlink display profile')
+    if not path.exists():
+        # Legacy SDKs predate profile metadata; SDL historically supported 1080p60.
+        return dict(width=1920, height=1080, fps=60)
+    if not path.is_file():
+        raise ValueError('Non-regular display profile')
+    lines = [line.strip() for line in path.read_text().splitlines()
+             if line.strip() and not line.lstrip().startswith('//')]
+    if len(lines) != 4 or lines[0] != '#pragma once':
+        raise ValueError('Invalid display profile header')
+    result = {}
+    for name, line in zip(('width', 'height', 'fps'), lines[1:]):
+        match = re.fullmatch(r'#define PS5_OPENGL_NATIVE_' + name.upper() + r' ([0-9]+)', line)
+        if not match:
+            raise ValueError('Invalid display profile constant')
+        result[name] = int(match[1])
+    if ((result['width'], result['height']) not in ((1920, 1080), (2560, 1440), (3840, 2160))
+            or result['fps'] not in (60, 120)):
+        raise ValueError('Unsupported display profile')
+    return result
+
+
 def verify_manifest(sdk):
     manifest = sdk / 'manifest.sha256'
     expected = {}

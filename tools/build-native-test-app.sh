@@ -110,6 +110,16 @@ else
     fi
 fi
 test -s "$gate_object_path"
+display_fps=${PS5_SCANOUT_FPS:-60}
+if [[ -n ${prefix:-} && -f $prefix/include/ps5_opengl_display.h ]]; then
+    display_fps=$(python3 -c 'import importlib, sys; sys.path.insert(0, sys.argv[1]); from pathlib import Path; print(importlib.import_module("check-sdk-consumers").display_profile(Path(sys.argv[2]))["fps"])' "$root/tools" "$prefix")
+elif [[ ${PS5_IMGUI_WINDOW_TARGET:-60} -gt 60 ]]; then
+    display_fps=120 # Legacy high-refresh SDKs have no profile header.
+fi
+case "$display_fps" in 60|120) ;; *) echo 'Invalid SDK presentation rate' >&2; exit 2 ;; esac
+if [[ ${PS5_IMGUI_WINDOW_TARGET:-60} -gt "$display_fps" ]]; then
+    echo 'Window benchmark target exceeds the selected SDK presentation rate' >&2; exit 2
+fi
 oracle=$(strings "$gate_object_path" | grep -m1 -E '^\[ps5-' || true)
 compiler=${PS5_CLANG:-clang-18}
 compiler_runtime=$(
@@ -159,7 +169,7 @@ for headers in EGL GL KHR; do
     cp -a "$public_headers/$headers" "$app/include/"
 done
 cp "$root/native-app/param.json" "$app/sce_sys/param.json"
-if [[ ${PS5_IMGUI_WINDOW_TARGET:-60} -gt 60 ]]; then
+if [[ $display_fps -gt 60 ]]; then
     # Ordinary high-resolution/HFR title metadata, matching the native VideoOut request.
     python3 - "$app/sce_sys/param.json" <<'HFR_METADATA'
 import json

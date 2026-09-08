@@ -62,6 +62,20 @@ for headers in EGL GL KHR; do
     cp -a "$root/third_party/mesa-26.2.0/include/$headers" \
         "$prefix/include/"
 done
+# This describes the fixed native drawable, not the connected HDMI signal.
+display_height=${PS5_SCANOUT_HEIGHT:-1080}
+display_fps=${PS5_SCANOUT_FPS:-60}
+case "$display_height" in
+    1080) display_width=1920 ;;
+    1440) display_width=2560 ;;
+    2160) display_width=3840 ;;
+    *) exit 2 ;;
+esac
+printf '%s\n' '// PS5 OpenGL - native render/presentation build profile, not HDMI status.' \
+    '// Copyright (C) 2026 BlackBearReloaded' '// SPDX-License-Identifier: GPL-3.0-or-later' \
+    '#pragma once' "#define PS5_OPENGL_NATIVE_WIDTH $display_width" \
+    "#define PS5_OPENGL_NATIVE_HEIGHT $display_height" \
+    "#define PS5_OPENGL_NATIVE_FPS $display_fps" > "$prefix/include/ps5_opengl_display.h"
 for library in "${libraries[@]}"; do
     name=$(basename -- "$library")
     if [[ $(head -c 7 "$library") == '!<thin>' ]]; then
