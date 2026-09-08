@@ -41,7 +41,7 @@ The [September 8 display audit](docs/performance.md#display-negotiation-audit-se
 reproduces 4K rendering at 119.884 FPS but records **1080p120 HDMI negotiation**;
 independent TV/capture-device verification remains separate.
 
-**Latest local candidate (September 8, not published):** G19 fixes nonzero-mip
+**Latest sample-validated local SDK (September 8, not published):** G19 fixes nonzero-mip
 copies and color-blit channel mappings. **24 mip cycles plus 18 format checks**
 pass in one native batch, with balanced tracked GPU memory over two EGL sessions.
 The same frozen SDK now also passes **204/204 sampled executions**, a ten-minute
@@ -142,7 +142,10 @@ then launch its registered title. Do not send the application executable to an
 ELF loader. Each TV-demo launch runs for five minutes.
 
 Existing projects still need PS5 entry-point, build, window/input and lifecycle
-integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
+integration. A local [SDL2 bridge](integration/SDL2/README.md) now supports standard
+SDL window/context/swap/event calls over the frozen G19 SDK; its native demo passed
+180 frames and two pixel checks. It is limited to one fixed 1080p Core 3.3 window,
+not a complete SDL platform port. GLX, WGL and GLFW integration remain absent.
 
 ## Documentation
 
@@ -150,6 +153,7 @@ integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
 | --- | --- |
 | [Building](docs/building.md) | Dependencies, source setup, SDK and native apps |
 | [Using the SDK](docs/consumer-build.md) | Make, pkg-config and CMake integration |
+| [SDL2 integration](integration/SDL2/README.md) | Real SDL2 video bridge, standard consumer, native evidence and limits |
 | [Sample-validated SDK bundle](docs/sdk-bundle.md) | Frozen 1080p60 package contents, verification and scope |
 | [Local G19 SDK bundles](docs/sdk-bundle-g19.md) | Copy fixes, focused sample, performance and bounded stability; not published |
 | [CI-built SDK archives](docs/ci-releases.md) | Current-source builds, checksums and draft-release workflow |

@@ -1,3 +1,7 @@
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 cmake_minimum_required(VERSION 3.16)
 project(SDL2G19 C)
 option(G19_HOST_TEST "Run real SDL2 with a host EGL contract double" OFF)

@@ -10,7 +10,8 @@ PS5 changes, not upstream authorship. Those changes remain subject to the
 applicable upstream per-file licenses; generated Khronos declarations and
 unmodified dependencies are not claimed as project-owned code.
 
-Sources are fetched at immutable revisions from [dependencies.json](dependencies.json).
+Core/example sources are fetched at immutable revisions from [dependencies.json](dependencies.json).
+The optional SDL2 integration separately pins and exports its supplied source checkout.
 No complete upstream source checkout, public payload SDK, vendor SDK or firmware
 module is copied into this repository. Patches and the test inventory are included.
 
@@ -27,6 +28,7 @@ module is copied into this repository. Patches and the test inventory are includ
 | [Sokol](https://github.com/floooh/sokol) | Unmodified GL backend; selects existing 3.3 fallback | [zlib/libpng](LICENSES/Sokol.txt) |
 | [Sokol samples](https://github.com/floooh/sokol-samples) | Cube sample with disclosed native platform/GLSL-version adaptations | [MIT](LICENSES/Sokol-Samples.txt) |
 | [vecmath](https://github.com/floooh/sokol-samples/tree/8afa83928ce1870efeb0d513e7c4dce4f5db7b3e/libs/vecmath) | Unmodified matrix/vector header bundled with the pinned cube sample | [MIT option](LICENSES/vecmath.txt) |
+| [PS5 SDL2 fork](https://github.com/ps5-payload-dev/SDL) / [SDL](https://github.com/libsdl-org/SDL) | Optional SDL 2.30.12 video integration at `8c56053f13ca13a0c050de613706ff69eb615836`; retains upstream core/events/joystick, replaces the selected video backend and marks the static-dynapi alteration | [zlib](LICENSES/SDL2.txt); upstream per-file notices retained in exported source |
 | [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk) | Public homebrew compilers, import libraries and C/C++ support; build prerequisite | SDK's component/per-file licenses; not a vendor SDK |
 | [Native app boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate) | Native runtime, linker/container conversion, assets and folder assembly | Its GPL-3.0-or-later and retained component notices |
 | [LLVM](https://llvm.org/) | Clang/LLD, compiler builtins, libc++, libc++abi and libunwind | Apache-2.0 with LLVM exceptions or component-specific notices |

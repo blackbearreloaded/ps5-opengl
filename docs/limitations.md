@@ -10,8 +10,11 @@ Later source changes have [focused performance/regression evidence](performance.
 not a rerun of that complete campaign. Keep the frozen baseline and current source
 distinct when reporting compatibility.
 
-- **Integration:** fullscreen EGL/static SDK; no GLX/WGL, SDL/GLFW platform port,
-  desktop installation model or compatibility-profile guarantee.
+- **Integration:** fullscreen EGL/static SDK; the local [SDL2 bridge](../integration/SDL2/README.md)
+  passed 180 native frames and two pixel checks using frozen G19. It supports one
+  fixed 1080p Core 3.3 window/context and SDL's existing event/joystick path, not a
+  complete SDL platform port or verified physical input. GLX/WGL, GLFW, a desktop
+  installation model and compatibility-profile guarantees remain absent.
 - **Performance:** some transfers, formats, clears and other operations retain CPU
   fallbacks. Eligible draw batching is enabled by default; other paths remain
   synchronous. The frozen-baseline 1080p ImGui demo sustained ~20 FPS for five minutes;
@@ -42,6 +45,10 @@ distinct when reporting compatibility.
   G19's own focused qualification reproduces 59.95 FPS offscreen and 59.94 FPS
   for both 128-cube modes; its [new sample and bounded stability checks](sdk-bundle-g19.md)
   do not extend these results to arbitrary formats, games or HDMI modes.
+  G25 additionally verifies native storage for single-level 2D sRGB textures and
+  a [seven-case format/mip/layer batch](performance.md#broader-format-and-subresource-coverage-g25-local).
+  Its copy-heavy sRGB throughput remains ~20 composite cycles/s: no measured
+  speedup is claimed. Other staging paths and broader optimization remain.
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.

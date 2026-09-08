@@ -150,3 +150,5 @@ verification note is necessarily recorded after packaging. Older archives stay i
 
 - 2026-09-08 | G24 | `3c92754` | pass: 4K render 119.884 FPS, HDMI 1080p119.88 then 4K59.94; clean/healthy/unlocked | `results/g24-display-20260908/display-report.json`; sink confirmation pending.
 - 2026-09-08 | G25 control v2 | `70edc4a` | failed: 640-wide 3D benchmark exceeds supported 256 limit; six cases and format/sRGB gates pass, clean/healthy/unlocked | `results/g25-staging-control-20260908/`; correct test footprint.
+- 2026-09-08 | G25 | `e7b013e` | pass: both seven-case batches and format/sRGB oracles; sRGB ~19.99 cycles/s unchanged; clean/healthy/unlocked | `results/g25-v3-staging-{control,candidate}-20260908/`.
+- 2026-09-08 | G26 | `9cf0daf` | pass: real SDL2/G19, 180 frames, two exact pixels; clean/healthy/unlocked | `results/g26-sdl2-20260908/acceptance.json`; one 1080p window, physical input unverified.

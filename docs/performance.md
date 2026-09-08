@@ -39,6 +39,64 @@ Source companion `3c92754`, exact app/SDK identity in `.local/g24-candidate.json
 hashed native evidence in `results/g24-display-20260908/display-report.json`.
 The accepted 1080p60 SDK bundles remain unchanged.
 
+## Broader format and subresource coverage (G25, local)
+
+The new sRGB candidate reuses native tiled storage for **single-mip, single-layer
+2D RGBA8 sRGB** render/sample textures. It preserves existing format support,
+size, sample-count and ownership guards. Other formats, mip chains and layers
+retain their existing staging paths. BGRA support was not inferred from RGBA's
+four-byte layout.
+
+Both frozen SDKs passed the same native batch: 20 render formats, three MRT
+phases, two full-image sRGB phases (masked clear, partial upload, draw/sample,
+raw readback, blit and copy), then seven measured cases with **336 sampled pixel
+checks** including untouched mip/layer guards. The combined test reuses the
+existing format gate and runs once per SDK, not once per case.
+
+Each cycle draws a source image, copies a subrectangle, uploads one pixel,
+draws a scissored patch into the tested texture, samples it, and calls `glFinish`.
+These are **completed composite cycles/s, not presentation or game FPS**:
+
+| 256×144 tested image | Frozen G19 | G25 sRGB candidate |
+| --- | ---: | ---: |
+| RGBA8 2D | 30.145 | 29.981 |
+| sRGB8-alpha8 2D | 19.985 | 19.986 |
+| R8 2D | 19.981 | 19.977 |
+| RGBA16F 2D | 19.984 | 19.981 |
+| RGBA8 2D, mip 1 | 19.988 | 19.979 |
+| RGBA8 array, layer 1 | 19.987 | 19.981 |
+| RGBA8 3D, layer 1 | 19.981 | 19.985 |
+
+**No measurable sRGB throughput gain in this workload.** Removing its per-draw
+staging copies is functionally verified, but these composite measurements do
+not isolate copy, draw or synchronization costs. Four warmup cycles and one
+three-second measurement per case provide no repeatability/error bars. Pixel
+oracles run before/after timing, with byte-readback tolerance ±1; this does not
+measure float precision or validate every measured frame.
+
+The initial 640×360 batch passed six cases, then correctly rejected a 3D image
+larger than this runtime's 256-pixel limit. Its failed receipt remains preserved.
+Version 3 uses a common valid footprint and checks public resource limits before
+allocating. Both corrected native cycles passed teardown, service health and
+exact-token release. No GPU fault was recorded. This is focused qualification,
+not a new CTS campaign, long soak or qualification of the unchanged SDK bundles.
+
+```sh
+make test
+PS5_OPENGL_PREFIX=/path/to/frozen/sdk make test-staging
+PS5_OPENGL_PREFIX=/path/to/frozen/sdk \
+  bash tools/build-native-test-app.sh egl_public_core33_staging_regressions
+python3 tools/summarize-staging-profile.py EXACT-opengl.log
+```
+
+Use the existing locked native-folder protocol with a 90-second observation cap;
+the profile parser checks benchmark records, not title teardown. Source companion
+`e7b013e`, exact identities in `.local/g25-v3-candidate.json`; accepted receipts
+under `results/g25-v3-staging-{control,candidate}-20260908/`. The candidate SDK is
+`build/sdk/ps5-opengl-core33-g25-srgb`. Transfer-heavy GPU paths and broader
+native-layout coverage remain optimization work; do not present them as missing
+Core 3.3 functions solely because they use the CPU.
+
 ## Frozen validation-baseline measurements
 
 The final SDK's 1080p ImGui demo rendered **5,997 frames in 300 seconds (~19.99 FPS)**.

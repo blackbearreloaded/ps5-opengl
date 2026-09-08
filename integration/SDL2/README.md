@@ -37,7 +37,7 @@ It is reference material only: this candidate builds SDL from the pinned source.
 
 ## Reproduce locally (Linux / WSL, Python 3.12+, CMake, Ninja, C compiler)
 
-Run from the G26 clone; choose a **new** output directory for each build:
+Run from the repository root; choose a **new** output directory for each build:
 
 ```sh
 sdl=/path/to/cached/SDL
@@ -123,3 +123,20 @@ coverage is claimed. Upstream PS5 joystick hotplug/multi-user edge cases are
 unchanged and unqualified. No new device-loss recovery is supplied; failed EGL
 cleanup retains resources rather than freeing anything still current. Hardware
 qualification and any bounded native-folder launch belong to the parent.
+
+## Native acceptance (September 8, local)
+
+Source companion `9cf0daf` / agent source `f25a3a6`, unchanged frozen G19 SDK:
+**180 frames and two exact center-pixel checks passed** at a 1920×1080 drawable.
+Frame 0 read `(0,38,102,255)`; frame 179 read `(254,38,102,255)`. SDL cleanup,
+native-title teardown, service health and exact-token release passed.
+The bounded run used `egl_public_core33_sdl2.o`, `PPSA99005` and a 30-second
+observation cap with the existing native-folder runner; no screenshots were needed.
+
+The tested eboot SHA-256 is
+`ddd2b0b1acf16ef0772298a517b560349ef9929b205cfb4929e239e6b4ee861e`;
+hashed acceptance is retained in `results/g26-sdl2-20260908/acceptance.json`.
+This proves the small standard-SDL consumer, not physical controller events,
+HDMI timing, arbitrary SDL applications or G25 runtime qualification. The
+upstream event queue/virtual joystick and failure contracts passed host sanitizers;
+they do not establish console hotplug behavior. SDK bundles remain unchanged.

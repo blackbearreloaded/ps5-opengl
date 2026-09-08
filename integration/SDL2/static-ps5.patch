@@ -1,3 +1,6 @@
+# PS5 OpenGL contributions: Copyright (C) 2026 BlackBearReloaded.
+# Static-build adaptation only; upstream SDL's zlib notices remain applicable.
+
 diff --git a/src/dynapi/SDL_dynapi.h b/src/dynapi/SDL_dynapi.h
 --- a/src/dynapi/SDL_dynapi.h
 +++ b/src/dynapi/SDL_dynapi.h

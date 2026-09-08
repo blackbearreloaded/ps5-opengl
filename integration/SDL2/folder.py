@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# PS5 OpenGL - OpenGL implementation for PlayStation 5.
+# Copyright (C) 2026 BlackBearReloaded
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Assemble an unlaunched native folder from a verified G26 native build."""
 import argparse
 import json
