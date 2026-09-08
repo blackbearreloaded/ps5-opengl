@@ -5,6 +5,7 @@
 """Changing runtime flags must rebuild objects; identical flags must not."""
 from pathlib import Path
 import os
+import hashlib
 import re
 import shlex
 import shutil
@@ -17,7 +18,9 @@ class RuntimeConfigTest(unittest.TestCase):
     def test_cts_runtime_flags(self):
         root = Path(__file__).resolve().parents[1]
         builder = (root / "tools/build-native-cts-app.sh").read_text().replace("\\\n", " ")
-        command = shlex.split(re.search(r'^make -C .*? runtime$', builder, re.M)[0])
+        match = re.search(r'^[ \t]*make -C .*? runtime$', builder, re.M)
+        self.assertIsNotNone(match, "CTS source-runtime build command is missing")
+        command = shlex.split(match[0])
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             for name in ("tests/ps5", "toolchain", "sdk/toolchain"):
@@ -36,6 +39,26 @@ class RuntimeConfigTest(unittest.TestCase):
                 output = subprocess.check_output(command, text=True, env=environment)
                 self.assertEqual(output.split(), ["-DPS5_NATIVE_TITLE_RUNTIME=1"] +
                     (["-DPS5_MULTIDRAW_BATCH=1", "-DPS5_DEFERRED_DRAW_BATCH=1"] if enabled != "0" else []))
+
+    def test_cts_frozen_sdk(self):
+        root = Path(__file__).resolve().parents[1]
+        builder = (root / "tools/build-native-cts-app.sh").read_text()
+        start = builder.index('if [[ -n ${PS5_OPENGL_PREFIX:-} ]]')
+        branch = builder[start:builder.index('\nelse\n', start)] + '\nfi\nprintf "%s\\n" "${opengl_libraries[@]}"\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk = Path(tmp) / "frozen sdk"
+            (sdk / "lib").mkdir(parents=True)
+            library = sdk / "lib/libPS5OpenGLCore33.a"
+            library.write_bytes(b"GROUP (fixture.a)\n")
+            (sdk / "manifest.sha256").write_text(
+                hashlib.sha256(library.read_bytes()).hexdigest() + "  lib/libPS5OpenGLCore33.a\n")
+            env = dict(os.environ, PS5_OPENGL_PREFIX=str(sdk))
+            result = subprocess.run(["bash", "-eu", "-c", branch], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), str(library))
+            library.write_bytes(b"changed\n")
+            result = subprocess.run(["bash", "-eu", "-c", branch], env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
 
     def test_native_compiler_identity(self):
         root = Path(__file__).resolve().parents[1]

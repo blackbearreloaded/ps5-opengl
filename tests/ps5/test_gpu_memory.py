@@ -58,6 +58,8 @@ static void *worker(void *unused) {
     return NULL;
 }
 int main(void) {
+    extern void snapshot_probe(void);
+    snapshot_probe(); /* A second translation unit's weak default must be overridden. */
     pss_opengl_gpu_snapshot("begin",0);
     int64_t physical = -1; void *address = NULL;
     assert(!allocate(&physical) && physical == 0); /* Physical offset zero is valid. */
@@ -109,10 +111,17 @@ int main(void) {
 '''
 with tempfile.TemporaryDirectory() as temp:
     exe = Path(temp) / 'gpu-memory'
+    heap = (root / 'native-app/app_heap.c').read_text()
+    start = heap.index('__attribute__((weak)) void pss_opengl_gpu_snapshot(')
+    stub = heap[start:heap.index('\n}', start) + 2]
+    weak = Path(temp) / 'weak.c'
+    weak.write_text(stub + '\nvoid snapshot_probe(void) { pss_opengl_gpu_snapshot("link",123); }\n')
     subprocess.run(['cc', '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror',
-                    '-pthread', '-fsanitize=address,undefined', '-x', 'c', '-',
+                    '-pthread', '-fsanitize=address,undefined', str(weak), '-x', 'c', '-',
                     '-o', str(exe)], input=code, text=True, check=True)
-    subprocess.run([str(exe)], check=True)
+    result = subprocess.run([str(exe)], check=True, capture_output=True, text=True)
+    assert '[pss-opengl-gpu-memory] phase=link sample=123 ' in result.stdout
+    print(result.stdout, end='')
 for builder in ('build-native-test-app.sh', 'build-native-cts-app.sh'):
     text = (root / 'tools' / builder).read_text()
     assert 'if [[ ${PS5_GPU_MEMORY_PROFILE:-0} == 1 ]]; then' in text
