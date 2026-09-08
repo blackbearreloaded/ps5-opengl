@@ -42,6 +42,15 @@ This is small-scene throughput, not a guarantee of game FPS or perfect frame pac
 owned-heap growth. These are bounded results, not exhaustive stability or OOM
 coverage; see [offscreen and stability findings](docs/offscreen-stability.md).
 
+## Project Foundation
+
+> [!IMPORTANT]
+> **GPU research is documented in [PS5 GPU Research](https://github.com/blackbearreloaded/ps5-gpu-research).**
+> The companion repository records the shader toolchain, GPU-visible memory,
+> command submission, synchronization, and presentation findings that informed
+> this OpenGL implementation, alongside related general-purpose GPU compute
+> research. Repository access may be required.
+
 ## What is included
 
 - **OpenGL 3.3 Core / GLSL 3.30:** Mesa state tracking, GLSL/NIR compilation,
