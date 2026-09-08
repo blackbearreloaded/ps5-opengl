@@ -6,7 +6,10 @@
 """Package a frozen validated SDK or a host-checked CI build; no console access."""
 import argparse
 import gzip
+import hashlib
 import importlib
+import importlib.util
+import io
 import json
 from pathlib import Path
 import re
@@ -188,6 +191,66 @@ def write_json(path, value):
         stream.write(json.dumps(value, indent=2) + "\n")
 
 
+def sdl_builder():
+    # Import the checkout's verifier, never executable code from --sdl-build.
+    path = Path(__file__).resolve().parents[1] / "integration/SDL2/build.py"
+    spec = importlib.util.spec_from_file_location("sdl_bundle_builder", path)
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    require(callable(getattr(builder, "verify_native_build", None)),
+            "--sdl-build requires integration/SDL2/build.py with verify_native_build")
+    return builder
+
+
+def verify_sdl(native, sdk, sdk_hash, runtime_hash):
+    """Reuse SDL's full source/input/payload checker; pin the bytes to be copied."""
+    receipt = sdl_builder().verify_native_build(native, sdk)
+    raw = (native / "receipt.json").read_bytes()
+    require(json.loads(raw) == receipt, "SDL receipt changed during verification")
+    require(receipt.get("schema_version") == 1 and receipt.get("mode") == "native" and
+            receipt.get("hardware_run") is False,
+            "requires an offline native SDL build, without hardware claims")
+    require((receipt.get("sdk_manifest_sha256"), receipt.get("sdk_runtime_sha256")) ==
+            (sdk_hash, runtime_hash), "SDL does not match the active graphics SDK pair")
+    payload = (native / "sdk/share/SDL2/receipt.json").read_bytes()
+    require(hashlib.sha256(payload).hexdigest() == receipt["payload_receipt_sha256"],
+            "SDL payload receipt changed during verification")
+    return receipt, hashlib.sha256(raw).hexdigest(), json.loads(payload)["artifacts"]
+
+
+def copy_sdl(native, stage, checked, epoch):
+    receipt, receipt_hash, installed = checked
+    files = {"sdl2/" + name: (native / "sdk" / name, checksum)
+             for name, checksum in installed.items()}
+    files.update({
+        "sdl2/manifest.sha256": (native / "sdk/manifest.sha256", receipt["payload_manifest_sha256"]),
+        "sdl2/share/SDL2/receipt.json": (native / "sdk/share/SDL2/receipt.json", receipt["payload_receipt_sha256"]),
+        "sources/SDL2.tar": (native / "sdl-source.tar", receipt["sdl_source_tar_sha256"]),
+        "verification/sdl2-build-receipt.json": (native / "receipt.json", receipt_hash),
+    })
+    for name, (source, checksum) in sorted(files.items()):
+        destination = stage / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with source.open("rb") as stream, destination.open("xb") as output:
+            shutil.copyfileobj(stream, output)
+        require(digest(destination) == checksum, "SDL copy changed: " + name)
+    with tarfile.open(stage / "sources/SDL2-integration.tar", "x") as archive:
+        for name, checksum in sorted(receipt["integration_inputs"].items()):
+            data = (native / "integration" / name).read_bytes()
+            require(hashlib.sha256(data).hexdigest() == checksum, "SDL integration changed: " + name)
+            member = tarfile.TarInfo("SDL2-integration/" + name)
+            member.size, member.mtime, member.mode = len(data), int(epoch), 0o644
+            archive.addfile(member, io.BytesIO(data))
+    return dict(
+        prefix="sdl2/", mode="native", hardware_run=False,
+        validation="native compile only; no SDL hardware, controller or display acceptance inherited",
+        build_receipt="verification/sdl2-build-receipt.json", build_receipt_sha256=receipt_hash,
+        **{key: receipt[key] for key in (
+            "sdl_commit", "sdl_source_tar_sha256", "sdk_manifest_sha256", "sdk_runtime_sha256",
+            "payload_manifest_sha256", "payload_receipt_sha256", "integration_inputs",
+            "receipt_tool_sha256", "artifacts")})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", type=Path, required=True)
@@ -201,6 +264,8 @@ def main():
                         help="frozen G19 native regression bundle; not CTS acceptance")
     parser.add_argument("--consumer-report", type=Path, help="CI/targeted SDK consumer summary.json")
     parser.add_argument("--runtime-config", type=Path, help="CI runtime-config.txt")
+    parser.add_argument("--sdl-build", type=Path,
+                        help="optional verified native SDL build; packaged separately in sdl2/")
     parser.add_argument("--destination", type=Path, required=True, help="new output directory")
     args = parser.parse_args()
     require(sum(value is not None for value in
@@ -212,8 +277,17 @@ def main():
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_commit), "use a full source commit")
     require(not output.is_relative_to(sdk), "bundle destination must be outside the SDK")
     require(not output.exists(), "refusing to overwrite a bundle directory")
+    if args.sdl_build is not None:
+        require(not any(p.is_symlink() for p in
+                        (args.sdl_build, *args.sdl_build.absolute().parents)),
+                "symlink SDL build directory")
+        native = args.sdl_build.resolve()
+        require(not output.is_relative_to(native) and not native.is_relative_to(output),
+                "bundle destination must be outside the SDL build")
     sdk_hash = CHECK.verify_manifest(sdk)["sha256"]
     runtime_hash = digest(sdk / "lib/libps5_opengl_core33.a")
+    if args.sdl_build is not None:
+        sdl = verify_sdl(native, sdk, sdk_hash, runtime_hash)
     if args.ci_version is not None:
         require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+-]{0,95}", args.ci_version),
                 "unsafe CI version")
@@ -253,6 +327,8 @@ def main():
     require(CHECK.verify_manifest(stage / "sdk")["sha256"] == sdk_hash, "SDK copy changed")
     sources = stage / "sources"
     sources.mkdir()
+    if args.sdl_build is not None:
+        sdl_provenance = copy_sdl(native, stage, sdl, epoch)
     snapshot(repo, args.source_commit, "ps5-opengl", sources / "ps5-opengl.tar")
     selected = {"LICENSE", "THIRD_PARTY_NOTICES.md", "dependencies.json",
                 "native-app/app_heap.c", "native-app/agc_link_stub.c",
@@ -274,7 +350,12 @@ def main():
            else "Sample-validated; NOT a full CTS campaign or certification.\n\n")
         + f"Read [scope, verification and use](docs/{guide}) before using this SDK.\n\n"
         "Compiled libraries and headers are in `sdk/`; sources, examples, licenses,\n"
-        "checksums and provenance are included. Nothing is automatically installed.\n",
+        "checksums and provenance are included. Nothing is automatically installed.\n"
+        + ("\nOptional SDL2 is in `sdl2/`, with its own manifest and receipts. Its native\n"
+           "compile results do not establish SDL hardware, controller or display acceptance.\n"
+           "SDL and integration sources are in `sources/SDL2*.tar`; licenses are in\n"
+           "`sdl2/share/licenses/`. See `provenance.json` for exact input and payload identities.\n"
+           if args.sdl_build is not None else ""),
         encoding="utf-8")
     pins = json.loads((stage / "dependencies.json").read_text())
     mesa = repo / "third_party/mesa-26.2.0.tar.xz"
@@ -323,6 +404,8 @@ def main():
                           validation="targeted-validation.json and consumer-validation.json; no inherited CTS results")
     else:
         write_json(stage / "sample-validation.json", sampled)
+    if args.sdl_build is not None:
+        provenance["sdl2"] = sdl_provenance
     write_json(stage / "provenance.json", provenance)
     files = sorted(p for p in stage.rglob("*") if p.is_file())
     with (stage / "SHA256SUMS").open("x") as stream:

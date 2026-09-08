@@ -7,11 +7,165 @@ import copy
 import importlib
 import json
 from pathlib import Path
+import tarfile
 from tempfile import TemporaryDirectory
 import unittest
 from unittest import mock
 
 BUNDLE = importlib.import_module("build-sdk-bundle")
+
+
+class SDLBundleTests(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.native, self.sdk = self.root / "native", self.root / "graphics"
+        self.sdk.mkdir()
+        self.native.mkdir()
+        self.installed = {
+            "include/SDL2/SDL.h": b"header", "lib/libSDL2.a": b"!<arch>\n",
+            "lib/pkgconfig/sdl2.pc": b"prefix=${pcfiledir}/../..\n",
+            "lib/cmake/SDL2/SDL2Config.cmake": b"# relative metadata\n",
+            "share/licenses/SDL2/LICENSE.txt": b"SDL license",
+            "share/licenses/SDL2-PS5/LICENSE": b"integration license",
+        }
+        for name, data in self.installed.items():
+            path = self.native / "sdk" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        (self.native / "integration").mkdir()
+        (self.native / "integration/build.py").write_bytes(b"# archived source; never executed\n")
+        (self.native / "sdl-source.tar").write_bytes(b"source archive test double")
+        self.receipt = dict(
+            schema_version=1, mode="native", hardware_run=False,
+            sdl_commit="8c56053f13ca13a0c050de613706ff69eb615836",
+            sdl_source_tar_sha256=BUNDLE.digest(self.native / "sdl-source.tar"),
+            sdk_manifest_sha256="a" * 64, sdk_runtime_sha256="b" * 64,
+            integration_inputs={"build.py": BUNDLE.digest(self.native / "integration/build.py")},
+            receipt_tool_sha256=BUNDLE.digest(self.native / "integration/build.py"),
+            artifacts={"cmake/sdl/libSDL2.a": BUNDLE.digest(self.native / "sdk/lib/libSDL2.a")})
+        payload = dict(self.receipt, artifacts={name: BUNDLE.digest(self.native / "sdk" / name)
+                                              for name in self.installed})
+        payload_path = self.native / "sdk/share/SDL2/receipt.json"
+        payload_path.parent.mkdir(parents=True)
+        payload_path.write_text(json.dumps(payload))
+        self.receipt["payload_receipt_sha256"] = BUNDLE.digest(payload_path)
+        manifest = dict(payload["artifacts"], **{
+            "share/SDL2/receipt.json": self.receipt["payload_receipt_sha256"]})
+        (self.native / "sdk/manifest.sha256").write_text("".join(
+            f"{checksum}  {name}\n" for name, checksum in sorted(manifest.items())))
+        self.receipt["payload_manifest_sha256"] = BUNDLE.digest(self.native / "sdk/manifest.sha256")
+        self.write_receipt()
+        # The shared SDL verifier owns source, manifest and artifact validation.
+        # These tests isolate the bundler's gates/copying from that separate suite.
+        self.builder = mock.Mock()
+        self.builder.verify_native_build.side_effect = lambda native, sdk: copy.deepcopy(self.receipt)
+        patcher = mock.patch.object(BUNDLE, "sdl_builder", return_value=self.builder)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_receipt(self):
+        (self.native / "receipt.json").write_text(json.dumps(self.receipt))
+
+    def checked(self):
+        return BUNDLE.verify_sdl(self.native, self.sdk, "a" * 64, "b" * 64)
+
+    def stage(self, name):
+        stage = self.root / name
+        (stage / "sources").mkdir(parents=True)
+        return stage
+
+    def argv(self, destination, sdl=True):
+        return ["build-sdk-bundle.py", "--sdk", str(self.sdk), "--source-commit", "c" * 40,
+                "--destination", str(destination),
+                *(["--sdl-build", str(self.native)] if sdl else [])]
+
+    def test_sdk_pair_and_native_status_are_independent_packaging_gates(self):
+        self.checked()
+        self.builder.verify_native_build.assert_called_once_with(self.native, self.sdk)
+        for key, bad in [("sdk_manifest_sha256", "d" * 64), ("sdk_runtime_sha256", "d" * 64),
+                         ("schema_version", 2), ("mode", "host"), ("hardware_run", True)]:
+            with self.subTest(key=key), mock.patch.dict(self.receipt, {key: bad}):
+                self.write_receipt()
+                with self.assertRaises(ValueError):
+                    self.checked()
+
+    def test_changed_receipts_are_rejected(self):
+        with mock.patch.dict(self.receipt, {"sdk_files": 999}):
+            with self.assertRaisesRegex(ValueError, "receipt changed"):
+                self.checked()
+        path = self.native / "sdk/share/SDL2/receipt.json"
+        path.write_text(path.read_text() + " ")
+        with self.assertRaisesRegex(ValueError, "payload receipt changed"):
+            self.checked()
+
+    def test_verifier_failure_precedes_any_output(self):
+        destination = self.root / "bundle"
+        self.builder.verify_native_build.side_effect = ValueError("invalid SDL input")
+        with mock.patch("sys.argv", self.argv(destination)), \
+                mock.patch.object(BUNDLE.CHECK, "verify_manifest", return_value={"sha256": "a" * 64}), \
+                mock.patch.object(BUNDLE, "digest", return_value="b" * 64):
+            with self.assertRaisesRegex(ValueError, "invalid SDL input"):
+                BUNDLE.main()
+        self.assertFalse(destination.exists())
+
+    def test_sdl_overlap_and_symlink_are_rejected_before_verification(self):
+        alias = self.root / "alias"
+        alias.symlink_to(self.native, target_is_directory=True)
+        for destination in (self.native / "bundles", alias / "bundles"):
+            with mock.patch("sys.argv", self.argv(destination)):
+                with self.assertRaisesRegex(ValueError, "outside the SDL build"):
+                    BUNDLE.main()
+            self.assertFalse(destination.exists())
+        args = self.argv(self.root / "bundle")
+        args[-1] = str(alias)
+        with mock.patch("sys.argv", args):
+            with self.assertRaisesRegex(ValueError, "symlink SDL"):
+                BUNDLE.main()
+        self.builder.verify_native_build.assert_not_called()
+
+    def test_without_sdl_never_loads_its_verifier(self):
+        with mock.patch("sys.argv", self.argv(self.root / "bundle", sdl=False)), \
+                mock.patch.object(BUNDLE.CHECK, "verify_manifest", side_effect=ValueError("GL gate")):
+            with self.assertRaisesRegex(ValueError, "GL gate"):
+                BUNDLE.main()
+        BUNDLE.sdl_builder.assert_not_called()
+
+    def test_copy_is_separate_reproducible_and_has_no_hardware_acceptance(self):
+        checked = self.checked()
+        first, second = self.stage("first"), self.stage("second")
+        (first / "sdk").mkdir()
+        (first / "sdk/manifest.sha256").write_bytes(b"original graphics manifest\n")
+        provenance = BUNDLE.copy_sdl(self.native, first, checked, "123")
+        BUNDLE.copy_sdl(self.native, second, checked, "123")
+        self.assertEqual((first / "sdk/manifest.sha256").read_bytes(), b"original graphics manifest\n")
+        for path in (self.native / "sdk").rglob("*"):
+            if path.is_file():
+                self.assertEqual(path.read_bytes(), (first / "sdl2" / path.relative_to(self.native / "sdk")).read_bytes())
+        for name in ("SDL2.tar", "SDL2-integration.tar"):
+            self.assertEqual(BUNDLE.digest(first / "sources" / name), BUNDLE.digest(second / "sources" / name))
+        with tarfile.open(first / "sources/SDL2-integration.tar") as archive:
+            self.assertEqual(archive.getnames(), ["SDL2-integration/build.py"])
+            self.assertEqual(archive.extractfile(archive.getmembers()[0]).read(),
+                             (self.native / "integration/build.py").read_bytes())
+        self.assertEqual(provenance["build_receipt_sha256"], BUNDLE.digest(first / provenance["build_receipt"]))
+        self.assertEqual(provenance["payload_manifest_sha256"], BUNDLE.digest(first / "sdl2/manifest.sha256"))
+        self.assertFalse(provenance["hardware_run"])
+        self.assertEqual(provenance["mode"], "native")
+        self.assertIn("no SDL hardware", provenance["validation"])
+
+    def test_tampering_between_verification_and_copy_is_rejected(self):
+        checked = self.checked()
+        for index, name in enumerate([
+                "sdk/lib/libSDL2.a", "sdk/manifest.sha256", "sdk/share/SDL2/receipt.json",
+                "sdl-source.tar", "receipt.json", "integration/build.py"]):
+            path = self.native / name
+            original = path.read_bytes()
+            path.write_bytes(original + b"tampered")
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "SDL .*changed"):
+                BUNDLE.copy_sdl(self.native, self.stage(f"tamper-{index}"), checked, "123")
+            path.write_bytes(original)
 
 
 class SampleGateTests(unittest.TestCase):
