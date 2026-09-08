@@ -59,7 +59,8 @@ distinct when reporting compatibility.
   or firmware. Earlier experiments do not expand the final candidate's scope.
 - **Builds:** source pins/patches are published. Historical executable hashes are
   not promised for another compiler/path. Fresh binaries need their own hardware
-  validation; no binary release is included here.
+  validation. The [sample-validated SDK prerelease](sdk-bundle.md) preserves its
+  own frozen bytes and narrower validation scope; it is not a full-matrix successor.
 - **Evidence:** the export can be audited offline, but cannot independently prove
   the hardware origin of raw receipts retained privately. This is not formal
   Khronos certification.

@@ -15,6 +15,11 @@ four-configuration campaign and installed-SDK renderer checks. Later performance
 changes have focused regressions, not a new full CTS campaign; see the
 [frozen identity](docs/validation.md#frozen-identity-and-defaults).
 
+**SDK prerelease:** [0.1.0-perf20260907-sampled](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/v0.1.0-perf20260907-sampled)
+contains the frozen 1080p60 performance SDK, source examples/dependencies, licenses
+and checksums. This candidate passed **204/204 sampled executions**, not a new
+full CTS campaign. See the [bundle guide](docs/sdk-bundle.md) for its exact scope.
+
 **Latest performance:** the opt-in windowed ImGui benchmark averages **119.88 FPS
 at 1080p, 1440p and 4K**, measured for 30 seconds per size. See the
 [results and limits](docs/performance.md#g5d-verified-high-resolution-120-fps-candidate)

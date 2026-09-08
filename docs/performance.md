@@ -784,9 +784,9 @@ See the [bundle guide](sdk-bundle.md); exact hashes and local receipts are in
    implementing an adapter. Neither framework is currently supported.
 5. Repeat independent builds and fresh TV/controller checks. Keep one-console,
    one-firmware results explicitly scoped; broader compatibility needs new evidence.
-6. The versioned sample-validated SDK/source-example archive is prepared and
-   verified locally. Source delivery and private repository visibility stay
-   unchanged until publication is requested.
+6. The [sample-validated SDK/source-example prerelease](sdk-bundle.md) packages
+   these frozen bytes and scoped results. Broader qualification remains separate;
+   repository visibility is unchanged.
 
 See [limitations](limitations.md), the [cube benchmark](../examples/core33-cubes/README.md),
 and the preserved [development measurements and failure history](performance-history.md).

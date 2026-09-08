@@ -1,9 +1,15 @@
 # PS5 OpenGL SDK 0.1.0-perf20260907-sampled
 
-Local distribution candidate containing the unchanged, tested **1080p60
-performance SDK**. It is **sample-validated**, not a full CTS rerun or a
-Khronos-certified implementation. Nothing is automatically uploaded or installed.
+Experimental [SDK prerelease](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/v0.1.0-perf20260907-sampled)
+containing the unchanged, tested **1080p60 performance SDK**. It is
+**sample-validated**, not a full CTS rerun or a Khronos-certified implementation.
+Nothing is automatically installed.
 Commands below run from an extracted bundle's root, not this document's directory.
+
+The archive preserves its original preparation-time README/provenance, including
+the local-candidate status, so its verified bytes and hashes remain unchanged.
+The release page records publication status; its source snapshot is `a9e9d60`,
+with runtime source `cef6c1b`. Later publication documentation does not rebuild it.
 
 ## What is included
 
