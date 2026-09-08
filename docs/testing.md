@@ -11,13 +11,17 @@ Documentation/example edits do not justify repeating all CTS cases.
 make test
 make test-imgui             # requires dependencies, installed SDK and host EGL/GL
 make test-compiler          # requires the built host PSBC library
-bash tools/verify-installed-sdk.sh
+bash tools/verify-installed-sdk.sh  # rebuilds a fresh SDK; never use on frozen bytes
 ```
 
 `make test` runs Python unit checks, strict-auditor self-tests and the published
 evidence verifier. It needs no SDK or PS5. CI runs this lane, not new GPU tests.
 The SDK verifier checks Make/pkg-config/CMake links and 344 Core exports;
 behavioral evidence comes from CTS and native renderer oracles.
+For a frozen SDK, use `tools/check-sdk-consumers.py` instead; the
+[bundle guide](sdk-bundle.md#verify-and-link-a-consumer) gives the non-rebuilding
+recipe. Verify an archive after extracting it to a new directory outside the
+source checkout, not only its staging directory.
 
 `test-compiler` runs existing real NIR/ACO regressions for framebuffer exports,
 vertex inputs and geometry descriptors, including invalid-input rejection.

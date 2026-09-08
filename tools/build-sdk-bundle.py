@@ -187,7 +187,15 @@ def main():
                         "unsafe source path")
                 copy_member(archive, member, stage / relative)
     guide = "ci-releases.md" if args.ci_version is not None else profile["guide"]
-    shutil.copyfile(stage / "docs" / guide, stage / "README.md")
+    # Keep documentation in docs/: copying it to the root breaks relative links.
+    (stage / "README.md").write_text(
+        f"# PS5 OpenGL SDK {version}\n\n"
+        + ("Host-checked only; NOT console-validated.\n\n" if args.ci_version is not None
+           else "Sample-validated; NOT a full CTS campaign or certification.\n\n")
+        + f"Read [scope, verification and use](docs/{guide}) before using this SDK.\n\n"
+        "Compiled libraries and headers are in `sdk/`; sources, examples, licenses,\n"
+        "checksums and provenance are included. Nothing is automatically installed.\n",
+        encoding="utf-8")
     pins = json.loads((stage / "dependencies.json").read_text())
     mesa = repo / "third_party/mesa-26.2.0.tar.xz"
     require(digest(mesa) == pins["mesa"]["sha256"], "Mesa source archive hash mismatch")

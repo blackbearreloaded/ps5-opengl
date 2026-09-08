@@ -66,3 +66,7 @@ home screen with a sign-in prompt. No PPSA77800 launch event occurred; services
 remained healthy, Remote Play disconnected without sleep, and exact lock released.
 Evidence: local app `results/manual-acceptance-20260908/`. Owner approval covers
 home navigation and title control, but the protocol's Store/sign-in stop remains.
+The owner subsequently requested desktop-independent testing: use the existing
+headless runner for numerical rendering/startup/lifecycle acceptance. Home-menu
+navigation and physical controller/HDMI observations are separate, not prerequisites
+for that lane and not implied by its results.
