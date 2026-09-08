@@ -5448,7 +5448,7 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
                                          info->dst.format) ||
        info->src.resource->nr_samples > 1 ||
        info->dst.resource->nr_samples > 1 || info->dst_sample ||
-       info->sample0_only || info->swizzle_enable ||
+       info->sample0_only ||
        info->num_window_rectangles || info->alpha_blend ||
        (info->filter != PIPE_TEX_FILTER_NEAREST &&
         info->filter != PIPE_TEX_FILTER_LINEAR) ||
@@ -5539,6 +5539,7 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
                                   (UINT64_C(2) *
                                    (unsigned)info->dst.box.width));
          uint8_t *dst_pixel;
+         union pipe_color_union result;
          unsigned dst_x = (unsigned)info->dst.box.x + x;
          unsigned dst_y = (unsigned)info->dst.box.y + y;
 
@@ -5601,7 +5602,7 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
             ix1 = (unsigned)CLAMP(x0 + 1, 0, (int64_t)src_width - 1);
             iy0 = (unsigned)CLAMP(y0, 0, (int64_t)src_height - 1);
             iy1 = (unsigned)CLAMP(y0 + 1, 0, (int64_t)src_height - 1);
-            union pipe_color_union p00, p10, p01, p11, result;
+            union pipe_color_union p00, p10, p01, p11;
             float tx = (float)wx1 / 65536.0f;
             float ty = (float)wy1 / 65536.0f;
 
@@ -5629,24 +5630,25 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
 
                result.f[channel] = top + (bottom - top) * ty;
             }
-            util_format_pack_rgba(info->dst.format, dst_pixel,
-                                  result.ui, 1);
          } else {
             const uint8_t *src_pixel =
                src + (size_t)sy * src_transfer->stride +
                      (size_t)sx * src_pixel_size;
 
-            if (info->src.format == info->dst.format) {
+            if (info->src.format == info->dst.format && !info->swizzle_enable) {
                memcpy(dst_pixel, src_pixel, src_pixel_size);
-            } else {
-               union pipe_color_union converted;
-
-               util_format_unpack_rgba(info->src.format, converted.ui,
-                                       src_pixel, 1);
-               util_format_pack_rgba(info->dst.format, dst_pixel,
-                                     converted.ui, 1);
+               continue;
             }
+            util_format_unpack_rgba(info->src.format, result.ui, src_pixel, 1);
          }
+         if (info->swizzle_enable) {
+            union pipe_color_union swizzled;
+
+            util_format_apply_color_swizzle(&swizzled, &result, info->swizzle,
+                                            util_format_is_pure_integer(info->src.format));
+            result = swizzled;
+         }
+         util_format_pack_rgba(info->dst.format, dst_pixel, result.ui, 1);
       }
    }
    if (direct_tiled_dst)

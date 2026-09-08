@@ -45,7 +45,7 @@ code = r'''
 #define MAX2(a,b) ((a) > (b) ? (a) : (b))
 #define CLAMP(v,lo,hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) : (v))
 enum { PIPE_BUFFER, PIPE_TEXTURE_2D, PIPE_TEXTURE_3D, PIPE_TEXTURE_2D_ARRAY };
-enum pipe_format { COLOR, PIPE_FORMAT_Z32_FLOAT, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT };
+enum pipe_format { COLOR, PIPE_FORMAT_Z32_FLOAT, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT, COLOR_UINT };
 enum { PIPE_MAP_READ=1, PIPE_MAP_WRITE=2, PIPE_BIND_RENDER_TARGET=4, PIPE_BIND_DEPTH_STENCIL=8 };
 struct pipe_resource { unsigned bind, target, format, width0, height0, depth0,
     array_size, last_level, nr_samples; };
@@ -59,6 +59,7 @@ struct pipe_blit_info {
     struct { struct pipe_resource *resource; unsigned level,format; struct pipe_box box; } src,dst;
     unsigned mask,filter,dst_sample,num_window_rectangles;
     bool sample0_only,swizzle_enable,alpha_blend,render_condition_enable,scissor_enable;
+    uint8_t swizzle[4];
     struct { unsigned minx,miny,maxx,maxy; } scissor;
 };
 union pipe_color_union { unsigned ui[4]; float f[4]; };
@@ -71,26 +72,40 @@ static size_t ps5_tiled_depth_surface_size(unsigned w, unsigned h, unsigned s) {
 static size_t ps5_tiled_stencil_surface_size(unsigned w, unsigned h) { return (size_t)w*h; }
 static size_t ps5_tiled_depth_offset(unsigned x, unsigned y, unsigned w) { return ((size_t)y*w+x)*4; }
 static size_t ps5_tiled_stencil_offset(unsigned x, unsigned y, unsigned w) { return (size_t)y*w+x; }
-static size_t ps5_tiled_color_offset(unsigned f, unsigned x, unsigned y, unsigned w) { assert(f == COLOR); return ((size_t)y*w+x)*4; }
+static size_t ps5_tiled_color_offset(unsigned f, unsigned x, unsigned y, unsigned w) { assert(f == COLOR || f == COLOR_UINT); return ((size_t)y*w+x)*4; }
 static unsigned ps5_tiled_rgba8_width(const struct ps5_resource *r) { return r->base.width0; }
 static bool force_tiled;
 static bool ps5_linear_sampled_layout(const struct pipe_resource *r) { return !force_tiled && (!r->bind || r->last_level); }
-static bool ps5_render_target_format(unsigned f) { return f == COLOR; }
+static bool ps5_render_target_format(unsigned f) { return f == COLOR || f == COLOR_UINT; }
 static bool ps5_color_view_format_compatible(unsigned a, unsigned b) { return a == b; }
-static bool util_format_is_pure_uint(unsigned f) { (void)f; return false; }
+static bool util_format_is_pure_uint(unsigned f) { return f == COLOR_UINT; }
 static bool util_format_is_pure_sint(unsigned f) { (void)f; return false; }
-static bool util_format_is_pure_integer(unsigned f) { (void)f; return false; }
+static bool util_format_is_pure_integer(unsigned f) { return f == COLOR_UINT; }
 static bool ps5_render_condition_passes(struct ps5_context *p) { (void)p; return true; }
 static void util_format_unpack_rgba(unsigned f, unsigned *out, const void *in, unsigned n) {
-    assert(f == COLOR && n == 1);
+    assert((f == COLOR || f == COLOR_UINT) && n == 1);
     union pipe_color_union c;
-    for (unsigned i=0;i<4;++i) c.f[i]=((const uint8_t *)in)[i]/255.0f;
+    for (unsigned i=0;i<4;++i) {
+        if (f == COLOR_UINT) c.ui[i]=((const uint8_t *)in)[i];
+        else c.f[i]=((const uint8_t *)in)[i]/255.0f;
+    }
     memcpy(out,&c,sizeof(c));
 }
 static void util_format_pack_rgba(unsigned f, void *out, const unsigned *in, unsigned n) {
-    assert(f == COLOR && n == 1);
+    assert((f == COLOR || f == COLOR_UINT) && n == 1);
     union pipe_color_union c; memcpy(&c,in,sizeof(c));
-    for (unsigned i=0;i<4;++i) ((uint8_t *)out)[i]=(uint8_t)(c.f[i]*255.0f+0.5f);
+    for (unsigned i=0;i<4;++i) ((uint8_t *)out)[i]=f == COLOR_UINT ? (uint8_t)c.ui[i] : (uint8_t)(c.f[i]*255.0f+0.5f);
+}
+/* Mesa utility contract, as used by the existing MSAA resolve path. */
+static void util_format_apply_color_swizzle(union pipe_color_union *dst,
+    const union pipe_color_union *src, const uint8_t swizzle[4], bool integer) {
+    assert(dst != src);
+    for (unsigned i=0;i<4;++i) {
+        assert(swizzle[i] <= 5);
+        if (swizzle[i] < 4) dst->ui[i]=src->ui[swizzle[i]];
+        else if (integer) dst->ui[i]=swizzle[i] == 5;
+        else dst->f[i]=swizzle[i] == 5 ? 1.0f : 0.0f;
+    }
 }
 static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); }
 static unsigned drains;
@@ -141,6 +156,28 @@ static int cpu_unmap(void *p, size_t n) {
 #undef mmap
 #undef munmap
 static void idle(void) { assert(!heap_live && !mapped_live && maps == unmaps); }
+static void check_swizzle(unsigned filter, bool integer, bool tiled) {
+    uint8_t input[2*2*4], output[6*6*4];
+    for (unsigned i=0;i<sizeof(input);++i) input[i]=35+(i%4)*32;
+    memset(output,0xa5,sizeof(output));
+    struct ps5_resource src={.base={.target=PIPE_TEXTURE_2D,.format=integer ? COLOR_UINT : COLOR,
+        .width0=2,.height0=2,.array_size=1},.level_stride={2*4},.layer_stride=sizeof(input),
+        .data=input,.size=sizeof(input),.allocation_size=sizeof(input)};
+    struct ps5_resource dst={.base={.target=PIPE_TEXTURE_2D,.format=src.base.format,
+        .width0=6,.height0=6,.array_size=1,.bind=tiled ? PIPE_BIND_RENDER_TARGET : 0},
+        .level_stride={6*4},.layer_stride=sizeof(output),.data=output,
+        .size=sizeof(output),.allocation_size=sizeof(output)};
+    struct pipe_blit_info b={.src={&src.base,0,src.base.format,{0,0,0,2,2,1}},
+        .dst={&dst.base,0,dst.base.format,{1,1,0,4,4,1}},.mask=PIPE_MASK_RGBA,
+        .filter=filter,.swizzle_enable=true,.swizzle={2,4,0,5}}; /* Z, zero, X, one */
+    ps5_blit(NULL,&b); idle();
+    const uint8_t expected[]={99,0,35,integer ? 1 : 255};
+    for (unsigned y=0;y<6;++y) for (unsigned x=0;x<6;++x)
+        for (unsigned c=0;c<4;++c)
+            assert(output[(y*6+x)*4+c] ==
+                (x>=1 && x<5 && y>=1 && y<5 && !(integer && filter == PIPE_TEX_FILTER_LINEAR)
+                 ? expected[c] : 0xa5));
+}
 static void check_blit(unsigned target, unsigned src_level, unsigned dst_level, bool flip) {
     struct ps5_resource src={.base={.target=target,.format=COLOR,.width0=32,.height0=32,
         .depth0=4,.array_size=target == PIPE_TEXTURE_2D ? 1 : 4,.last_level=1,
@@ -271,6 +308,11 @@ int main(void) {
         for (unsigned d=0;d<2;++d) for (unsigned flip=0;flip<2;++flip)
             check_blit(targets[t],s,d,flip);
     puts("transfer-color-mips: PASS mip pairs, layers, flip/scissor, guards and invalid-map cleanup");
+    for (unsigned integer=0;integer<2;++integer) for (unsigned tiled=0;tiled<2;++tiled) {
+        check_swizzle(PIPE_TEX_FILTER_NEAREST,integer,tiled);
+        check_swizzle(PIPE_TEX_FILTER_LINEAR,integer,tiled);
+    }
+    puts("transfer-color-swizzle: PASS nearest/linear, tiled/mapped, constants/permutation and integer-filter rejection");
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

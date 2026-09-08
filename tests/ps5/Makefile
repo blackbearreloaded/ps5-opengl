@@ -1792,6 +1792,10 @@ egl_public_core33_texture_copy.o: egl_public_core33_texture_copy.c
 egl_public_core33_transfer_workload.o: egl_public_core33_transfer_workload.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_transfer_regressions.o: egl_public_core33_transfer_regressions.c \
+	egl_public_core33_transfer_workload.c egl_public_core33_render_format_blit.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
 egl_public_core33_layered_render.o: egl_public_core33_layered_render.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
