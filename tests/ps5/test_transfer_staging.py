@@ -18,11 +18,20 @@ start = source.index("static void *\nps5_transfer_map(")
 if "static bool\nps5_transfer_alloc_staging(" in source:
     start = source.index("static bool\nps5_transfer_alloc_staging(")
 transfers = source[start:source.index("static void\nps5_blit_scissor_bounds(")]
+# Exercise the actual color branch and mapper together; depth/MSAA dispatch is
+# outside this regression. No replacement copy algorithm is compiled here.
+blit = source[source.index("static void\nps5_blit("):
+              source.index("static void\nps5_texture_subdata(")]
+color_blit = (blit[:blit.index("   ps5_draw_batch_drain();")] +
+              blit[blit.index("   if (!info || !info->src.resource"):])
+scissor = source[source.index("static void\nps5_blit_scissor_bounds("):
+                 source.index("static bool\nps5_color_view_format_compatible(")]
 code = r'''
 #define _GNU_SOURCE
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +43,8 @@ code = r'''
 #define PS5_RENDER_WIDTH 1920
 #define PS5_RENDER_HEIGHT 1080
 #define MAX2(a,b) ((a) > (b) ? (a) : (b))
-enum { PIPE_BUFFER, PIPE_TEXTURE_2D, PIPE_TEXTURE_3D };
+#define CLAMP(v,lo,hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) : (v))
+enum { PIPE_BUFFER, PIPE_TEXTURE_2D, PIPE_TEXTURE_3D, PIPE_TEXTURE_2D_ARRAY };
 enum pipe_format { COLOR, PIPE_FORMAT_Z32_FLOAT, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT };
 enum { PIPE_MAP_READ=1, PIPE_MAP_WRITE=2, PIPE_BIND_RENDER_TARGET=4, PIPE_BIND_DEPTH_STENCIL=8 };
 struct pipe_resource { unsigned bind, target, format, width0, height0, depth0,
@@ -43,6 +53,15 @@ struct pipe_box { int x,y,z,width,height,depth; };
 struct pipe_transfer { struct pipe_resource *resource; unsigned level,usage;
     struct pipe_box box; unsigned stride,layer_stride,offset; };
 struct pipe_context { int unused; };
+struct ps5_context { int unused; };
+enum { PIPE_MASK_RGBA=15, PIPE_TEX_FILTER_NEAREST, PIPE_TEX_FILTER_LINEAR };
+struct pipe_blit_info {
+    struct { struct pipe_resource *resource; unsigned level,format; struct pipe_box box; } src,dst;
+    unsigned mask,filter,dst_sample,num_window_rectangles;
+    bool sample0_only,swizzle_enable,alpha_blend,render_condition_enable,scissor_enable;
+    struct { unsigned minx,miny,maxx,maxy; } scissor;
+};
+union pipe_color_union { unsigned ui[4]; float f[4]; };
 ''' + structs + r'''
 static unsigned ps5_texture_format_size(unsigned f) { return f == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ? 8 : 4; }
 static unsigned util_format_get_blockwidth(unsigned f) { (void)f; return 1; }
@@ -54,8 +73,25 @@ static size_t ps5_tiled_depth_offset(unsigned x, unsigned y, unsigned w) { retur
 static size_t ps5_tiled_stencil_offset(unsigned x, unsigned y, unsigned w) { return (size_t)y*w+x; }
 static size_t ps5_tiled_color_offset(unsigned f, unsigned x, unsigned y, unsigned w) { assert(f == COLOR); return ((size_t)y*w+x)*4; }
 static unsigned ps5_tiled_rgba8_width(const struct ps5_resource *r) { return r->base.width0; }
-static bool ps5_linear_sampled_layout(const struct pipe_resource *r) { return !r->bind; }
+static bool force_tiled;
+static bool ps5_linear_sampled_layout(const struct pipe_resource *r) { return !force_tiled && (!r->bind || r->last_level); }
 static bool ps5_render_target_format(unsigned f) { return f == COLOR; }
+static bool ps5_color_view_format_compatible(unsigned a, unsigned b) { return a == b; }
+static bool util_format_is_pure_uint(unsigned f) { (void)f; return false; }
+static bool util_format_is_pure_sint(unsigned f) { (void)f; return false; }
+static bool util_format_is_pure_integer(unsigned f) { (void)f; return false; }
+static bool ps5_render_condition_passes(struct ps5_context *p) { (void)p; return true; }
+static void util_format_unpack_rgba(unsigned f, unsigned *out, const void *in, unsigned n) {
+    assert(f == COLOR && n == 1);
+    union pipe_color_union c;
+    for (unsigned i=0;i<4;++i) c.f[i]=((const uint8_t *)in)[i]/255.0f;
+    memcpy(out,&c,sizeof(c));
+}
+static void util_format_pack_rgba(unsigned f, void *out, const unsigned *in, unsigned n) {
+    assert(f == COLOR && n == 1);
+    union pipe_color_union c; memcpy(&c,in,sizeof(c));
+    for (unsigned i=0;i<4;++i) ((uint8_t *)out)[i]=(uint8_t)(c.f[i]*255.0f+0.5f);
+}
 static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); }
 static unsigned drains;
 static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { (void)r; ++drains; }
@@ -98,13 +134,59 @@ static int cpu_unmap(void *p, size_t n) {
 #define free small_free
 #define mmap cpu_map
 #define munmap cpu_unmap
-''' + bounds + transfers + r'''
+''' + bounds + transfers + scissor + color_blit + r'''
 #undef malloc
 #undef calloc
 #undef free
 #undef mmap
 #undef munmap
 static void idle(void) { assert(!heap_live && !mapped_live && maps == unmaps); }
+static void check_blit(unsigned target, unsigned src_level, unsigned dst_level, bool flip) {
+    struct ps5_resource src={.base={.target=target,.format=COLOR,.width0=32,.height0=32,
+        .depth0=4,.array_size=target == PIPE_TEXTURE_2D ? 1 : 4,.last_level=1,
+        .bind=PIPE_BIND_RENDER_TARGET}, .layer_stride=32*32*4+16*16*4,
+        .level_stride={32*4,16*4},.level_offset={0,32*32*4}};
+    struct ps5_resource dst=src;
+    src.size=src.allocation_size=src.layer_stride*src.base.array_size;
+    dst.size=dst.allocation_size=src.size;
+    src.data=malloc(src.size); dst.data=malloc(dst.size);
+    uint8_t *expected=malloc(dst.size); assert(src.data && dst.data && expected);
+    for (size_t i=0;i<src.size;++i) src.data[i]=(uint8_t)(i*13+i/128);
+    memset(dst.data,0xa5,dst.size); memset(expected,0xa5,dst.size);
+    unsigned sl=target == PIPE_TEXTURE_3D ? (4u>>src_level)-1 : src.base.array_size-1;
+    unsigned dl=target == PIPE_TEXTURE_3D ? (4u>>dst_level)-1 : dst.base.array_size-1;
+    struct pipe_blit_info b={
+        .src={&src.base,src_level,COLOR,{flip ? 9 : 1,2,(int)sl,flip ? -8 : 8,6,1}},
+        .dst={&dst.base,dst_level,COLOR,{3,5,(int)dl,8,6,1}},
+        .mask=PIPE_MASK_RGBA,.filter=PIPE_TEX_FILTER_NEAREST,
+        .scissor_enable=flip,.scissor={4,6,10,10}};
+    ps5_blit(NULL,&b); idle();
+    for (unsigned y=0;y<6;++y) for (unsigned x=0;x<8;++x) {
+        if (flip && (x+3 < 4 || x+3 >= 10 || y+5 < 6 || y+5 >= 10)) continue;
+        size_t si=sl*src.layer_stride+src.level_offset[src_level]+
+            (y+2)*src.level_stride[src_level]+(1+(flip ? 7-x : x))*4;
+        size_t di=dl*dst.layer_stride+dst.level_offset[dst_level]+(y+5)*dst.level_stride[dst_level]+(x+3)*4;
+        memcpy(expected+di,src.data+si,4);
+    }
+    assert(!memcmp(expected,dst.data,dst.size)); /* Includes all mip/layer guards. */
+    /* Invalid source/destination mips, destination extent and 3D layer must
+     * leave storage untouched and release even an already-mapped source. */
+    for (unsigned invalid=0;invalid<4;++invalid) {
+        struct pipe_blit_info bad=b;
+        if (invalid == 0) bad.src.level=2;
+        if (invalid == 1) bad.dst.level=2;
+        if (invalid == 2) bad.dst.box.x=32;
+        if (invalid == 3) bad.dst.box.z=(int)dl+1;
+        ps5_blit(NULL,&bad); idle(); assert(!memcmp(expected,dst.data,dst.size));
+    }
+    /* A native tiled destination still cannot address nonzero mips. */
+    if (dst_level) {
+        force_tiled=true; b.src.level=0; b.src.box.z=0;
+        ps5_blit(NULL,&b); idle(); force_tiled=false;
+        assert(!memcmp(expected,dst.data,dst.size));
+    }
+    free(expected); free(src.data); free(dst.data);
+}
 static void check(unsigned format, unsigned width, unsigned height, unsigned layers) {
     struct ps5_resource r={.base={.target=PIPE_TEXTURE_2D,.format=format,
         .width0=width,.height0=height,.array_size=layers,
@@ -184,6 +266,11 @@ int main(void) {
     check(PIPE_FORMAT_Z32_FLOAT_S8X24_UINT,8,4,2);
     puts("transfer-staging: PASS color/depth read+write, small/direct paths, OOM and bounds cleanup");
     puts("transfer-stencil-size: PASS heap/mmap scratch cleanup, cleared output and intact backing on host retry");
+    const unsigned targets[]={PIPE_TEXTURE_2D,PIPE_TEXTURE_2D_ARRAY,PIPE_TEXTURE_3D};
+    for (unsigned t=0;t<3;++t) for (unsigned s=0;s<2;++s)
+        for (unsigned d=0;d<2;++d) for (unsigned flip=0;flip<2;++flip)
+            check_blit(targets[t],s,d,flip);
+    puts("transfer-color-mips: PASS mip pairs, layers, flip/scissor, guards and invalid-map cleanup");
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

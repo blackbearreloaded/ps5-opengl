@@ -5437,7 +5437,7 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    }
 
    if (!info || !info->src.resource || !info->dst.resource ||
-       info->mask != PIPE_MASK_RGBA || info->src.level || info->dst.level ||
+       info->mask != PIPE_MASK_RGBA ||
        info->src.box.depth != 1 || info->dst.box.depth != 1 ||
        info->dst.box.width <= 0 || info->dst.box.height <= 0 ||
        !info->src.box.width || !info->src.box.height ||
@@ -5509,7 +5509,9 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    if (direct_tiled_dst) {
       size_t ignored_offset;
 
-      if (!ps5_map_bounds(dst_resource, info->dst.level, &info->dst.box,
+      /* Linear transfers address mip levels; native tile offsets only level 0. */
+      if (info->dst.level ||
+          !ps5_map_bounds(dst_resource, info->dst.level, &info->dst.box,
                           &ignored_offset)) {
          ps5_transfer_unmap(context, src_transfer);
          return;

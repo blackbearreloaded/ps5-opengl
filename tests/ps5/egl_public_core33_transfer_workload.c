@@ -13,6 +13,8 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/gl.h>
 
+extern void pss_opengl_heap_snapshot(const char *, unsigned) __attribute__((weak));
+
 #define TAG "[ps5-egl-transfer-workload]"
 #define ITERATIONS 8
 #ifdef PS5_TRANSFER_HOST_REFERENCE
@@ -240,7 +242,7 @@ main(void)
       EGL_NONE,
    };
    const float vertices[] = {-1, -1, 3, -1, -1, 3};
-   EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+   EGLDisplay display = EGL_NO_DISPLAY;
    EGLConfig config = NULL;
    EGLSurface surface = EGL_NO_SURFACE;
    EGLContext context = EGL_NO_CONTEXT;
@@ -251,6 +253,8 @@ main(void)
    EGLBoolean cleanup_ok = EGL_TRUE;
 
    printf(TAG " begin cases=3 cycles_per_case=8 timing=cpu-wall exact=rgba8\n");
+   if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("begin", 0);
+   display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
    if (display == EGL_NO_DISPLAY || !eglInitialize(display, NULL, NULL) ||
        !eglBindAPI(EGL_OPENGL_API) ||
        !eglChooseConfig(display, config_attributes, &config, 1, &count) || count != 1)
@@ -345,6 +349,7 @@ cleanup:
    if (display != EGL_NO_DISPLAY) cleanup_ok &= eglTerminate(display);
    cleanup_ok &= eglGetError() == EGL_SUCCESS;
    passed &= cleanup_ok;
+   if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("end", 0);
    printf(TAG " cleanup=%u result=%d\n", cleanup_ok, passed ? 0 : 1);
    printf(TAG " finished cases=%u cycles=%u result=%d\n",
           completed, cycles, passed ? 0 : 1);
