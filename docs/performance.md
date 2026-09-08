@@ -749,6 +749,14 @@ to the optimized candidate on one recorded firmware-6.02 console. It does not
 replace the historical baseline campaign or establish Khronos certification.
 Local identity/receipt index: `build/frozen/g8-60fps-cts-smoke-20260907/manifest.md`.
 
+- 2026-09-07 | G8 | SDK 03e535ec | pass: relocated Make/pkg-config/CMake consumers, 344 exports, unchanged manifest; original runtime-tree dependencies rejected | local g8-relocated checks
+
+The existing independent consumer checker also passes on a copy outside the
+runtime checkout, without invoking the installer or rebuilding the SDK. This
+proves installed-SDK relocation and consumer linking, not a fresh full runtime
+build or additional hardware coverage. The versioned optimized bundle remains
+the next distribution step; the old baseline bundle is unchanged.
+
 ## Next steps
 
 1. Profile the accepted workload; change one measured bottleneck at a time with
