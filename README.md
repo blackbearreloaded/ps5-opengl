@@ -6,6 +6,10 @@ An experimental native graphics stack built on Mesa/Gallium, with runtime shader
 compilation, fullscreen EGL presentation, a relocatable static SDK, and practical
 examples. Application rendering code uses standard OpenGL—not private GPU types.
 
+Demo available by clicking the image below.
+
+[![PS5 OpenGL ImGui demo with animated shapes and controller controls](docs/images/ps5-opengl-imgui.png)](https://i.imgur.com/jwyvPhT.mp4)
+
 The project completed its defined Core 3.3 validation campaign on a PS5. It is
 **not a Khronos-certified implementation**, a stock-console installation method,
 or a guarantee that every desktop application will run unchanged.
