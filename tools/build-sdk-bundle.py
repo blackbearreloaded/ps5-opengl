@@ -137,6 +137,7 @@ def main():
     repo = Path(__file__).resolve().parents[1]
     sdk, output = args.sdk.resolve(), args.destination.resolve()
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_commit), "use a full source commit")
+    require(not output.is_relative_to(sdk), "bundle destination must be outside the SDK")
     require(not output.exists(), "refusing to overwrite a bundle directory")
     sdk_hash = CHECK.verify_manifest(sdk)["sha256"]
     runtime_hash = digest(sdk / "lib/libps5_opengl_core33.a")

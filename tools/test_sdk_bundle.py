@@ -5,6 +5,8 @@
 """The sampled bundle must never turn partial/excluded results into acceptance."""
 import copy
 import importlib
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest import mock
 
@@ -12,6 +14,19 @@ BUNDLE = importlib.import_module("build-sdk-bundle")
 
 
 class SampleGateTests(unittest.TestCase):
+    def test_destination_inside_sdk_is_rejected_before_copying(self):
+        with TemporaryDirectory() as temporary:
+            sdk = Path(temporary) / "sdk"
+            sdk.mkdir()
+            alias = Path(temporary) / "alias"
+            alias.symlink_to(sdk, target_is_directory=True)
+            for destination in (sdk / "bundles", alias / "bundles"):
+                with mock.patch("sys.argv", ["build-sdk-bundle.py", "--sdk", str(sdk),
+                        "--source-commit", "a" * 40, "--destination", str(destination)]):
+                    with self.assertRaisesRegex(ValueError, "outside the SDK"):
+                        BUNDLE.main()
+                self.assertFalse(destination.exists())
+
     def test_frozen_versions_cannot_share_sdk_acceptance(self):
         profiles = list(BUNDLE.SAMPLES.values())
         for index, profile in enumerate(profiles):

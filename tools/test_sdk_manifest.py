@@ -6,7 +6,12 @@
 """Runnable negative checks for the installed SDK manifest verifier."""
 import importlib.util
 from pathlib import Path
+import json
+import os
+import shutil
+import subprocess
 from tempfile import TemporaryDirectory
+import unittest
 
 spec = importlib.util.spec_from_file_location('checker', Path(__file__).resolve().parents[1] / 'tools/check-sdk-consumers.py')
 checker = importlib.util.module_from_spec(spec)
@@ -54,3 +59,36 @@ for name, mutate in cases.items():
         else:
             raise AssertionError(f'Accepted {name}')
 print(f'PASS: valid fixture plus {len(cases)} rejected manifest mutations')
+
+
+class InstalledVerifierTests(unittest.TestCase):
+    def test_installer_rejects_unlisted_files_without_cleaning_source_example(self):
+        with TemporaryDirectory(prefix='sdk-installer-test-') as temporary:
+            root = Path(temporary)
+            for name in ('tools', 'toolchain', 'build', 'examples/core33-triangle'):
+                (root / name).mkdir(parents=True)
+            for name in ('verify-installed-sdk.sh', 'check-sdk-consumers.py'):
+                shutil.copyfile(Path(__file__).parent / name, root / 'tools' / name)
+            # Stand in for compilation: leave an installed package with an unlisted file.
+            (root / 'toolchain/install-ps5-opengl-core33.sh').write_text('exit 0\n')
+            sdk = root / 'build/sdk'
+            sdk.mkdir()
+            fixture(sdk)
+            (sdk / 'unlisted').write_text('not checksummed')
+            original = root / 'examples/core33-triangle/main-installed.o'
+            original.write_text('existing consumer output')
+            result = subprocess.run(
+                ['bash', str(root / 'tools/verify-installed-sdk.sh'), str(sdk)],
+                env={**os.environ, 'PS5_PAYLOAD_SDK': str(root / 'payload')},
+                capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            reports = list((root / 'build').glob('installed-sdk-checks.*/consumers/summary.json'))
+            self.assertEqual(len(reports), 1, result.stdout + result.stderr)
+            report = json.loads(reports[0].read_text())
+            self.assertEqual(report['status'], 'FAIL')
+            self.assertIn('Manifest file-set mismatch', report['error'])
+            self.assertEqual(original.read_text(), 'existing consumer output')
+
+
+if __name__ == '__main__':
+    unittest.main()
