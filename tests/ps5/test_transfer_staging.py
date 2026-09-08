@@ -149,6 +149,17 @@ static void check(unsigned format, unsigned width, unsigned height, unsigned lay
     if (bpp == 8) {
         uint8_t *stencil=r.stencil_data; r.stencil_data=NULL;
         assert(!ps5_transfer_map(NULL,&r.base,0,PIPE_MAP_READ,&box,&t) && !t); idle(); r.stencil_data=stencil;
+        /* A present but undersized stencil plane fails after scratch allocation. */
+        --r.stencil_allocation_size; before=maps;
+        t=(struct pipe_transfer *)&r; /* Failure must clear a stale output value. */
+        assert(!ps5_transfer_map(NULL,&r.base,0,PIPE_MAP_READ,&box,&t) && !t); idle();
+        assert(maps == before + (r.size >= 65536));
+        assert(r.stencil_data == stencil);
+        ++r.stencil_allocation_size;
+        p=ps5_transfer_map(NULL,&r.base,0,PIPE_MAP_READ,&box,&t);
+        assert(p && t);
+        for (size_t i=0;i<r.size;++i) assert(p[i] == (i%8 < 5 ? 0xc7 : 0));
+        ps5_transfer_unmap(NULL,t); idle();
     }
     /* Linear resources still map directly and need no staging allocation. */
     if (format == COLOR) {
@@ -172,6 +183,7 @@ int main(void) {
     check(PIPE_FORMAT_Z32_FLOAT_S8X24_UINT,128,64,2);
     check(PIPE_FORMAT_Z32_FLOAT_S8X24_UINT,8,4,2);
     puts("transfer-staging: PASS color/depth read+write, small/direct paths, OOM and bounds cleanup");
+    puts("transfer-stencil-size: PASS heap/mmap scratch cleanup, cleared output and intact backing on host retry");
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

@@ -32,6 +32,10 @@ code = r'''
 #define RENDER_MARKER 100
 static int runtime_batch_faulted, runtime_batch_active;
 static unsigned runtime_batch_count;
+#ifdef PS5_GPU_PRESENT_BATCH
+static int runtime_gpu_present_buffer = -1;
+static unsigned runtime_gpu_present_count;
+#endif
 typedef struct { uint64_t words[8]; } video_attribute_t;
 typedef struct { void *a, *b, *c, *d; } video_buffer_t;
 ''' + video_api + r'''
@@ -52,7 +56,7 @@ static int unregister_video(int handle, int group) {
     assert(handle == 7 && group == 0); ++unregisters;
     return (int)UINT32_C(0x80290009); /* Active scanout may keep its buffer set busy. */
 }
-static unsigned opens, sleeps, pending_calls, waits, pending_until;
+static unsigned opens, registrations, sleeps, pending_calls, waits, pending_until;
 static int acquire_failure, pending_error, wait_error;
 static int open_video(int32_t user, int32_t bus, int32_t index, const void *p) {
     assert(user == 0xff && !bus && !index && !p); ++opens;
@@ -71,6 +75,7 @@ static int register_video(int32_t handle, int32_t group, int32_t start,
                           int32_t flags, void *p) {
     assert(handle == 7 && !group && !start && count == 2 && !flags && !p);
     assert(b[0].a && b[1].a && a->words[0] == 1);
+    ++registrations;
     return acquire_failure == 3 ? -12 : 0;
 }
 static int sceKernelUsleep(uint32_t us) { assert(us == 500000); ++sleeps; return 0; }
@@ -137,8 +142,11 @@ static void setup(void) {
     runtime_video_framebuffer = scanout; runtime_video_framebuffer_size = sizeof(scanout);
     runtime_present_count = 6; runtime_render_marker = 200;
     runtime_batch_faulted = runtime_batch_active = runtime_batch_count = 0;
+#ifdef PS5_GPU_PRESENT_BATCH
+    runtime_gpu_present_buffer = -1; runtime_gpu_present_count = 6;
+#endif
     close_failure = closes = unregisters = releases = locked = egl_error = 0;
-    opens = sleeps = pending_calls = waits = pending_until = 0;
+    opens = registrations = sleeps = pending_calls = waits = pending_until = 0;
     acquire_failure = pending_error = wait_error = 0;
     ps5_display = (struct ps5_egl_display){.initialized=true, .screen=&screen,
         .scanout={&resource, &resource}, .surfaces=1};
@@ -154,6 +162,9 @@ static void inject(int failure) {
     pending_error = failure == 5 ? -21 : 0;
     wait_error = failure == 6 ? -22 : 0;
     pending_until = failure == 7 ? 121 : failure == 6 ? waits + 1 : 0;
+#ifdef PS5_GPU_PRESENT_BATCH
+    runtime_gpu_present_buffer = failure == 8 ? 0 : -1;
+#endif
 }
 int main(void) {
     for (unsigned n = 0; n <= 121; ++n) {
@@ -216,33 +227,82 @@ int main(void) {
         assert(unregisters == 0 && closes == 2);
         assert(ps5_agc_gate2_shutdown_present() == 0 && closes == 2); /* Idempotent. */
     }
-    for (int failure = 1; failure <= 7; ++failure) {
+    /* Replacement must not open/register new backing while the old close fails. */
+    for (int changed_pointer = 0; changed_pointer <= 1; ++changed_pointer) {
+        unsigned char replacement[FRAMEBUFFER_POOL_BYTES];
+        setup(); close_failure = 1;
+        video_api_t api = runtime_video_api;
+        unsigned char *next = changed_pointer ? replacement : scanout;
+        size_t bytes = changed_pointer ? sizeof(replacement) : sizeof(scanout) / 2;
+        int attempts = -1;
+        assert(runtime_video_acquire(&api, next, bytes, &attempts) != 0);
+        assert(!attempts && !opens && !registrations && !sleeps && closes == 1 && !unregisters);
+        assert(runtime_video_handle == 7 && runtime_video_registered);
+        assert(runtime_video_framebuffer == scanout && runtime_video_framebuffer_size == sizeof(scanout));
+        assert(runtime_video_api.close == close_video && runtime_present_count == 6 && runtime_render_marker == 200);
+        assert(!releases && surface.magic == 1 && ps5_display.scanout[0] == &resource);
+        close_failure = 0;
+        assert(!runtime_video_acquire(&api, next, bytes, &attempts));
+        assert(attempts == 1 && opens == 1 && registrations == 1 && closes == 2 && !sleeps && !unregisters);
+        assert(runtime_video_registered && runtime_video_framebuffer == next && runtime_video_framebuffer_size == bytes);
+        assert(!ps5_agc_gate2_shutdown_present() && closes == 3);
+    }
+    int last_failure = 7;
+#ifdef PS5_GPU_PRESENT_BATCH
+    last_failure = 8;
+#endif
+    for (int failure = 1; failure <= last_failure; ++failure) {
         setup(); inject(failure);
         assert(!eglDestroySurface(&ps5_display, &surface));
         assert(egl_error == EGL_BAD_ACCESS && !releases && !locked);
         assert(surface.magic == 1 && ps5_surfaces == &surface && ps5_window_surface == &surface);
         assert(ps5_display.surfaces == 1 && surface.targets[0] == &resource);
+#ifdef PS5_GPU_PRESENT_BATCH
+        if (failure == 8) {
+            assert(!pending_calls && !waits && !closes && !unregisters);
+            assert(runtime_gpu_present_buffer == 0 && runtime_gpu_present_count == 6);
+            assert(runtime_video_registered && runtime_video_handle == 7 && runtime_video_framebuffer == scanout);
+        }
+#endif
         inject(0); /* Simulated recovery only: no hardware error is injected. */
         assert(eglDestroySurface(&ps5_display, &surface));
         assert(!surface.magic && !ps5_surfaces && !ps5_window_surface && !ps5_display.surfaces);
         assert(releases == 5 && !locked);
+#ifdef PS5_GPU_PRESENT_BATCH
+        assert(runtime_gpu_present_buffer == -1 && !runtime_gpu_present_count && runtime_video_handle == -1);
+#endif
         assert(eglTerminate(&ps5_display) && !ps5_display.initialized && !locked);
 
         setup(); ps5_display.surfaces = 0; inject(failure);
         assert(!eglTerminate(&ps5_display));
         assert(egl_error == EGL_BAD_ACCESS && !releases && !locked);
         assert(ps5_display.initialized && ps5_display.scanout[0] == &resource && ps5_display.screen);
+#ifdef PS5_GPU_PRESENT_BATCH
+        if (failure == 8) {
+            assert(!pending_calls && !waits && !closes && !unregisters);
+            assert(runtime_gpu_present_buffer == 0 && runtime_gpu_present_count == 6);
+            assert(runtime_video_registered && runtime_video_handle == 7 && runtime_video_framebuffer == scanout);
+        }
+#endif
         inject(0);
         assert(eglTerminate(&ps5_display));
         assert(!ps5_display.initialized && !ps5_display.scanout[0] && releases == 4 && !locked);
+#ifdef PS5_GPU_PRESENT_BATCH
+        assert(runtime_gpu_present_buffer == -1 && !runtime_gpu_present_count && runtime_video_handle == -1);
+#endif
     }
     puts("present-shutdown: PASS close errors/batch guards retain runtime, surface and display ownership");
     puts("present-acquire/wait: PASS failed acquisition retains close ownership; errors stop; 120 waits bounded");
     puts("present-drain: PASS bounded drains precede close-only teardown; failures retain EGL resources");
+    puts("present-reacquire: PASS failed close retains old backing; pointer/size replacement succeeds on host retry");
+#ifdef PS5_GPU_PRESENT_BATCH
+    puts("present-queued-shutdown: PASS unconfirmed scanout retains runtime/surface/display before drain or close");
+#endif
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:
     executable = str(Path(temporary) / "present-shutdown")
-    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-address",
-                    "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
-    subprocess.run([executable], cwd=temporary, check=True)
+    for flags in ([], ["-DPS5_GPU_PRESENT_BATCH=1"]):
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-address",
+                        *flags, "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
+        subprocess.run([executable], cwd=temporary, check=True)
