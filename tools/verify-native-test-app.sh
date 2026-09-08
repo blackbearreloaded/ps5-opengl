@@ -72,6 +72,14 @@ for module in libSceAgc.prx libSceAgcDriver.prx libSceLibcInternal.prx \
     }
 done
 
+if [[ -f "$stage/src/gpu_memory.c" ]]; then
+    for symbol in sceKernelAllocateDirectMemory sceKernelMapDirectMemory sceKernelReleaseDirectMemory munmap; do
+        nm --defined-only "$linked" | grep -E " [Tt] __wrap_${symbol}\$" >/dev/null || {
+            printf 'missing GPU diagnostic wrapper: %s\n' "$symbol" >&2; exit 1;
+        }
+    done
+fi
+
 if nm -u "$linked" | grep -E \
     'ps5_agc_gate2|_ZTH23_mesa_glapi_tls_Context|__dl|kernel_mprotect' >/dev/null; then
     printf 'native ELF retains a forbidden unresolved symbol\n' >&2

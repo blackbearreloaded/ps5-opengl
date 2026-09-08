@@ -88,6 +88,10 @@ mkdir -p "$app/src" "$app/include" "$app/vendor"
 cp "$root/native-app/runtime_shims.c" "$app/src/runtime_shims.c"
 cp "$root/native-app/cts_runtime_shims.c" "$app/src/cts_runtime_shims.c"
 cp "$root/native-app/app_heap.c" "$app/src/app_heap.c"
+if [[ ${PS5_GPU_MEMORY_PROFILE:-0} == 1 ]]; then
+    cp "$root/native-app/gpu_memory.c" "$app/src/gpu_memory.c"
+    sed -i 's/--wrap=malloc /--wrap=sceKernelAllocateDirectMemory --wrap=sceKernelMapDirectMemory --wrap=sceKernelReleaseDirectMemory --wrap=munmap --wrap=malloc /' "$link_script"
+fi
 for headers in EGL GL KHR; do
     cp -a "$root/third_party/mesa-26.2.0/include/$headers" "$app/include/"
 done

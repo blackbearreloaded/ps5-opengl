@@ -167,7 +167,9 @@ void pss_opengl_heap_stats_print(unsigned iteration) {
   }
 }
 
+void pss_opengl_gpu_snapshot(const char *, unsigned) __attribute__((weak));
 void pss_opengl_heap_snapshot(const char *phase, unsigned iteration) {
+  if (pss_opengl_gpu_snapshot) pss_opengl_gpu_snapshot(phase, iteration);
   printf("[pss-opengl-heap] phase=%s sample=%u state=%d live_bytes=%zu peak_bytes=%zu "
          "blocks=%zu failures=%zu ambiguous_zero_reallocs=%zu\n", phase, iteration,
          atomic_load_explicit(&pss_heap_state, memory_order_acquire),

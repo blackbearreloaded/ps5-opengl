@@ -78,16 +78,75 @@ def self_test():
     print("app-heap audit: self-test PASS")
 
 
+def summarize_gpu(text, sessions=1, steady_samples=0):
+    pattern = (r"^\[pss-opengl-gpu-memory\] phase=(begin|steady|end) sample=(\d+) "
+               r"direct_bytes=(\d+) direct_peak=(\d+) allocations=(\d+) "
+               r"mapped_bytes=(\d+) mapped_peak=(\d+) mappings=(\d+) failures=(\d+) invalid=(\d+)$")
+    rows = [(phase, *map(int, values)) for phase, *values in re.findall(pattern, text, re.M)]
+    if not rows or len(rows) != text.count("[pss-opengl-gpu-memory]"):
+        raise ValueError("missing or malformed GPU samples")
+    reports = {}
+    for name, offset in (("direct", 2), ("mapped", 5)):
+        normalized = []
+        balance = None
+        for row in rows:
+            phase, sample = row[:2]
+            live, peak, count = row[offset:offset + 3]
+            if bool(live) != bool(count):
+                raise ValueError("inconsistent GPU bytes/count")
+            if phase == "begin":
+                balance = (live, count)
+            if phase == "end" and (live, count) != balance:
+                raise ValueError(f"{name} GPU allocations did not return to session baseline")
+            normalized.append(f"[pss-opengl-heap] phase={phase} sample={sample} state=2 "
+                              f"live_bytes={live} peak_bytes={peak} blocks={count} "
+                              f"failures={row[8]} ambiguous_zero_reallocs={row[9]}")
+        # Reuse the existing strict ordering, high-water, failure and sample checks.
+        reports[name] = summarize("\n".join(normalized), sessions, steady_samples)["sessions"]
+        if not reports[name][-1]["peak_bytes"]:
+            raise ValueError("no GPU allocation activity captured")
+    return dict(scope="linked title direct allocations/mappings; excludes module-internal allocations and CPU mmap",
+                **reports)
+
+
+def gpu_self_test():
+    def row(phase, live=0, sample=0):
+        return (f"[pss-opengl-gpu-memory] phase={phase} sample={sample} direct_bytes={live} "
+                f"direct_peak=16384 allocations={int(bool(live))} mapped_bytes={live} "
+                f"mapped_peak=16384 mappings={int(bool(live))} failures=0 invalid=0\n")
+    text = row("begin") + row("steady", 16384) + row("steady", 16384, 1800) + row("end")
+    assert summarize_gpu(text, steady_samples=2)["direct"][0]["end_bytes"] == 0
+    assert len(summarize_gpu(text + text, sessions=2, steady_samples=2)["mapped"]) == 2
+    for bad in ("", text[:-1].rsplit("\n", 1)[0], text + row("end"),
+                text.replace("invalid=0", "invalid=1"), text.replace("failures=0", "failures=1"),
+                text.replace(row("end"), row("end",16384)),
+                text.replace("sample=1800", "sample=0"),
+                text.replace("mapped_peak=16384", "mapped_peak=0"),
+                text.replace("allocations=1", "allocations=0")):
+        try:
+            summarize_gpu(bad, steady_samples=2)
+        except ValueError:
+            continue
+        raise AssertionError("invalid GPU receipt accepted")
+    print("GPU-memory audit: self-test PASS")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("receipt", type=Path, nargs="?")
     parser.add_argument("--sessions", type=int, default=1)
     parser.add_argument("--steady-samples", type=int, default=0)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--gpu", action="store_true", help="also require balanced linked-title GPU memory")
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        gpu_self_test()
     elif not args.receipt:
         parser.error("receipt required")
     else:
-        print(json.dumps(summarize(args.receipt.read_text(), args.sessions, args.steady_samples), indent=2))
+        text = args.receipt.read_text()
+        result = summarize(text, args.sessions, args.steady_samples)
+        if args.gpu:
+            result["gpu"] = summarize_gpu(text, args.sessions, args.steady_samples)
+        print(json.dumps(result, indent=2))

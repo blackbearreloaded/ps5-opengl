@@ -23,3 +23,12 @@ safe test conditions and evidence; untested behavior is not complete.
 
 - 2026-09-08 | G11 | host and native deferred-draw regression passed; clean teardown/health, lock released | `.local/g11-*.log`, `results/g11-arena-20260908/`.
 - 2026-09-08 | G12 | host and native deferred-draw regression passed, including texture updates; clean teardown/health and exact-token release | `.local/g12-*.log`, `results/g12-texture-flush-20260908/`; larger-texture performance comparison still pending.
+- 2026-09-08 | G13 | native hazards pass; identical 1080p offscreen workload improves 19.981309 to 59.947540 FPS (600 vs 1,799 frames/30 s), pixels/teardown/health pass | `results/g13-{tiled-rgba8,fbo-control,fbo-native}-20260908/`. Mean target met, not every frame: p95 17.20 ms; broader affected sample pending.
+
+G15 diagnostic builds set `PS5_GPU_MEMORY_PROFILE=1`; the existing heap snapshot
+also records linked-title direct allocations and mappings. Audit receipts with
+`tools/summarize-app-heap.py --gpu` plus the existing session/steady-sample counts.
+Require balanced post-session bytes/counts, observed allocation activity, and zero
+failure/inconclusive flags. The bounded ledger serializes diagnostic memory calls;
+do not use this build for matched performance claims. SDK/default app builds are
+unchanged. This excludes module-internal allocations, CPU mmap and process RSS.
