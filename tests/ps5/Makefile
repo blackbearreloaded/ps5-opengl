@@ -1796,6 +1796,13 @@ egl_public_core33_transfer_regressions.o: egl_public_core33_transfer_regressions
 	egl_public_core33_transfer_workload.c egl_public_core33_render_format_blit.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_staging_profile.o: egl_public_core33_staging_profile.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
+egl_public_core33_staging_regressions.o: egl_public_core33_staging_regressions.c \
+	egl_public_core33_render_format_float.c egl_public_core33_staging_profile.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
 egl_public_core33_layered_render.o: egl_public_core33_layered_render.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
