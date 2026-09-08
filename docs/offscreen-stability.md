@@ -24,7 +24,7 @@ directories; add only milestone summaries here.
 - G10 `725f6eb`: first native launch passes 18 frames/three EGL sessions; post-cleanup heap 9,375 bytes/21 blocks each time, zero inter-session growth (`results/g10-lifecycle-20260907/run1`).
 - G10 `725f6eb`: 600 s / 35,942 frames / 21 probes pass; 59.87–59.93 FPS per 30 s window, clean teardown/health (`results/g10-soak600-20260907`).
 - G10 memory: +448 bytes/+2 blocks by 90 s, then flat through 570 s; peak 9,413,967 bytes; cleanup 9,455 bytes/22 blocks, zero failures/ambiguity.
-- G10 repeated launches: **1/5 complete**; next cycle no-run because another title was active. No upload/launch; healthy services and exact-token unlock (`results/g10-lifecycle-20260907/run2`).
+- G10 repeated launches: **5/5 pass**, 90 frames/15 EGL sessions; post-cleanup heap 9,375 bytes/21 blocks every session, clean teardown/health/unlock (`results/g10-lifecycle-20260907/run1`–`run5`).
 
 G9 render mean/p95/p99: **50.042 / 51.066 / 51.472 ms**, versus
 70.942 / 83.484 / 85.288 ms for the control. This is completed offscreen
@@ -34,7 +34,7 @@ the 60 FPS target is not met. The published SDK is unchanged.
 The soak's owned heap stabilized at 8,958,261 bytes/20,708 blocks. Its receipt
 records 112 widget changes, so this was a normal interactive session, not an
 unchanged-input performance comparison. The early 448-byte increase is observed,
-not attributed to a specific allocation site. Ten minutes and one native launch
+not attributed to a specific allocation site. Ten minutes and five lifecycle launches
 do not establish multi-hour, GPU-memory, process-RSS or device-loss stability.
 
 ## G10 checks
@@ -52,3 +52,18 @@ and processes; report any growth, not just whether allocations fit in the heap.
 Memory observations exclude GPU mappings, foreign heaps and process RSS; ambiguous
 zero-size realloc behavior invalidates the accounting instead of changing allocator
 semantics. Flat owned-heap samples alone are not proof of a leak-free driver.
+
+## Yamagi handoff: next library candidates, not merged
+
+Reviewed game handoff `b711c4f` and its private runtime patch. The game reports
+user-observed 60 FPS, but its 66 sparse gameplay timing samples include heavier
+entity frames near 33 ms. This is real-application evidence for a private G7
+derivative, not a new qualification of the canonical SDK.
+
+- Buffer-only arena (`c818ec1`): keep persistent textures from displacing transient buffers; preserve checked direct-allocation fallback. Validate texture/resource creation, cleanup and allocation pressure separately.
+- Batch-local texture flush reuse (`c176c4f`): extend the existing depth cache to eligible retained linear fragment textures. The helper passes host sanitizers against temporary current-source copies; native texture-update, backing-replacement, batch-drain and context-boundary regressions remain necessary.
+
+Integrate these as separate candidates on current source, retaining G9. Do not
+replace the SDK with the game's older private archive. Neither change removes
+the offscreen staging copies. Geometry/material batching, streaming choices,
+particle rendering and the single-mip quality tradeoff stay in the game port.
