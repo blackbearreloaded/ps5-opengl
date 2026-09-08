@@ -2,8 +2,10 @@
 // Copyright (C) 2026 BlackBearReloaded
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -217,6 +219,179 @@ cleanup:
    return passed;
 }
 
+/* Single mip/layer only, with odd dimensions and writes crossing 128x128 tiles.
+ * Reuse this exact public gate on the control and candidate native SDKs. */
+#define SRGB_WIDTH 257
+#define SRGB_HEIGHT 259
+static uint8_t srgb_expected[SRGB_WIDTH * SRGB_HEIGHT * 4];
+static uint8_t srgb_pixels[sizeof(srgb_expected)];
+
+static float
+srgb_decode(float value)
+{
+   return value <= 0.04045f ? value / 12.92f
+                           : powf((value + 0.055f) / 1.055f, 2.4f);
+}
+
+static uint8_t
+srgb_encode(float value, int enabled)
+{
+   if (enabled)
+      value = value <= 0.0031308f ? value * 12.92f
+                                 : 1.055f * powf(value, 1.0f / 2.4f) - 0.055f;
+   return (uint8_t)(value * 255.0f + 0.5f);
+}
+
+static int
+check_srgb_image(const char *phase, int decode)
+{
+   for (unsigned i = 0; i < sizeof(srgb_pixels); ++i) {
+      float expected = srgb_expected[i];
+      if (decode && i % 4 != 3)
+         expected = srgb_decode(expected / 255.0f) * 255.0f;
+      if (!close_enough(srgb_pixels[i], expected, decode ? 2.0f : 1.0f)) {
+         printf("[ps5-egl-render-float] srgb-mismatch=%s xy=%u/%u channel=%u "
+                "expected=%.3f observed=%u result=1\n", phase,
+                (i / 4) % SRGB_WIDTH, (i / 4) / SRGB_WIDTH, i % 4,
+                expected, srgb_pixels[i]);
+         return 0;
+      }
+   }
+   return 1;
+}
+
+static int
+run_srgb_texture(GLuint vertex, GLuint render, GLint color_location,
+                 GLuint framebuffer, GLuint renderbuffer)
+{
+   const char *fragment = "#version 330 core\nuniform sampler2D image;\n"
+      "layout(location=0) out vec4 color;\n"
+      "void main() { color = texture(image, gl_FragCoord.xy / vec2(257,259)); }\n";
+   const float clear[4] = {0.25f, 0.5f, 0.75f, 0.5f};
+   const float draw[4] = {0.125f, 0.375f, 0.625f, 0.5f};
+   GLuint textures[2] = {0}, copy_fbo = 0, shader = 0, sample = 0;
+   uint8_t patch[3 * 5 * 4];
+   GLint linked = GL_FALSE;
+   int passed = 0;
+
+   if (!compile_shader(GL_FRAGMENT_SHADER, fragment, &shader))
+      goto cleanup;
+   sample = glCreateProgram();
+   glAttachShader(sample, vertex);
+   glAttachShader(sample, shader);
+   glLinkProgram(sample);
+   glGetProgramiv(sample, GL_LINK_STATUS, &linked);
+   if (!linked)
+      goto cleanup;
+   glUseProgram(sample);
+   GLint sampler = glGetUniformLocation(sample, "image");
+   if (sampler < 0)
+      goto cleanup;
+   glUniform1i(sampler, 0);
+   glActiveTexture(GL_TEXTURE0);
+   glGenTextures(2, textures);
+   glGenFramebuffers(1, &copy_fbo);
+   for (unsigned i = 0; i < 2; ++i) {
+      glBindTexture(GL_TEXTURE_2D, textures[i]);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, SRGB_WIDTH, SRGB_HEIGHT,
+                   0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+   }
+   glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
+   glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, SRGB_WIDTH, SRGB_HEIGHT);
+   glViewport(0, 0, SRGB_WIDTH, SRGB_HEIGHT);
+   glDisable(GL_DITHER);
+   for (unsigned enabled = 0; enabled < 2; ++enabled) {
+      for (unsigned y = 0; y < SRGB_HEIGHT; ++y)
+         for (unsigned x = 0; x < SRGB_WIDTH; ++x)
+            for (unsigned c = 0; c < 4; ++c)
+               srgb_expected[(y * SRGB_WIDTH + x) * 4 + c] =
+                  (uint8_t)(x * 37 + y * 13 + c * 59);
+      glBindTexture(GL_TEXTURE_2D, textures[0]);
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SRGB_WIDTH, SRGB_HEIGHT,
+                      GL_RGBA, GL_UNSIGNED_BYTE, srgb_expected);
+      glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                             GL_TEXTURE_2D, textures[0], 0);
+      if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+         goto cleanup;
+      if (enabled) glEnable(GL_FRAMEBUFFER_SRGB);
+      else glDisable(GL_FRAMEBUFFER_SRGB);
+      glEnable(GL_SCISSOR_TEST);
+      glScissor(125, 127, 5, 7);
+      glColorMask(GL_TRUE, GL_FALSE, GL_TRUE, GL_FALSE);
+      glClearColor(clear[0], clear[1], clear[2], clear[3]);
+      glClear(GL_COLOR_BUFFER_BIT);
+      glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+      for (unsigned y = 127; y < 134; ++y)
+         for (unsigned x = 125; x < 130; ++x)
+            for (unsigned c = 0; c < 4; c += 2)
+               srgb_expected[(y * SRGB_WIDTH + x) * 4 + c] = srgb_encode(clear[c], enabled);
+      for (unsigned i = 0; i < sizeof(patch); ++i)
+         patch[i] = (uint8_t)(i * 17 + 31);
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 126, 128, 3, 5, GL_RGBA, GL_UNSIGNED_BYTE, patch);
+      for (unsigned y = 0; y < 5; ++y)
+         memcpy(srgb_expected + ((128 + y) * SRGB_WIDTH + 126) * 4, patch + y * 12, 12);
+      glScissor(3, 5, SRGB_WIDTH - 6, 60);
+      glUseProgram(render);
+      glUniform4fv(color_location, 1, draw);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+      for (unsigned y = 5; y < 65; ++y)
+         for (unsigned x = 3; x < SRGB_WIDTH - 3; ++x)
+            for (unsigned c = 0; c < 4; ++c)
+               srgb_expected[(y * SRGB_WIDTH + x) * 4 + c] = srgb_encode(draw[c], enabled && c != 3);
+      glDisable(GL_SCISSOR_TEST);
+      glDisable(GL_FRAMEBUFFER_SRGB);
+      /* Sample the FBO write immediately: no readback/finish may hide a missing barrier. */
+      glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, renderbuffer);
+      if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+         goto cleanup;
+      glUseProgram(sample);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+      glReadPixels(0, 0, SRGB_WIDTH, SRGB_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, srgb_pixels);
+      if (!check_srgb_image("sample", 1)) goto cleanup;
+      glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, srgb_pixels);
+      if (!check_srgb_image("raw", 0)) goto cleanup;
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[0], 0);
+      glBindFramebuffer(GL_DRAW_FRAMEBUFFER, copy_fbo);
+      glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[1], 0);
+      if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE ||
+          glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+         goto cleanup;
+      glBlitFramebuffer(0, 0, SRGB_WIDTH, SRGB_HEIGHT, 0, 0, SRGB_WIDTH, SRGB_HEIGHT,
+                        GL_COLOR_BUFFER_BIT, GL_NEAREST);
+      glBindTexture(GL_TEXTURE_2D, textures[1]);
+      glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, srgb_pixels);
+      if (!check_srgb_image("blit", 0)) goto cleanup;
+      glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 7, 9, 1, 2, 129, 131);
+      for (unsigned y = 0; y < 131; ++y)
+         memcpy(srgb_expected + ((9 + y) * SRGB_WIDTH + 7) * 4,
+                srgb_pixels + ((2 + y) * SRGB_WIDTH + 1) * 4, 129 * 4);
+      glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, srgb_pixels);
+      if (!check_srgb_image("copy", 0) || glGetError() != GL_NO_ERROR) goto cleanup;
+      printf("[ps5-egl-render-float] srgb-texture=%u size=257x259 mip=0 layer=0 "
+             "masked-clear=1 upload=1 draw-sample=1 raw=1 blit=1 copy=1 result=0\n", enabled);
+   }
+   passed = 1;
+cleanup:
+   glDisable(GL_SCISSOR_TEST);
+   glDisable(GL_FRAMEBUFFER_SRGB);
+   glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+   glUseProgram(0);
+   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+   glBindTexture(GL_TEXTURE_2D, 0);
+   glDeleteTextures(2, textures);
+   glDeleteFramebuffers(1, &copy_fbo);
+   if (sample) glDeleteProgram(sample);
+   if (shader) glDeleteShader(shader);
+   passed &= glGetError() == GL_NO_ERROR;
+   printf("[ps5-egl-render-float] srgb-texture-cleanup result=%d\n", passed ? 0 : 1);
+   return passed;
+}
+
 int
 main(void)
 {
@@ -305,6 +480,7 @@ main(void)
        !eglSwapInterval(display, 0))
       goto cleanup;
    made_current = 1;
+   printf("[ps5-egl-render-float] renderer=%s\n", glGetString(GL_RENDERER));
 
    if (!compile_shader(GL_VERTEX_SHADER, vertex_source, &shaders[0]) ||
        !compile_shader(GL_FRAGMENT_SHADER, fragment_source, &shaders[1]))
@@ -338,7 +514,9 @@ main(void)
    /* Masked clears may legitimately add internal draws. Pixel oracles above
     * validate the public API without assuming a driver-internal draw count. */
    int mrt_passed = run_mrt_clears(framebuffer);
-   passed = major == 1 && minor >= 4 && mrt_passed &&
+   int srgb_passed = run_srgb_texture(shaders[0], program, color_location,
+                                     framebuffer, renderbuffer);
+   passed = major == 1 && minor >= 4 && mrt_passed && srgb_passed &&
             matching == sizeof(cases) / sizeof(cases[0]) &&
             glGetError() == GL_NO_ERROR;
    printf("[ps5-egl-render-float] matching=%u result=%d\n",

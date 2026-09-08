@@ -1065,13 +1065,16 @@ ps5_sampled_texture_target(enum pipe_texture_target target)
 static bool
 ps5_linear_sampled_layout(const struct pipe_resource *resource)
 {
-   /* Reuse the native render/sample layout for single-mip RGBA8 images. CPU
+   /* Reuse the native render/sample layout for single-mip RGBA8/sRGB images. CPU
     * access already converts through transfer_map/unmap; draws need no copy.
     * ponytail: other formats, mip chains and layers keep existing staging. */
    if (PS5_ENABLE_RENDER_TO_TEXTURE_CANDIDATE &&
        PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE && resource &&
        resource->target == PIPE_TEXTURE_2D &&
-       resource->format == PIPE_FORMAT_R8G8B8A8_UNORM &&
+       (resource->format == PIPE_FORMAT_R8G8B8A8_UNORM ||
+        (resource->format == PIPE_FORMAT_R8G8B8A8_SRGB &&
+         ps5_sampled_texture_format(resource->format) &&
+         ps5_render_target_format(resource->format))) &&
        resource->nr_samples <= 1 && resource->nr_storage_samples <= 1 &&
        !resource->last_level && resource->width0 <= PS5_MAX_COLOR_WIDTH &&
        resource->height0 <= PS5_MAX_COLOR_HEIGHT &&
