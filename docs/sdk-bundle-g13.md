@@ -7,6 +7,9 @@ nonzero color mip levels in these frozen bytes. Local source `a00ce20` fixes the
 mapped-copy path and passes 24 native cycles; this archive does not contain that
 fix. Preserve it as historical evidence, not the next distribution candidate.
 See [the G18 milestone](enhancement-plan.md).
+The later G19 source also fixes regular color-blit channel mappings; neither fix
+is present in this historical archive. Current targeted evidence is in the same
+enhancement plan, not a replacement full CTS campaign.
 The September 7 prerelease remains unchanged. The separate PPSA77800 app and
 its private artwork are not included. That app uses the older G6 SDK, not G13.
 Its three successful receipts show 3840x2160 rendering at ~120 FPS, while klog

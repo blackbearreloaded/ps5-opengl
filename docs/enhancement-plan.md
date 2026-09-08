@@ -13,6 +13,7 @@ no console interaction without the shared lock, and no graphics ELF injection.
 | G15 | Account for GPU allocations and mappings | Partial allocation/map failures and release ordering tested on host; native lifecycle returns tracked live bytes/counts to baseline. |
 | G16 | Focused acceptance | Frozen candidate, targeted regressions and matched workloads, sustained session and launch/exit checks; no automatic full CTS rerun. |
 | G18 | Mip transfer/object-churn regression | 24 ordered native copy/upload/draw/sample cycles, exact mip/layer/base guards, balanced tracked GPU memory and clean teardown. |
+| G19 | Color-blit channel mappings | Same mip checks plus 18 format/conversion checks in one native batch; two balanced GPU-memory sessions and clean teardown. |
 
 Keep G11/G12 separate from game-specific changes and preserve G9's copy optimization.
 Use existing tests and batching infrastructure. Hardware fault injection, console
@@ -94,3 +95,24 @@ in 21 blocks. One session does not measure long-term growth or module-owned memo
 The new SDK is `build/sdk/ps5-opengl-core33-g18-mip-blit`; host tests, its manifest,
 344 exports and Make/pkg-config/CMake consumers pass. Frozen G13 bytes are unchanged;
 their 204-case sample and soak must not be relabeled as G18 hardware acceptance.
+
+- 2026-09-08 | G19 | `44435a7`: 24 mip cycles + 18 format checks pass; two clean sessions, GPU zero and no post-session heap growth; healthy/unlocked | `results/g19-transfer-regressions-20260908/`.
+
+G18's adjacent format batch passed 17/18 checks but rejected R16F-to-RGBA32F
+conversion (`results/g18-format-blit-20260908/`). Mesa requests inserted zero/one
+channels; G19 reuses the existing format-swizzle helper after filtering/conversion,
+preserving the same-format, unswizzled memcpy path. Host sanitizer regressions
+cover mapped/tiled targets, nearest/linear filtering, permutations/constants and
+rejection of integer linear filtering. The native batch is
+`egl_public_core33_transfer_regressions`: it reuses both original gates unchanged.
+The G19 SDK is `build/sdk/ps5-opengl-core33-g19-blit-swizzle`; its manifest,
+344 exports and all three SDK consumers pass. Exact app/SDK hashes and the
+30-second observation ceiling are in `.local/g19-candidate.json`; retained app
+bytes are in `.local/g19-tested-app/`. No new full CTS or long-soak acceptance.
+
+- 2026-09-08 | SDK independence | `94ce68f`: independent compiler/Mesa/runtime build, relocated consumers and 119 bundle checks pass; audit fix integrated | SDK agent `.local/agent-result.md`.
+
+The independent package is an older source baseline, not the G18/G19 runtime,
+and has no hardware acceptance. All four agent lanes are integrated and closed.
+Next distribution preparation must use the corrected runtime and its own evidence;
+do not publish or relabel the preserved G13 or independent baseline archives.
