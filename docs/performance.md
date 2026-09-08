@@ -755,7 +755,21 @@ The existing independent consumer checker also passes on a copy outside the
 runtime checkout, without invoking the installer or rebuilding the SDK. This
 proves installed-SDK relocation and consumer linking, not a fresh full runtime
 build or additional hardware coverage. The versioned optimized bundle remains
-the next distribution step; the old baseline bundle is unchanged.
+the next distribution step at this milestone; the old baseline bundle is unchanged.
+
+### G8 local SDK bundle ready
+
+- 2026-09-07 | G8 | source a9e9d60 / runtime cef6c1b | pass: versioned sample-validated SDK/source-example bundle, extracted checksum/link/export checks | build/bundles/g8-perf20260907-sampled
+
+The 238,624,158-byte `0.1.0-perf20260907-sampled` archive preserves the tested
+1080p60 SDK and includes dependency sources/notices, source examples and the
+204-result sample report. All 113 checksummed files verify after extraction;
+fresh Make/pkg-config/CMake consumers link and all 344 Core exports are present,
+with operational dependencies on the original runtime checkout rejected. The
+historical baseline SDK is unchanged. This is a local distribution candidate,
+not a GitHub release, new full runtime build or fresh console/TV check.
+See the [bundle guide](sdk-bundle.md); exact hashes and local receipts are in
+`build/frozen/g8-sdk-bundle-20260907.md`.
 
 ## Next steps
 
@@ -770,9 +784,9 @@ the next distribution step; the old baseline bundle is unchanged.
    implementing an adapter. Neither framework is currently supported.
 5. Repeat independent builds and fresh TV/controller checks. Keep one-console,
    one-firmware results explicitly scoped; broader compatibility needs new evidence.
-6. Produce a versioned SDK/example archive with licenses, dependency pins, hashes
-   and validation provenance after freezing a release candidate. Source delivery
-   and private repository visibility stay unchanged until publication is requested.
+6. The versioned sample-validated SDK/source-example archive is prepared and
+   verified locally. Source delivery and private repository visibility stay
+   unchanged until publication is requested.
 
 See [limitations](limitations.md), the [cube benchmark](../examples/core33-cubes/README.md),
 and the preserved [development measurements and failure history](performance-history.md).
