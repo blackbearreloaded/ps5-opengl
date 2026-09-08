@@ -3300,7 +3300,9 @@ ps5_resource_create_unlocked(struct pipe_screen *screen,
       allocation_size = (size + PS5_DIRECT_ALIGNMENT - 1) &
                         ~(size_t)(PS5_DIRECT_ALIGNMENT - 1);
    }
+   /* Keep persistent textures from displacing transient buffer allocations. */
    if (PS5_ENABLE_SHARED_RENDER_POOL_CANDIDATE && ps5->render_pool &&
+       templ->target == PIPE_BUFFER &&
        !(templ->bind & PIPE_BIND_DISPLAY_TARGET) &&
        templ->format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) {
       if (!ps5_render_arena_allocate(ps5, resource, allocation_size,
