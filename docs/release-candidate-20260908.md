@@ -46,3 +46,4 @@ suspend/resume, device-loss recovery and exhaustive OOM remain outside this
 
 - 2026-09-08 | preparation | frozen G25 graphics inputs match published source; no runtime rebuild needed | existing G25 native receipts retained.
 - 2026-09-08 | G27 passed | 204/204 sampled CTS executions; 59.95 FPS offscreen and 59.94 FPS ordinary/instanced 128-cube profiles; 600-second tracked-memory soak and three EGL sessions passed | all native cycles closed, services healthy, exact locks released.
+- 2026-09-08 | G28 passed | relocatable SDL2 payload and supplied-SDK verification; host sanitizers/negative checks; native 180 frames and two exact pixels | cleanup/health/unlock passed; physical input remains unverified.

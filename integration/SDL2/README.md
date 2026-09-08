@@ -1,8 +1,10 @@
-# SDL2 / public PS5 OpenGL SDK (offline distribution lane)
+# SDL2 / public PS5 OpenGL SDK
 
-New builds have **no hardware qualification**. G19 acceptance below belongs only
-to its historical binary. Building against G25 or another verified SDK does not
-transfer those results. The adapter and its `ps5-g19` driver/log names are unchanged.
+New builds have **no inherited hardware qualification**. The exact G25/SDL2 pair
+in the [September 8 SDK guide](../../docs/sdk-bundle-g25.md) passed a fresh native
+180-frame/two-pixel check, teardown and service-health verification. Physical
+controller/reconnect behavior remains unverified. G19 acceptance below belongs
+only to its historical binary. The adapter's `ps5-g19` driver/log names are unchanged.
 
 This is an SDL2 video-device implementation, compiled into **real SDL2**. The
 consumer calls `SDL_CreateWindow(SDL_WINDOW_OPENGL)`, `SDL_GL_CreateContext`,
