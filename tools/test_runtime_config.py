@@ -40,11 +40,18 @@ class RuntimeConfigTest(unittest.TestCase):
                 self.assertEqual(output.split(), ["-DPS5_NATIVE_TITLE_RUNTIME=1"] +
                     (["-DPS5_MULTIDRAW_BATCH=1", "-DPS5_DEFERRED_DRAW_BATCH=1"] if enabled != "0" else []))
 
-    def test_cts_frozen_sdk(self):
+    def test_frozen_sdk(self):
         root = Path(__file__).resolve().parents[1]
-        builder = (root / "tools/build-native-cts-app.sh").read_text()
+        for builder, libraries in (("build-native-cts-app.sh", "opengl_libraries"),
+                                   ("build-native-test-app.sh", "static_libraries")):
+            with self.subTest(builder=builder):
+                self.check_frozen_sdk(root / "tools" / builder, libraries)
+
+    def check_frozen_sdk(self, path, libraries):
+        builder = path.read_text()
         start = builder.index('if [[ -n ${PS5_OPENGL_PREFIX:-} ]]')
-        branch = builder[start:builder.index('\nelse\n', start)] + '\nfi\nprintf "%s\\n" "${opengl_libraries[@]}"\n'
+        branch = re.split(r'\n[ \t]*else\n', builder[start:], maxsplit=1)[0]
+        branch += '\nfi\nprintf "%s\\n" "${' + libraries + '[@]}"\n'
         with tempfile.TemporaryDirectory() as tmp:
             sdk = Path(tmp) / "frozen sdk"
             (sdk / "lib").mkdir(parents=True)

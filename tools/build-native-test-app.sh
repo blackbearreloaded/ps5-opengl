@@ -94,13 +94,20 @@ else
     make -C "$root/tests/ps5" --no-print-directory -j8 \
         PS5_PAYLOAD_SDK="$sdk" "$gate_object"
     gate_object_path="$root/tests/ps5/$gate_object"
-    make -C "$root/tests/ps5" --no-print-directory -f native-app.mk -j8 \
-        PS5_PAYLOAD_SDK="$sdk" runtime
-    mapfile -t static_libraries < <(
-        make -C "$root/tests/ps5" --no-print-directory -s -f native-app.mk \
-            PS5_PAYLOAD_SDK="$sdk" print-static-libs
-    )
-    public_headers="$root/third_party/mesa-26.2.0/include"
+    if [[ -n ${PS5_OPENGL_PREFIX:-} ]]; then
+        prefix=$(realpath -e -- "$PS5_OPENGL_PREFIX")
+        (cd "$prefix" && sha256sum --check --strict manifest.sha256 >/dev/null)
+        static_libraries=("$prefix/lib/libPS5OpenGLCore33.a")
+        public_headers="$prefix/include"
+    else
+        make -C "$root/tests/ps5" --no-print-directory -f native-app.mk -j8 \
+            PS5_PAYLOAD_SDK="$sdk" runtime
+        mapfile -t static_libraries < <(
+            make -C "$root/tests/ps5" --no-print-directory -s -f native-app.mk \
+                PS5_PAYLOAD_SDK="$sdk" print-static-libs
+        )
+        public_headers="$root/third_party/mesa-26.2.0/include"
+    fi
 fi
 test -s "$gate_object_path"
 oracle=$(strings "$gate_object_path" | grep -m1 -E '^\[ps5-' || true)
