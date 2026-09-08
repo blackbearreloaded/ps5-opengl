@@ -328,7 +328,7 @@ code = r'''
 #define PS5_RENDER_ARENA_OFFSET (2u * 0xa00000u)
 enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=16, PIPE_BUFFER=1,
        PIPE_TEXTURE_2D=2, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4, MESA_PRIM_TRIANGLE_FAN=5, PIPE_BIND_DISPLAY_TARGET=1,
-       PIPE_FORMAT_Z32_FLOAT=77, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT=78 };
+       PIPE_FORMAT_Z32_FLOAT=77, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT=78, PIPE_BIND_RENDER_TARGET=2 };
 struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind; };
 struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
     union { struct { unsigned first_level, last_level, first_layer, last_layer; } tex; } u; };
@@ -556,7 +556,11 @@ int main(void) {
     assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); textures[7]=saved; } while(0)
     REJECT_TEX(base.target,PIPE_BUFFER); REJECT_TEX(base.format,2); REJECT_TEX(base.nr_samples,4);
     REJECT_TEX(base.nr_storage_samples,4); REJECT_TEX(base.last_level,1); REJECT_TEX(base.bind,1);
-    REJECT_TEX(base.bind,2); REJECT_TEX(depth_staging_size,1); REJECT_TEX(data,NULL); REJECT_TEX(size,0);
+    REJECT_TEX(depth_staging_size,1); REJECT_TEX(data,NULL); REJECT_TEX(size,0);
+    textures[7].base.bind=PIPE_BIND_RENDER_TARGET;
+    textures[7].render_staging_size=0;
+    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
+    textures[7].base.bind=0;
 #define REJECT_VIEW(field,value) do { struct pipe_sampler_view saved=views[7]; views[7].field=value; \
     assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); views[7]=saved; } while(0)
     REJECT_VIEW(texture,&borrowed.base); REJECT_VIEW(texture,NULL); REJECT_VIEW(target,PIPE_BUFFER);

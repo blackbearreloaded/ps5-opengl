@@ -1065,6 +1065,19 @@ ps5_sampled_texture_target(enum pipe_texture_target target)
 static bool
 ps5_linear_sampled_layout(const struct pipe_resource *resource)
 {
+   /* Reuse the native render/sample layout for single-mip RGBA8 images. CPU
+    * access already converts through transfer_map/unmap; draws need no copy.
+    * ponytail: other formats, mip chains and layers keep existing staging. */
+   if (PS5_ENABLE_RENDER_TO_TEXTURE_CANDIDATE &&
+       PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE && resource &&
+       resource->target == PIPE_TEXTURE_2D &&
+       resource->format == PIPE_FORMAT_R8G8B8A8_UNORM &&
+       resource->nr_samples <= 1 && resource->nr_storage_samples <= 1 &&
+       !resource->last_level && resource->width0 <= PS5_MAX_COLOR_WIDTH &&
+       resource->height0 <= PS5_MAX_COLOR_HEIGHT &&
+       (resource->bind & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW)) ==
+          (PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW))
+      return false;
    return resource && ps5_sampled_texture_format(resource->format) &&
           resource->nr_samples <= 1 &&
           (!(resource->bind & PIPE_BIND_DEPTH_STENCIL) ||
@@ -2637,11 +2650,17 @@ ps5_prepare_texture(struct ps5_context *context,
             : ps5_tiled_surface_size(texture->base.width0,
                                      texture->base.height0);
 
-         ps5_flush_gpu_data(
-            texture->data,
-            tiled_depth_target ||
-            texture->base.target == PIPE_TEXTURE_2D_ARRAY
-               ? texture->allocation_size : tiled_size);
+         if (tiled_render_target && !multisampled &&
+             texture->base.target == PIPE_TEXTURE_2D)
+            ps5_flush_batch_backing(
+               slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
+               texture->data, tiled_size);
+         else
+            ps5_flush_gpu_data(
+               texture->data,
+               tiled_depth_target ||
+               texture->base.target == PIPE_TEXTURE_2D_ARRAY
+                  ? texture->allocation_size : tiled_size);
       } else {
          /* Eligible batches retain read-only linear fragment textures. Any CPU
           * texture access drains the batch, invalidating this flush cache. */
@@ -7611,8 +7630,8 @@ ps5_multidraw_eligible(const struct ps5_context *context,
       const struct pipe_sampler_view *view = context->sampler_views[1][unit];
       const struct ps5_resource *texture = view
          ? (const struct ps5_resource *)view->texture : NULL;
-      /* Read-only linear color data needs no per-draw CPU staging. The optional
-       * render staging lives in the same retained allocation but is not used. */
+      /* Read-only color data needs no per-draw CPU staging. Linear and native
+       * tiled RGBA8 backings are retained until the batch has retired. */
       if (!texture || !texture->data || !texture->size ||
           texture == target || texture == depth ||
           texture->base.target != PIPE_TEXTURE_2D || view->target != PIPE_TEXTURE_2D ||
@@ -7620,7 +7639,9 @@ ps5_multidraw_eligible(const struct ps5_context *context,
           view->format != texture->base.format ||
           texture->base.nr_samples > 1 || texture->base.nr_storage_samples > 1 ||
           texture->base.last_level || (texture->base.bind & PIPE_BIND_DISPLAY_TARGET) ||
-          texture->depth_staging_size || !ps5_linear_sampled_layout(&texture->base) ||
+          texture->depth_staging_size ||
+          (!ps5_linear_sampled_layout(&texture->base) &&
+           !(texture->base.bind & PIPE_BIND_RENDER_TARGET)) ||
           view->u.tex.first_level || view->u.tex.last_level ||
           view->u.tex.first_layer || view->u.tex.last_layer)
          return false;
