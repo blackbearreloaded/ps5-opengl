@@ -123,7 +123,7 @@ own evidence; do not publish or relabel the preserved G13 or independent archive
 
 - 2026-09-08 | G20 distribution | source companion `fdf3696`, unchanged G19 SDK; 24 mip cycles + 18 format checks audited, full host tests pass, 120/120 extracted file checks and Make/pkg-config/CMake consumers pass with original checkout forbidden | `.local/g20-{package,host,extracted-*}.log`; no console access or publication.
 
-Current local archive: `build/bundles/g19-targeted-20260908/ps5-opengl-sdk-0.1.0-perf20260908-targeted.tar.gz`,
+Preserved targeted archive: `build/bundles/g19-targeted-20260908/ps5-opengl-sdk-0.1.0-perf20260908-targeted.tar.gz`,
 239,313,840 bytes, SHA-256 `382d88ad2097a1b7ba2eaf0a74dc6d313e3d5a7016941fb81f5a68fadd553f2a`.
 The source companion contains both fixes and the exact accepted batch sources;
 its preparation-time documentation precedes this verification note. Hardware
@@ -137,3 +137,10 @@ or a new performance measurement. The archive includes no raw logs or PPSA77800 
 G21–G23 automated acceptance is closed. The remaining qualifications are the
 explicit physical-control, HDMI, multi-hour/recovery and cross-firmware items
 above, not unexecuted gates in this bounded campaign. Publication remains separate.
+
+- 2026-09-08 | Final local distribution | source companion `9492484`, unchanged G19 SDK and fresh 204/204 sample; full host checks, 119/119 extracted checksums, 37 SDK entries, 344 exports and all three relocated consumers pass with original checkout forbidden | `.local/g21-{final-host,package,extracted-*}.log`; no rebuild or publication.
+
+Latest local archive: `build/bundles/g19-sampled-20260908/ps5-opengl-sdk-0.1.0-perf20260908-g19-sampled.tar.gz`,
+239,335,442 bytes, SHA-256 `22c5430489887c6478ff55a46db8f2e2352bb3a52342dfd0187caca871338440`.
+Its source companion contains the completed G21–G23 results; this final archive
+verification note is necessarily recorded after packaging. Older archives stay intact.
