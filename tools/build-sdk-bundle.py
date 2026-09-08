@@ -51,6 +51,7 @@ SAMPLES = {
         sdk="749057e84def5ead284614db5d81a0a7e9c037f474afd95cd88ebceea5d65cda",
         archive="5b6129538328ab8b950dfbdb2f1395774b4a91e7d4030d1acafbabe043829d9e",
         candidate="ff6759b193b5bb9138a72e53214e112c2ddc68aca6338ca3b476c8172ee9bd15",
+        sdl_receipt="d5f06b106f9d2de1613113773e1aaa01d30ac38769a4158c8916d72e175a8af7",
         guide="sdk-bundle-g25.md",
         native_paths=["native-app/agc_link_stub.c", "native-app/agc_driver_link_stub.c"]),
 }
@@ -279,6 +280,8 @@ def main():
                 (args.ci_version, args.sample_version, args.targeted_version)) <= 1,
             "CI, sampled and targeted release modes are mutually exclusive")
     profile = TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
+    if not args.ci_version and profile.get("sdl_receipt"):
+        require(args.sdl_build is not None, "this frozen release requires its accepted SDL build")
     repo = Path(__file__).resolve().parents[1]
     sdk, output = args.sdk.resolve(), args.destination.resolve()
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_commit), "use a full source commit")
@@ -295,6 +298,8 @@ def main():
     runtime_hash = digest(sdk / "lib/libps5_opengl_core33.a")
     if args.sdl_build is not None:
         sdl = verify_sdl(native, sdk, sdk_hash, runtime_hash)
+        if not args.ci_version and profile.get("sdl_receipt"):
+            require(sdl[1] == profile["sdl_receipt"], "SDL differs from the frozen release receipt")
     if args.ci_version is not None:
         require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+-]{0,95}", args.ci_version),
                 "unsafe CI version")

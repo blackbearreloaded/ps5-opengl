@@ -10,8 +10,9 @@ Later source changes have [focused performance/regression evidence](performance.
 not a rerun of that complete campaign. Keep the frozen baseline and current source
 distinct when reporting compatibility.
 
-- **Integration:** fullscreen EGL/static SDK; the local [SDL2 bridge](../integration/SDL2/README.md)
-  passed 180 native frames and two pixel checks using frozen G19. It supports one
+- **Integration:** fullscreen EGL/static SDK; the [SDL2 bridge](../integration/SDL2/README.md)
+  passed 180 native frames and two pixel checks with the distributed G25 pair
+  ([exact scope](sdk-bundle-g25.md)), separately from its older G19 run. It supports one
   fixed 1080p Core 3.3 window/context and SDL's existing event/joystick path, not a
   complete SDL platform port or verified physical input. GLX/WGL, GLFW, a desktop
   installation model and compatibility-profile guarantees remain absent.
@@ -49,6 +50,9 @@ distinct when reporting compatibility.
   a [seven-case format/mip/layer batch](performance.md#broader-format-and-subresource-coverage-g25-local).
   Its copy-heavy sRGB throughput remains ~20 composite cycles/s: no measured
   speedup is claimed. Other staging paths and broader optimization remain.
+  The consolidated G25 SDK has its own 204-execution sample, ~59.94-FPS matched
+  offscreen/3D profiles, ten-minute tracked-memory soak and three EGL sessions;
+  these bounded checks do not establish exhaustive stability or game compatibility.
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.

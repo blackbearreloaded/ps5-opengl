@@ -156,6 +156,20 @@ class SDLBundleTests(unittest.TestCase):
         self.assertEqual(provenance["mode"], "native")
         self.assertIn("no SDL hardware", provenance["validation"])
 
+    def test_named_g25_sdl_release_cannot_omit_or_substitute_sdl(self):
+        version = "0.1.0-perf20260908-g25-sdl2-sampled"
+        destination = self.root / "frozen-g25"
+        with mock.patch("sys.argv", self.argv(destination, sdl=False) + ["--sample-version", version]):
+            with self.assertRaisesRegex(ValueError, "requires its accepted SDL build"):
+                BUNDLE.main()
+        with mock.patch("sys.argv", self.argv(destination) + ["--sample-version", version]), \
+                mock.patch.object(BUNDLE.CHECK, "verify_manifest", return_value={"sha256": "a" * 64}), \
+                mock.patch.object(BUNDLE, "digest", return_value="b" * 64), \
+                mock.patch.object(BUNDLE, "verify_sdl", return_value=({}, "changed", {})):
+            with self.assertRaisesRegex(ValueError, "SDL differs from the frozen release receipt"):
+                BUNDLE.main()
+        self.assertFalse(destination.exists())
+
     def test_tampering_between_verification_and_copy_is_rejected(self):
         checked = self.checked()
         for index, name in enumerate([
