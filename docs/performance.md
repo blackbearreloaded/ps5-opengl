@@ -1,20 +1,24 @@
 # Performance
 
-Latest focused offscreen result: four-pixel color staging (`891dab7`) improves
-the matched 1080p ImGui FBO workload from **14.10 to 19.98 FPS**. Both 30-second
-runs pass pixel/completion and lifecycle checks; see the
-[offscreen and stability gates](offscreen-stability.md). CPU transfers remain,
-and this candidate is not a new full-validation or published SDK result.
+Latest focused offscreen result (September 8): G13 native storage reuse for
+single-mip 2D RGBA8 images (`16e651b`) improves the matched 1080p ImGui FBO
+workload from **19.98 to 59.95 FPS**. Both 30-second runs pass pixels, completion
+and lifecycle checks; render p95 is **17.20 ms**, not perfect 60 FPS pacing.
+Other formats, mips and layers retain staging. The frozen local 1080p60 SDK has
+204/204 sampled Pass results and a ten-minute tracked-memory soak; see the
+[offscreen and stability gates](offscreen-stability.md) and
+[local bundle scope](sdk-bundle-g13.md). It is local only; no new full CTS campaign was run.
 
 The September 7 baseline completes the [frozen Core 3.3 validation campaign](validation.md).
 Correctness coverage does not imply desktop-driver performance or predictable game FPS.
 
-The later opt-in candidate `610e6a3` averages **119.88 FPS at 1080p, 1440p and 4K**
+The earlier opt-in candidate `610e6a3` averages **119.88 FPS at 1080p, 1440p and 4K**
 in the original windowed ImGui scene, over 30 measured seconds per size.
 See [G5d results and limits](#g5d-verified-high-resolution-120-fps-candidate) and
 [build instructions](../examples/core33-imgui/README.md#high-refresh-window-benchmark-opt-in).
-These source changes have focused regressions, not a new full CTS campaign or
-versioned binary SDK release. The measurements below retain their original candidates.
+These render-throughput measurements do not qualify the 1080p60 SDK bundles or
+establish 4K120 HDMI output. The September 7 milestones below retain their original
+candidates and decisions; later acceptance does not rewrite those receipts.
 
 ## Frozen validation-baseline measurements
 
@@ -43,6 +47,8 @@ cube's 180 frames and 2,596 checks with a live 8.3 MB heap readback allocation.
 
 ## Release defaults
 
+These defaults describe the September 7 full-campaign SDK.
+
 - Eligible ordinary and multi-draw work is grouped into bounded batches of up
   to eight draws. Private descriptors, retained resources and explicit drain
   boundaries preserve ordering. Ineligible state remains synchronous.
@@ -63,7 +69,7 @@ PS5_DEFERRED_DRAW_BATCH=0 PS5_MULTIDRAW_BATCH=0 make sdk
 Configuration changes invalidate the affected runtime objects automatically.
 Do not rebuild a frozen SDK during its hardware campaign.
 
-## Remaining performance work
+## September 7 performance development (historical)
 
 Clear and presentation waits still dominate the small examples. Broader
 submission coalescing, transfer/format acceleration and real-application profiling
@@ -521,7 +527,7 @@ correctness checks; do not use its results as the windowed control or rerun its
 full matrix before the slow path improves. Textured 3D and heavier workloads
 also remain unmeasured, separate follow-ups.
 
-## OpenGL-only follow-up order
+## September 7 OpenGL-only follow-up order (historical)
 
 G6 starts with full-port shutdown: retain bounded GPU/flip retirement and output
 restoration, then close the owned VideoOut handle without first unregistering

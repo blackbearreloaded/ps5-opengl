@@ -1,6 +1,7 @@
 # Tasks 3/4 benchmark handoff
 
-2026-09-07 | host/target-link checks pass | native measurements pending
+Historical handoff, 2026-09-07 | host/target-link checks passed; native measurements were pending.
+The profile was subsequently integrated and measured; see the [G7 results](performance.md#g7-mixed-clear-3d-result).
 
 Base: `ee9a5b93f873a08d66eca82ace0e580a09ccb2f9`. Work is isolated in
 `workspace/dev/ps5-opengl-benchmarks`, branch `task34-benchmarks`. The runtime

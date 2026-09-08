@@ -30,15 +30,18 @@ These fresh binaries are **host-checked, not console-validated**; see
 [downloads and release procedure](docs/ci-releases.md). The older prerelease above
 is not rebuilt or replaced.
 
-**Latest performance:** the opt-in windowed ImGui benchmark averages **119.88 FPS
-at 1080p, 1440p and 4K**, measured for 30 seconds per size. See the
+**Earlier high-refresh benchmark (September 7):** the opt-in windowed ImGui
+benchmark averages **119.88 FPS at 1080p, 1440p and 4K**, measured for 30 seconds
+per size. See the
 [results and limits](docs/performance.md#g5d-verified-high-resolution-120-fps-candidate)
 and [benchmark build instructions](examples/core33-imgui/README.md#high-refresh-window-benchmark-opt-in).
-This is small-scene throughput, not a guarantee of game FPS or perfect frame pacing.
+These are render sizes, not verified HDMI modes. This is small-scene throughput,
+not a guarantee of game FPS or perfect frame pacing.
 
 **Latest local candidate (September 8, not published):** the matched 1080p
-offscreen workload improved from 19.98 to **59.95 FPS**. Its ten-minute soak
-and **204/204 focused conformance executions** passed, with no steady tracked
+single-mip 2D RGBA8 offscreen workload improved from 19.98 to **59.95 FPS**
+(p95 17.20 ms). Its ten-minute soak and **204/204 focused conformance executions**
+passed, with no steady tracked
 heap/GPU-memory growth. These results belong to the frozen G13 SDK, not the older
 download above. See [offscreen and stability findings](docs/offscreen-stability.md)
 and the [local sampled bundle](docs/sdk-bundle-g13.md). Manual 4K-app startup/input
@@ -144,7 +147,7 @@ integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
 | [Validation report](docs/validation.md) | Exact results, identity and exceptions |
 | [Limitations](docs/limitations.md) | Compatibility, performance and hardware scope |
 | [Performance](docs/performance.md) | Measured bottlenecks, GPU acceleration candidates and validation boundaries |
-| [Offscreen and stability](docs/offscreen-stability.md) | Later copy optimization, ten-minute soak and five launch/exit checks |
+| [Offscreen and stability](docs/offscreen-stability.md) | G13 native storage, bounded G15/G16 memory checks and historical G9/G10 results |
 | [Contributing](CONTRIBUTING.md) | Changes, regression selection and reporting |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Upstream projects, licenses and source pins |
 

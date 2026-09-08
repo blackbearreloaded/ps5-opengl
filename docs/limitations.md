@@ -2,7 +2,7 @@
 
 The September 7 Core 3.3 campaign and final SDK consumer checks are complete
 within their [documented scope](validation.md). This is not proof of universal
-compatibility or production-grade stability. The updated runtime includes the
+compatibility or production-grade stability. That frozen runtime includes the
 instancing, constant-attribute, PrimitiveID/geometry, memory-ownership and batching
 fixes; its acceptance is a fresh complete matrix, not inherited baseline results.
 The [development history](performance-history.md) preserves the earlier failures.
@@ -14,7 +14,7 @@ distinct when reporting compatibility.
   desktop installation model or compatibility-profile guarantee.
 - **Performance:** some transfers, formats, clears and other operations retain CPU
   fallbacks. Eligible draw batching is enabled by default; other paths remain
-  synchronous. The final 1080p ImGui demo sustained ~20 FPS for five minutes;
+  synchronous. The frozen-baseline 1080p ImGui demo sustained ~20 FPS for five minutes;
   thirty FPS is only its cap. Clear/presentation waits and broader workload
   optimization remain. These measurements do not predict full-game FPS.
   See [Performance](performance.md).
@@ -43,13 +43,13 @@ distinct when reporting compatibility.
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.
   Host navigation checks passed.
-- **Lifecycle:** renderer runs report VideoOut unregister `80290009` (busy), then
+- **Lifecycle:** frozen-baseline renderer runs report VideoOut unregister `80290009` (busy), then
   successful close, EGL cleanup and runtime-layer release. A targeted development
   check passed three full EGL/ImGui sessions in one process; final renderer and
   five-minute demo teardown also passed. The warning remains.
   The later G6 candidate closes the whole port without the redundant unregister:
-  three native EGL sessions and the 4K120 check pass with no busy warning and
-  successful close/restoration. This is bounded full-port teardown evidence,
+  three native EGL sessions and a check rendering 4K at ~120 FPS pass without
+  busy warnings, with successful close/restoration. This is bounded full-port teardown evidence,
   not unregister-while-open support or device-loss recovery.
   Its five-minute 1080p60 endurance run also passed 17,970 frames and 11 pixel
   checks with successful close and healthy native teardown.
@@ -61,8 +61,12 @@ distinct when reporting compatibility.
   allocations/mappings: three sessions return tracked bytes/counts to zero, and
   a ten-minute G13 soak has no steady heap/GPU growth. Foreign/module-internal
   allocations and process RSS remain unmeasured; diagnostic builds do not
-  establish performance. These results do not explain the local 4K demo's
-  earlier intermittent unsupported-refresh result or replace manual cold launch.
+  establish performance or replace fresh physical-control acceptance. The owner
+  reports that the local 4K app's earlier unsupported-refresh result occurred
+  with a capture card and TV-only launches always worked. Its three successful
+  receipts show 4K rendering at ~120 FPS but HDMI `1080P_11988`, then restoration
+  to `3840_2160P_5994`; they establish neither 4K120 HDMI nor a new timing defect.
+  That unshipped app uses an older G6 SDK; see [its separate scope](sdk-bundle-g13.md).
 - **Stress:** maximum-axis framebuffers were tested, not an 8192x8192 allocation
   or deliberate hardware OOM exhaustion. Ten-minute runs and bounded recreation
   are tested, not exhaustive long sessions, suspend/resume or device-loss recovery.

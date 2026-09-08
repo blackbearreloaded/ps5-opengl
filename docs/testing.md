@@ -90,11 +90,15 @@ feedback across small, non-square, tall and wide targets.
 
 Accept this sampled gate only when every selected case is Pass, all four actual
 render-target reports match, and all cycles have clean teardown/health/unlock.
-Keep the current candidate's host lifetime/hazard checks, native 512-object batch
+For G7/G8, retain their host lifetime/hazard checks, native 512-object batch
 boundary, 128-cube ordinary/instanced pixel checks, SDK links, Sokol renderer and
 repeated EGL-session results alongside CTS; the 51 cases alone do not exercise
 every optimized presentation path. Already verified frozen artifacts need not
 be rebuilt or rerun without an affected change.
+
+The later frozen G13 SDK has its own 204/204 sample and G15/G16 memory,
+ten-minute soak, texture-copy and layered-mip evidence; see the
+[enhancement gates](enhancement-plan.md). Keep those identities separate from G7/G8.
 
 Run one bounded batch per configuration, reuse remotely verified binaries/data,
 upload only changed selection files and stop observation at completion. No routine
