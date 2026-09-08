@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Offline SDL distribution checks; optionally compile/link relocated real consumers."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 import io
 import json
@@ -11,6 +12,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import sys
 import tarfile
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -19,6 +21,10 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("sdl_build", ROOT / "integration/SDL2/build.py")
 BUILD = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(BUILD)
+spec = importlib.util.spec_from_file_location("sdl_folder", BUILD.HERE / "folder.py")
+FOLDER = importlib.util.module_from_spec(spec)
+with patch.dict(sys.modules, {"build": BUILD}):
+    spec.loader.exec_module(FOLDER)
 
 
 def write(path, data):
@@ -29,7 +35,8 @@ def write(path, data):
 def manifest(root):
     write(root / "manifest.sha256", "".join(
         f"{BUILD.digest(p)}  {p.relative_to(root).as_posix()}\n"
-        for p in sorted(root.rglob("*")) if p.is_file() and p.name != "manifest.sha256"))
+        for p in sorted(root.rglob("*"), key=lambda p: p.as_posix())
+        if p.is_file() and p.name != "manifest.sha256"))
 
 
 def source_tar(path, revision=BUILD.SDL_REV, extra=None):
@@ -44,7 +51,14 @@ def source_tar(path, revision=BUILD.SDL_REV, extra=None):
             tar.addfile(member)
 
 
-def fixture(root):
+def profile_header(root, width, height, fps):
+    write(root / "include/ps5_opengl_display.h", "// Host format fixture; not a native SDK.\n#pragma once\n" +
+          "".join(f"#define PS5_OPENGL_NATIVE_{name} {value}\n"
+                  for name, value in (("WIDTH", width), ("HEIGHT", height), ("FPS", fps))))
+    manifest(root)
+
+
+def fixture(root, profile=None):
     """Small format fixtures, never executable SDL/GL or claimed native evidence."""
     gl, native = root / "gl", root / "native"
     for name in ("ps5_opengl_core33", "glapi_bridge", "psbc.ps5", "mesa", "mesa_sse41",
@@ -59,6 +73,8 @@ def fixture(root):
         write(gl / name, "fixture\n")
     write(gl / "lib/libPS5OpenGLCore33.a", "GROUP ( libglapi.a )\n")
     manifest(gl)
+    if profile:
+        profile_header(gl, *profile)
     native.mkdir()
     source_tar(native / "sdl-source.tar")
     shutil.copytree(BUILD.HERE, native / "integration", ignore=shutil.ignore_patterns("__pycache__"))
@@ -128,6 +144,11 @@ def negative_checks():
         "rewritten source and receipt": lambda g, n: (source_tar(n / "sdl-source.tar", extra=("extra", tarfile.REGTYPE)), edit_receipt(n, lambda r: r.update(sdl_source_tar_sha256=BUILD.digest(n / "sdl-source.tar")))),
         "integration bytes": lambda g, n: append(n / "integration/build.py", "# changed\n"),
         "integration extra": lambda g, n: write(n / "integration/extra", "bad"),
+        "integration profile header": lambda g, n: append(n / "integration/ps5g19_display.h", "#error changed\n"),
+        "wrong display receipt": lambda g, n: edit_receipt(n, lambda r: r.update(display_profile=dict(width=2560, height=1440, fps=120))),
+        "unlisted display header": lambda g, n: write(g / "include/ps5_opengl_display.h", "bad\n"),
+        "rehashed invalid display header": lambda g, n: profile_header(g, 1920, 1440, 120),
+        "rehashed different profile": lambda g, n: profile_header(g, 2560, 1440, 120),
         "receipt tool": lambda g, n: edit_receipt(n, lambda r: r.update(receipt_tool_sha256="0" * 64)),
         "GL directory symlink": lambda g, n: (g / "alias").symlink_to(g / "lib", target_is_directory=True),
         "payload directory symlink": lambda g, n: ((n / "sdk/include").rename(n / "original-include"), (n / "sdk/include").symlink_to(n / "original-include", target_is_directory=True)),
@@ -189,6 +210,104 @@ def negative_checks():
                 raise AssertionError("Accepted special SDK archive")
             checker.assert_not_called()
     print(f"PASS: valid fixture, {len(cases)} integrity/path mutations, {len(tar_cases)} unsafe tar cases, nonregular-node preflight")
+
+
+def profile_checks():
+    with TemporaryDirectory(prefix="sdl-profile-check-") as temporary:
+        temporary = Path(temporary)
+        for index, profile in enumerate([None] + [(w, h, f) for w, h in
+                ((1920, 1080), (2560, 1440), (3840, 2160)) for f in (60, 120)]):
+            root = temporary / str(index)
+            root.mkdir()
+            gl, native = fixture(root, profile)
+            width, height, fps = profile or (1920, 1080, 60)
+            selected = dict(width=width, height=height, fps=fps)
+            identity = BUILD.verify_sdk(gl)
+            assert set(identity) == {"sdk_manifest_sha256", "sdk_files", "sdk_runtime_sha256"}
+            assert BUILD.SDK_CHECKER.display_profile(gl) == selected
+            receipt = json.loads((native / "receipt.json").read_text())
+            assert receipt["display_profile"] == selected
+            assert "ps5g19_display.h" in receipt["integration_inputs"]
+            param = FOLDER.folder_parameters(selected)
+            baseline = json.loads((ROOT / "native-app/param.json").read_text())
+            language = baseline["localizedParameters"]["defaultLanguage"]
+            baseline["localizedParameters"][language]["titleName"] = "SDL2 public SDK local candidate"
+            if fps > 60:
+                baseline["attribute3"] = 0x80040
+            assert param == baseline
+            code = '#include "ps5g19_display.h"\n' + "".join(
+                f'_Static_assert(PS5_OPENGL_NATIVE_{name.upper()} == {value}, "{name}");\n'
+                for name, value in selected.items())
+            subprocess.run(["cc", "-std=c11", "-Werror", "-fsyntax-only", "-x", "c", "-",
+                            "-I", str(BUILD.HERE), "-I", str(gl / "include")],
+                           input=code, text=True, check=True)
+            with patch.object(BUILD, "SDL_SOURCE_SHA256", BUILD.digest(native / "sdl-source.tar")):
+                # Exercise the exact old schema/file-set without rewriting frozen builds.
+                def old_receipt(r):
+                    r.pop("display_profile")
+                    r["integration_inputs"].pop("ps5g19_display.h")
+                (native / "integration/ps5g19_display.h").unlink()
+                edit_receipt(native, old_receipt)
+                reseal_payload(native, lambda s, r: old_receipt(r))
+                if profile is None:
+                    BUILD.verify_native_build(native, gl)
+                else:
+                    try:
+                        BUILD.verify_native_build(native, gl)
+                    except ValueError as error:
+                        assert "display profile mismatch" in str(error)
+                    else:
+                        raise AssertionError("Profile SDK accepted an old unprofiled receipt")
+        for width, height, fps in ((1920, 1440, 120), (2560, 1080, 60), (3840, 2160, 90)):
+            profile_header(gl, width, height, fps)
+            try:
+                BUILD.verify_sdk(gl)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Accepted invalid manifest-covered profile")
+            result = subprocess.run(["cc", "-fsyntax-only", "-x", "c", "-", "-I", str(BUILD.HERE),
+                                     "-I", str(gl / "include")], input='#include "ps5g19_display.h"\n',
+                                    text=True, capture_output=True)
+            assert result.returncode and "Unsupported PS5 OpenGL display profile" in result.stderr
+    print("PASS: legacy receipt, six profiles, compiled constants, HFR parameters, invalid profiles")
+
+
+def host_matrix(source, sdk, out):
+    """Real SDL + sanitizers; copied profile fixtures never claim native runtime modes."""
+    identity = BUILD.verify_sdk(sdk)
+    if (out.exists() or out == ROOT / "build" or not out.is_relative_to(ROOT / "build")
+            or any(out.is_relative_to(p) or p.is_relative_to(out) for p in (source, sdk))):
+        raise ValueError("Host output must be a new directory below this clone's build/, outside inputs")
+    out.mkdir(parents=True)
+
+    def build_profile(profile):
+        width, height, fps = profile
+        name = f"{height}p{fps}"
+        copied = out / (name + "-host-fixture-sdk")
+        shutil.copytree(sdk, copied)
+        if height == 1080:
+            (copied / "include/ps5_opengl_display.h").unlink(missing_ok=True)
+            manifest(copied)  # Exercise the explicit old-SDK fallback.
+        else:
+            profile_header(copied, width, height, fps)
+        stage = out / name
+        log = out / (name + ".log")
+        with log.open("w") as stream:
+            result = subprocess.run([sys.executable, str(BUILD.HERE / "build.py"), "host",
+                "--sdl-source", str(source), "--sdk-prefix", str(copied), "--out", str(stage)],
+                stdout=stream, stderr=subprocess.STDOUT)
+        assert result.returncode == 0, f"Host build failed: {log}"
+        contract = (stage / "cmake/Testing/Temporary/LastTest.log").read_text()
+        assert f"drawable={width}x{height} nominal_refresh={fps}Hz (not negotiated HDMI)" in contract
+        assert "frames=180 probes=2 status=0" in contract
+        receipt = json.loads((stage / "receipt.json").read_text())
+        assert receipt["mode"] == "host" and receipt["hardware_run"] is False
+        assert receipt["display_profile"] == dict(width=width, height=height, fps=fps)
+        print(f"PASS: real SDL + ASan/UBSan {name} (copied host fixture): {log}", flush=True)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(build_profile, ((1920, 1080, 60), (2560, 1440, 120), (3840, 2160, 120))))
+    assert BUILD.verify_sdk(sdk) == identity
 
 
 def consumers(native, gl, payload, out):
@@ -255,13 +374,20 @@ target_link_options(consumer PRIVATE -Wl,--gc-sections -Wl,--trace)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("native-build", "sdk-prefix", "payload-sdk", "out"):
+    for name in ("native-build", "sdk-prefix", "payload-sdk", "out",
+                 "sdl-source", "host-sdk-prefix", "host-out"):
         parser.add_argument("--" + name, type=Path)
     args = parser.parse_args()
     values = (args.native_build, args.sdk_prefix, args.payload_sdk, args.out)
     if any(values) and not all(values):
         parser.error("real consumer checks require --native-build, --sdk-prefix, --payload-sdk, --out")
+    host_values = (args.sdl_source, args.host_sdk_prefix, args.host_out)
+    if any(host_values) and not all(host_values):
+        parser.error("host matrix requires --sdl-source, --host-sdk-prefix, --host-out")
     (ROOT / "build").mkdir(exist_ok=True)
     negative_checks()
+    profile_checks()
+    if all(host_values):
+        host_matrix(*(path.resolve() for path in host_values))
     if all(values):
         consumers(*(path.resolve() for path in values))

@@ -8,8 +8,9 @@
 #include "events/SDL_keyboard_c.h"
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include "ps5g19_display.h"
 
-/* ponytail: one 1080p window/context on the video thread; extend only with a
+/* ponytail: one fixed-profile window/context on the video thread; extend only with a
  * separately validated EGL ownership contract. No private presentation API. */
 typedef struct {
     EGLDisplay display;
@@ -36,7 +37,8 @@ static int video_init(_THIS)
 {
     G19 *g = _this->driverdata;
     int index;
-    SDL_DisplayMode mode = { SDL_PIXELFORMAT_ABGR8888, 1920, 1080, 60, NULL };
+    SDL_DisplayMode mode = { SDL_PIXELFORMAT_ABGR8888, PS5_OPENGL_NATIVE_WIDTH,
+                            PS5_OPENGL_NATIVE_HEIGHT, PS5_OPENGL_NATIVE_FPS, NULL };
     g->thread = SDL_ThreadID();
     g->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (g->display == EGL_NO_DISPLAY) return egl_error("eglGetDisplay");
@@ -82,9 +84,11 @@ static int create_window(_THIS, SDL_Window *window)
         EGL_STENCIL_SIZE, _this->gl_config.stencil_size, EGL_NONE
     };
     if (on_thread(g) < 0) return -1;
-    if (g->window || g->surface || window->w != 1920 || window->h != 1080 ||
+    if (g->window || g->surface || window->w != PS5_OPENGL_NATIVE_WIDTH ||
+        window->h != PS5_OPENGL_NATIVE_HEIGHT ||
         !(window->flags & SDL_WINDOW_OPENGL) || (window->flags & SDL_WINDOW_RESIZABLE))
-        return SDL_SetError("G19 requires one fixed 1920x1080 OpenGL window");
+        return SDL_SetError("G19 requires one fixed %dx%d OpenGL window",
+                            PS5_OPENGL_NATIVE_WIDTH, PS5_OPENGL_NATIVE_HEIGHT);
     if (_this->gl_config.stereo || _this->gl_config.multisamplebuffers ||
         _this->gl_config.multisamplesamples || _this->gl_config.floatbuffers ||
         _this->gl_config.framebuffer_srgb_capable || _this->gl_config.accum_red_size ||
@@ -103,7 +107,8 @@ static int create_window(_THIS, SDL_Window *window)
         !eglQuerySurface(g->display, g->surface, EGL_HEIGHT, &height))
         return egl_error("eglQuerySurface");
     if (width != window->w || height != window->h)
-        return SDL_SetError("G19 EGL drawable does not match the requested 1920x1080 window");
+        return SDL_SetError("G19 EGL drawable %dx%d does not match the requested %dx%d window",
+                            width, height, window->w, window->h);
     g->interval = 1;
     SDL_SetKeyboardFocus(window); /* SDL also uses focus to gate joystick events. */
     return 0;
@@ -210,8 +215,8 @@ static void destroy_window(_THIS, SDL_Window *window)
 static void set_window_size(_THIS, SDL_Window *window)
 {
     (void)_this;
-    window->w = window->windowed.w = 1920;
-    window->h = window->windowed.h = 1080;
+    window->w = window->windowed.w = PS5_OPENGL_NATIVE_WIDTH;
+    window->h = window->windowed.h = PS5_OPENGL_NATIVE_HEIGHT;
     SDL_SetError("G19 SDL does not support resizing");
 }
 

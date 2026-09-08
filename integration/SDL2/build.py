@@ -37,7 +37,8 @@ PAYLOAD_REQUIRED = {
     "share/licenses/SDL2-PS5/LICENSE", "share/SDL2/README.md",
 }
 INTEGRATION_REQUIRED = {"build.py", "folder.py", "CMakeLists.txt", "README.md", "sdl2.pc.in",
-                        "static-ps5.patch", "SDL_ps5g19.c", "example.c", "test_contract.c"}
+                        "static-ps5.patch", "SDL_ps5g19.c", "example.c", "test_contract.c",
+                        "ps5g19_display.h"}
 
 
 def run(*args, **kwargs):
@@ -55,6 +56,7 @@ def verify_sdk(prefix):
         if not path.is_file() and not path.is_dir():
             raise ValueError(f"Special file in SDK: {path}")
     checked = SDK_CHECKER.verify_manifest(prefix)
+    SDK_CHECKER.display_profile(prefix)
     required = {
         "include/EGL/egl.h", "include/EGL/eglext.h", "include/EGL/eglplatform.h",
         "include/GL/glcorearb.h", "include/KHR/khrplatform.h",
@@ -119,6 +121,11 @@ def verify_native_build(native, prefix):
         raise ValueError("Requires an offline native SDL build receipt")
     if any(receipt.get(key) != value for key, value in verify_sdk(prefix).items()):
         raise ValueError("Receipt-to-SDK identity mismatch")
+    profile = SDK_CHECKER.display_profile(prefix)
+    if (receipt.get("display_profile", dict(width=1920, height=1080, fps=60)) != profile
+            or ("display_profile" not in receipt and
+                (prefix / "include/ps5_opengl_display.h").exists())):
+        raise ValueError("Receipt-to-SDK display profile mismatch")
     if digest(native / "sdl-source.tar") != receipt.get("sdl_source_tar_sha256") or \
             receipt.get("sdl_source_tar_sha256") != SDL_SOURCE_SHA256:
         raise ValueError("SDL source tar identity mismatch")
@@ -136,7 +143,10 @@ def verify_native_build(native, prefix):
         if not license_file.isfile() or license_file.size > 65536:
             raise ValueError("Invalid SDL source license")
         source_license = tar.extractfile(license_file).read()
-    verify_files(native / "integration", receipt.get("integration_inputs"), INTEGRATION_REQUIRED,
+    # Pre-profile 1080p60 receipts retain their original integration file set.
+    required = INTEGRATION_REQUIRED if "display_profile" in receipt else \
+        INTEGRATION_REQUIRED - {"ps5g19_display.h"}
+    verify_files(native / "integration", receipt.get("integration_inputs"), required,
                  complete=True)
     if receipt.get("receipt_tool_sha256") != receipt["integration_inputs"]["build.py"]:
         raise ValueError("Receipt tool differs from integration snapshot")
@@ -182,6 +192,7 @@ def record_receipt(out, mode, prefix, sdk_identity):
         "schema_version": 1, "mode": mode, "hardware_run": False, "sdl_commit": SDL_REV,
         "sdl_source_tar_sha256": digest(out / "sdl-source.tar"),
         **sdk_identity,
+        "display_profile": SDK_CHECKER.display_profile(prefix),
         "integration_inputs": {p.name: digest(p) for p in sorted(lane.iterdir()) if p.is_file()},
         "artifacts": {str(p.relative_to(out)): digest(p) for p in artifacts},
         "receipt_tool_sha256": digest(lane / "build.py"),

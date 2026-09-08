@@ -64,6 +64,10 @@ python3 integration/SDL2/folder.py --native-build build/native-build \
   --template "$template" --sdk-prefix "$sdk" --out build/sdl-folder
 bash tools/verify-native-test-app.sh build/sdl-folder
 python3 tools/test_sdl_sdk.py
+
+# Three real-SDL sanitizer builds; profile SDK copies are host fixtures only.
+python3 tools/test_sdl_sdk.py --sdl-source "$sdl" \
+  --host-sdk-prefix "$sdk" --host-out build/host-mode-matrix
 ```
 
 No fetch, system install or supplied SDK rebuild is performed. `--g19-prefix`
@@ -72,6 +76,11 @@ The existing `tools/check-sdk-consumers.py` verifier checks the complete supplie
 GL manifest, canonical relative paths, symlinks and archive format; the SDL
 builder also requires the public headers, libraries and consumer metadata.
 Inputs are hash-checked before and after building; a changed identity fails.
+The manifest-covered `include/ps5_opengl_display.h` selects the fixed render and
+presentation profile: 1920x1080, 2560x1440 or 3840x2160, at nominal 60 or 120 Hz.
+This is not negotiated HDMI timing and introduces no runtime ABI. SDKs without
+that header explicitly retain legacy **1920x1080 at nominal 60 Hz**. Malformed
+or unsupported headers fail validation; a present header never falls back.
 `lib/libPS5OpenGLCore33.a` (capital letters) is the SDK's linker GROUP script,
 not the runtime archive. Use the whole verified SDK and its public linker flags.
 Each completed build writes source/input/output hashes in `receipt.json`.
@@ -93,6 +102,9 @@ hold for parent-controlled teardown; it is never installed or launched here.
 The assembler writes stage-root `selected-test.txt` as `egl_public_core33_sdl2.o`
 and runs the existing `tools/verify-native-test-app.sh`. Unchanged runtime shims
 supply `pss-opengl.log` and the gate-return marker for the shared native runner.
+The verified SDK profile sets `attribute3=0x80040` for nominal refresh above
+60 Hz; 60 Hz retains the ordinary template metadata. `candidate.json` records
+`display_profile` with `width`, `height` and `fps` from that same verified SDK.
 
 ## Installed payload and receipts (schema version 1)
 
@@ -119,6 +131,11 @@ Both receipts contain `schema_version: 1`, `mode`, `hardware_run: false`,
 `sdl_commit`, `sdl_source_tar_sha256`, `sdk_manifest_sha256`,
 `sdk_runtime_sha256`, `sdk_files`, `integration_inputs` (filename to SHA-256),
 `receipt_tool_sha256`, and `artifacts` (relative path to SHA-256).
+New receipts also contain `display_profile` (`width`, `height`, `fps`) and cover
+the integration's `ps5g19_display.h`. Existing schema-1 G25 receipts without
+those additions still verify against their matching legacy SDK; the SDK
+identity remains its original three fields. Profile-bearing SDKs require a
+matching profile in the SDL receipt.
 The outer receipt identifies the build archive and example object, and adds
 `payload_receipt_sha256` and `payload_manifest_sha256`. Installed `artifacts`
 cover every payload file except the installed receipt and manifest, avoiding
@@ -165,13 +182,19 @@ cross-compiling an object alone does not produce a runnable application.
 
 ## Supported boundary and tests
 
-One fixed 1920x1080 window, one unshared 3.3 Core context, default context flags,
+One fixed window at the selected SDK dimensions, one unshared 3.3 Core context, default context flags,
 RGBA8 double buffering, config-checked depth/stencil and interval 0 or 1.
 G19 always owns the physical scanout. SDL's requested interval is reported;
 this is not a new timing or swap-tearing guarantee. Window/context operations
 belong on the video thread. The example is bounded to 180 frames and also exits
 on quit, Escape events or joystick button input. It checks load/create/make/swap
 failures and releases its joystick, context, window and SDL subsystems.
+SDL advertises exactly the selected desktop/current/display mode. The driver
+rejects other window dimensions and any actual EGL drawable-size mismatch,
+including for legacy SDKs; attempted resize restores the selected size.
+The example checks `SDL_GetDesktopDisplayMode` and uses its dimensions, checks
+the drawable, and logs `nominal_refresh` explicitly as not negotiated HDMI.
+That refresh value is the profile target, not a measured application frame rate.
 At frames 0 and 179 it resolves/calls `glReadPixels` through
 `SDL_GL_GetProcAddress`, reading one center RGBA8 pixel before swapping. Expected
 values are `0,38,102,255` and `254,38,102,255`, with at most one byte of error
@@ -189,6 +212,13 @@ reinitialization, real SDL queue and virtual-joystick delivery, and the example.
 The example checks cover both probe coordinates/formats/frame numbers, a
 one-byte tolerance, two-byte mismatches at either frame, and early quit.
 It does not execute GPU rendering or physical input.
+The optional host matrix runs legacy 1080p60, 1440p120 and 2160p120 against
+separate SDK copies with regenerated manifests. These copies are explicitly
+host profile fixtures, not native SDKs: their runtime archives are unchanged
+and are not linked into the host contract. Every case checks advertised modes,
+window/drawable sizes, both center coordinates, mismatches, resize and cleanup.
+The lightweight distribution checks also compile all six profile constants,
+reject invalid profiles, check HFR metadata and preserve legacy receipt verification.
 
 Keyboard/IME hooks exist upstream but are omitted here (their dialog, service
 and presentation contract has not been qualified with G19). No mouse, audio,

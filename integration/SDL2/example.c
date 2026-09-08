@@ -9,6 +9,7 @@ int main(int argc, char **argv)
     SDL_Window *window = NULL;
     SDL_GLContext context = NULL;
     SDL_Joystick *pad = NULL;
+    SDL_DisplayMode mode;
     int status = 1, width, height, major = 0, minor = 0, running = 1;
     unsigned frames = 0, probes = 0;
     PFNGLGETINTEGERVPROC get_integer;
@@ -21,12 +22,16 @@ int main(int argc, char **argv)
     (void)argc; (void)argv;
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_TIMER) < 0) goto done;
+    if (SDL_GetDesktopDisplayMode(0, &mode) < 0) goto done;
+    if (mode.w <= 0 || mode.h <= 0 || mode.refresh_rate <= 0) {
+        SDL_SetError("Invalid desktop display mode"); goto done;
+    }
     if (SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3) < 0 ||
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3) < 0 ||
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE) < 0 ||
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1) < 0) goto done;
     window = SDL_CreateWindow("SDL2 / G19", SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED, 1920, 1080, SDL_WINDOW_OPENGL);
+        SDL_WINDOWPOS_UNDEFINED, mode.w, mode.h, SDL_WINDOW_OPENGL);
     if (!window) goto done;
     context = SDL_GL_CreateContext(window);
     if (!context || SDL_GL_MakeCurrent(window, context) < 0) goto done;
@@ -43,9 +48,13 @@ int main(int argc, char **argv)
         SDL_SetError("OpenGL 3.3 is required"); goto done;
     }
     SDL_GL_GetDrawableSize(window, &width, &height);
-    if (width <= 0 || height <= 0 || SDL_GL_SetSwapInterval(1) < 0) goto done;
+    if (width != mode.w || height != mode.h) {
+        SDL_SetError("Drawable does not match desktop display mode"); goto done;
+    }
+    if (SDL_GL_SetSwapInterval(1) < 0) goto done;
     viewport(0, 0, width, height);
-    printf("[sdl2-g19] GL=%s drawable=%dx%d\n", get_string(GL_VERSION), width, height);
+    printf("[sdl2-g19] GL=%s drawable=%dx%d nominal_refresh=%dHz (not negotiated HDMI)\n",
+        get_string(GL_VERSION), width, height, mode.refresh_rate);
     while (running && frames < 180) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {

@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-from build import ROOT, digest, run, verify_native_build
+from build import ROOT, SDK_CHECKER, digest, run, verify_native_build
 
 
 def replace_once(path, old, new):
@@ -18,6 +18,16 @@ def replace_once(path, old, new):
     if text.count(old) != 1:
         raise SystemExit(f"Native template contract changed: {path}: {old}")
     path.write_text(text.replace(old, new))
+
+
+def folder_parameters(profile):
+    """Called only after verifying the matching SDL build and SDK manifest."""
+    param = json.loads((ROOT / "native-app/param.json").read_text())
+    language = param["localizedParameters"]["defaultLanguage"]
+    param["localizedParameters"][language]["titleName"] = "SDL2 public SDK local candidate"
+    if profile["fps"] > 60:
+        param["attribute3"] = 0x80040
+    return param
 
 
 def main():
@@ -33,6 +43,7 @@ def main():
             or any(out.is_relative_to(p) or p.is_relative_to(out) for p in (native, template, prefix))):
         parser.error("--out must be a new directory in this clone's build/, outside inputs")
     receipt = verify_native_build(native, prefix)
+    profile = SDK_CHECKER.display_profile(prefix)
     run("sha256sum", "--check", "--strict", "libc.prx.sha256", cwd=template / "runtime")
     template_commit = run("git", "-c", f"safe.directory={template}", "-C", template,
                           "rev-parse", "HEAD", capture_output=True, text=True).stdout.strip()
@@ -48,10 +59,7 @@ def main():
     shutil.copy2(out / "tooling/native/ps5-pie.ld", out / "tooling/native/ps5-pie-base.ld")
     for name in ("ps5-pie.ld", "app-symbols.map"):
         shutil.copy2(ROOT / "native-app" / name, out / "tooling/native" / name)
-    shutil.copy2(ROOT / "native-app/param.json", out / "sce_sys/param.json")
-    param = json.loads((out / "sce_sys/param.json").read_text())
-    language = param["localizedParameters"]["defaultLanguage"]
-    param["localizedParameters"][language]["titleName"] = "SDL2 public SDK local candidate"
+    param = folder_parameters(profile)
     (out / "sce_sys/param.json").write_text(json.dumps(param, indent=2) + "\n")
     replace_once(out / "tooling/native/sce_module_writer.cpp",
                  "write_u64(result.data, result.heap_size, std::numeric_limits<std::uint64_t>::max());",
@@ -93,6 +101,7 @@ def main():
         raise ValueError("Native build receipt changed during folder assembly")
     candidate = out / "dist" / param["titleId"]
     result = {"hardware_run": False, "template_commit": template_commit,
+              "display_profile": profile,
               "sdk_manifest_sha256": receipt["sdk_manifest_sha256"],
               "sdk_runtime_sha256": receipt["sdk_runtime_sha256"],
               "native_receipt_sha256": digest(native / "receipt.json"),
