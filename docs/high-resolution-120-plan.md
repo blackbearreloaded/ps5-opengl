@@ -30,6 +30,7 @@ separate from console logs. Keep changes local unless publication is requested.
 - 2026-09-08 | G33 | a60a0cb | partial-pass: profile consumed, 119.883 FPS/cleanup pass; HDMI still 1080p120 | results/g33-title-profile-2160-20260908/display-report.json | inspect sink/settings.
 - 2026-09-08 | G35 | 85f0a97 | pass: read-only installed identity; saved output requests match despite different HDMI | results/g35-prosperolight-installed-20260908/comparison.json | capture working stream.
 - 2026-09-08 | G36 | a53133a | inconclusive: live ProsperoLight logs 1080p120; owner TV reports 4K120 | results/g36-prosperolight-live-20260908/comparison.json | reconcile sink evidence.
+- 2026-09-08 | G36 resolved | 7e0c339 | partial-pass: TV now confirms 1080p; its game bar showed refresh, app HUD showed render size | results/g36-prosperolight-live-20260908/photo-review.json | check HDMI path.
 
 ## Current boundary and next check
 
@@ -45,12 +46,21 @@ restored 3840x2160 at 59.94 Hz. VideoOut's reported 4K dimensions alone do not
 override that evidence. This is a rendering pass, not end-to-end 1440p120 or
 2160p120 output acceptance; independent sink verification is still absent.
 
-Next: reconcile G36's fresh ProsperoLight console/TV discrepancy before changing
-output code. The owner reports simultaneous 4K/120 in the TV signal panel; the
-live console capture reports 1080p119.88. An input-signal photo was requested,
-not another verbal confirmation or PS5 settings change. A 1440p render upscaled
-to 4K HDMI must remain labelled as such. Do not force an undocumented mode or
-repeat identical runs to turn the mismatch into a pass.
+Next: qualify the current HDMI path before changing output code. G36's photo
+and owner follow-up resolve the discrepancy: the current TV input is 1080p,
+matching the 119.88-Hz console log; 4K appeared in the app's render-target HUD.
+The owner identifies a Hisense 55U78N on HDMI 1. Its official port diagram labels
+HDMI 1/2 as 4K60 and HDMI 3/4 as 4K144: the current input cannot qualify 4K120.
+Have the owner connect the PS5 to HDMI 3 or 4 with the appropriate enhanced input
+format, ideally directly using its supplied cable. Sony's output guide also
+identifies non-Automatic Video Transfer Rate as a 4K120 limitation; that setting
+has not been read from this console. Only the owner handles Settings.
+After the path change, reuse the original frozen G31 2160p120 app for one
+30-second test with HDMI-log and TV input confirmation; no rebuild or CTS rerun.
+Use the G33 metadata-only candidate only if comparison evidence warrants it;
+do not silently promote its diagnostic multi-bit profile.
+A 1440p render upscaled to 4K HDMI must remain labelled as such. Do not force an
+undocumented mode or repeat identical runs to turn the mismatch into a pass.
 
 ## G33: title-profile negotiation diagnostic
 
@@ -153,3 +163,21 @@ code or display-auditor acceptance rule changed. Both read-only captures kept
 services healthy and released their exact locks; the owner's stream was left
 running, so no teardown or closed-cycle stability result is claimed. Reproduce
 the local consistency audit with `.local/g36-verify.py`.
+
+Photo/follow-up resolution: the supplied TV photo shows 120 FPS/HDR in its game
+bar, but no input resolution. The 3840x2160/119.88 reading is ProsperoLight's
+HUD. Its source passes `render_width`/`render_height` to `refresh_hud_surface`,
+so that label is not an independent physical-output measurement. The owner then
+switched away from HDMI 1 and back; the TV input banner showed **1080p**. This
+agrees with the console log and supersedes the earlier owner-reported current
+4K120 interpretation. Keep the earlier capture immutable; the supplemental
+`photo-review.json` records the resolved evidence. Historical 4K120 receipts
+remain separate and are not invalidated by this current-path result.
+
+Model-specific blocker: the owner identified **Hisense 55U78N**. Visual inspection
+of its [official quick-start guide](https://assets.hisense-canada.com/assets/ProductDownloads/486/f1ae562e0c/QSG-English-55-65-75U78N.pdf),
+printed page 5 (PDF page 7), labels HDMI 1/eARC and HDMI 2 `4K@60Hz`, and HDMI 3/4
+`4K@144Hz`. Its [user manual](https://assets.hisense-canada.com/assets/ProductDownloads/486/9bc8baf48f/English-User-Manual-55-65-75-85U78N.pdf)
+describes Enhanced HDMI format for 4K HDR. This establishes a current-path port
+limitation, not yet a successful port-change test. No app code or TV/console
+configuration was modified by the agent.
