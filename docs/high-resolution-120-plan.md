@@ -81,6 +81,34 @@ explanation for this run. HDMI stayed `1080P_11988`, restoring 4K59.94 afterward
 The title-profile difference alone is therefore insufficient; no production
 metadata change is justified. The diagnostic folder remains local in the closed
 PPSA99005 test slot; production source metadata and published SDKs are unchanged.
-Next evidence needed from the owner: display model/HDMI connection chain, the
-connected-device capability screen, and current resolution/transfer-rate/120 Hz
-settings. No further identical hardware run is useful before resolving that gap.
+The owner subsequently confirmed the TV's own signal panel shows 3840x2160 at
+120 Hz during an active ProsperoLight stream on the current setup (not its menu
+or overlay); VRR is reported unsupported. Treat that as owner-observed support,
+separate from our captured OpenGL negotiation. Do not repeat the same sink
+question or infer that the 4K60 menu signal proves a 120 Hz limitation.
+
+## G34: ProsperoLight source comparison (offline)
+
+- `fa8e0b2` tried a separate preserve-current-resolution output API;
+  `58a7e9a` removed it and used ordinary request 15, polling flip completion
+  for HFR instead of waiting for another vblank. This pacing fix is not itself
+  proof of HDMI resolution.
+- `de95a0d` (01.000.050) removed the `requested_fps > 60` forced-1080p geometry
+  fallback and changed `attribute3` from `0x40040` to `0x80040`. The retained
+  main attribute is `0x62000000`. Sources: ProsperoLight
+  `include/native_agc_output.hpp`, `sce_sys/param.json`, `src/native_agc_present.cpp`.
+- Normal streaming tears down SDL video, waits 100 ms, then opens native
+  VideoOut with the selected resolution/FPS. High-refresh configuration precedes
+  flip-rate setup and buffer registration. Request 1 restores the default mode
+  on close. VRR unpeg is used only for 90 FPS, not fixed 120.
+- The earlier successful true-4K source oracle ran before SDL launcher setup,
+  with SDR (`hdr=0`, format `0x8000000000000000`), 600 frames and HDMI
+  `2160P_11988`. Therefore neither decoder activity, HDR buffers nor a prior
+  launcher frame is established as necessary. Its receipt is in ProsperoLight
+  `results/4k120-native-source-oracle-run/{agc-selftest.log,klog.txt,selftest.txt}`.
+- ProsperoLight maps a 1440p stream into a 4K output target; that is not native
+  1440p HDMI evidence. G33 already matches its 4K buffer size, request and title
+  attributes. The current cause is not established by these static comparisons;
+  next compare the working installed stream's actual transition with OpenGL on
+  the same setup. Do not resurrect the removed mode API or ship HDR flags as a
+  guessed fix. ProsperoLight's dirty performance worktree was inspected only.
