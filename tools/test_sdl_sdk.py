@@ -177,7 +177,18 @@ def negative_checks():
                     pass
                 else:
                     raise AssertionError(f"Accepted tar member {extra}")
-    print(f"PASS: valid fixture, {len(cases)} integrity/path mutations, {len(tar_cases)} unsafe tar cases")
+        os.mkfifo(gl / "lib/unexpected.a")
+        # A regression fails immediately in the mock, never by reading the FIFO.
+        with patch.object(BUILD.SDK_CHECKER, "verify_manifest",
+                          side_effect=AssertionError("Shared checker reached a special SDK node")) as checker:
+            try:
+                BUILD.verify_sdk(gl)
+            except ValueError as error:
+                assert "Special file in SDK" in str(error)
+            else:
+                raise AssertionError("Accepted special SDK archive")
+            checker.assert_not_called()
+    print(f"PASS: valid fixture, {len(cases)} integrity/path mutations, {len(tar_cases)} unsafe tar cases, nonregular-node preflight")
 
 
 def consumers(native, gl, payload, out):

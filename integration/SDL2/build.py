@@ -51,10 +51,10 @@ def digest(path):
 
 def verify_sdk(prefix):
     """Reuse the public verifier: complete file set, confined paths, no symlinks."""
-    checked = SDK_CHECKER.verify_manifest(prefix)
     for path in prefix.rglob("*"):
         if not path.is_file() and not path.is_dir():
             raise ValueError(f"Special file in SDK: {path}")
+    checked = SDK_CHECKER.verify_manifest(prefix)
     required = {
         "include/EGL/egl.h", "include/EGL/eglext.h", "include/EGL/eglplatform.h",
         "include/GL/glcorearb.h", "include/KHR/khrplatform.h",
