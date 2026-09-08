@@ -1872,18 +1872,18 @@ ps5_flush_gpu_data(const void *address, size_t bytes)
    __asm__ volatile("mfence" ::: "memory");
 }
 
-struct ps5_depth_flush_cache {
-   const void *data[2];
-   size_t size[2];
+struct ps5_batch_flush_cache {
+   const void *data[2 + PS5_MAX_TEXTURE_UNITS];
+   size_t size[2 + PS5_MAX_TEXTURE_UNITS];
 };
 
 static void
-ps5_flush_depth_backing(struct ps5_depth_flush_cache *batch, unsigned slot,
+ps5_flush_batch_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
                          const void *data, size_t bytes)
 {
    /* Only unsubmitted, retained batch resources may reuse a CPU flush. CPU
     * access drains that batch; its cache is discarded before the next draw.
-    * ponytail: last backing per plane, not a cross-frame resource cache. */
+    * ponytail: last backing per plane/texture unit, reset at every batch drain. */
 #ifdef PS5_GPU_PRESENT_BATCH
    if (batch && data && bytes &&
        batch->data[slot] == data && batch->size[slot] == bytes)
@@ -2260,7 +2260,8 @@ static bool
 ps5_prepare_texture(struct ps5_context *context,
                     const struct ps5_shader *shader, unsigned slot,
                     uint32_t *user_data, unsigned user_data_count,
-                    const PsbcShaderMetadata *metadata_override)
+                    const PsbcShaderMetadata *metadata_override,
+                    struct ps5_batch_flush_cache *flush_cache)
 {
    const PsbcShaderMetadata *metadata;
    struct ps5_resource *table;
@@ -2642,7 +2643,11 @@ ps5_prepare_texture(struct ps5_context *context,
             texture->base.target == PIPE_TEXTURE_2D_ARRAY
                ? texture->allocation_size : tiled_size);
       } else {
-         ps5_flush_gpu_data(texture->data, texture->size);
+         /* Eligible batches retain read-only linear fragment textures. Any CPU
+          * texture access drains the batch, invalidating this flush cache. */
+         ps5_flush_batch_backing(
+            slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
+            texture->data, texture->size);
       }
    }
    if (texture_count != expected_texture_count)
@@ -6391,7 +6396,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
                     const struct pipe_draw_indirect_info *indirect,
                     const struct pipe_draw_start_count_bias *draws,
                     unsigned num_draws,
-                    struct ps5_depth_flush_cache *depth_cache)
+                    struct ps5_batch_flush_cache *flush_cache)
 {
    struct ps5_context *context = (struct ps5_context *)base;
    struct pipe_draw_start_count_bias draw;
@@ -6882,7 +6887,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       return;
    }
    if (!ps5_prepare_texture(context, context->vs, 0, user_data,
-                            user_data_count, vertex_metadata)) {
+                            user_data_count, vertex_metadata, NULL)) {
       printf("[ps5-gallium] resource-prepare reject=vertex-textures\n");
       context->last_draw_status = -15;
       return;
@@ -6894,7 +6899,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       return;
    }
    if (!ps5_prepare_texture(context, context->fs, 1, pixel_user_data,
-                            pixel_user_data_count, NULL)) {
+                            pixel_user_data_count, NULL, flush_cache)) {
       printf("[ps5-gallium] resource-prepare reject=fragment-textures\n");
       context->last_draw_status = -15;
       return;
@@ -7214,7 +7219,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          return;
       }
       if (flush_depth_stencil)
-         ps5_flush_depth_backing(depth_cache, 0, depth_data, depth_allocation);
+         ps5_flush_batch_backing(flush_cache, 0, depth_data, depth_allocation);
       if (packed) {
          if (!ps5_agc_gate2_set_depth_stencil_buffer ||
              !depth->stencil_data ||
@@ -7224,7 +7229,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             return;
          }
          if (flush_depth_stencil)
-            ps5_flush_depth_backing(depth_cache, 1, depth->stencil_data,
+            ps5_flush_batch_backing(flush_cache, 1, depth->stencil_data,
                                      depth->stencil_allocation_size);
 #ifdef AGC_RUNTIME_DIAGNOSTICS
          printf("[ps5-gallium] stencil-state format=%u depth=%p/%zu stencil=%p/%zu control=%08x refmask=%08x refmask-bf=%08x\n",
@@ -7699,7 +7704,7 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
    handled = true;
    context->last_draw_status = 0;
    for (unsigned first = 0; first < num_draws;) {
-      struct ps5_depth_flush_cache depth_cache = {0};
+      struct ps5_batch_flush_cache flush_cache = {0};
       if (ps5_agc_gate2_batch_begin() != 0) {
          context->last_draw_status = -30;
          break;
@@ -7711,7 +7716,7 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
          if (draws[first].count)
             ps5_draw_vbo_locked(base, info,
                drawid_offset + (info->increment_draw_id ? first : 0),
-               NULL, &draws[first], 1, &depth_cache);
+               NULL, &draws[first], 1, &flush_cache);
          if (context->last_draw_status)
             break;
       }
@@ -7748,7 +7753,7 @@ release:
 static struct {
    struct ps5_context *owner;
    unsigned count;
-   struct ps5_depth_flush_cache depth_cache;
+   struct ps5_batch_flush_cache flush_cache;
    struct {
       struct pipe_resource *storage[3];
       struct pipe_resource *retained[PS5_BATCH_RESOURCE_COUNT];
@@ -7900,7 +7905,7 @@ ps5_try_deferred_draw(struct pipe_context *base,
    context->descriptor_storage[1] = ps5_deferred.slots[slot].storage[2];
    context->last_draw_status = 0;
    ps5_draw_vbo_locked(base, info, drawid_offset, indirect, draws, num_draws,
-                       &ps5_deferred.depth_cache);
+                       &ps5_deferred.flush_cache);
    context->vertex_descriptor_table = saved[0];
    context->descriptor_storage[0] = saved[1];
    context->descriptor_storage[1] = saved[2];

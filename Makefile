@@ -62,6 +62,7 @@ test:
 	python3 tests/ps5/test_color_staging.py
 	python3 tests/ps5/test_resource_release.py
 	python3 tests/ps5/test_buffer_arena.py
+	python3 tests/ps5/test_batch_texture_flush.py
 	python3 tests/ps5/test_app_heap.py
 	python3 tools/summarize-imgui-profile.py --self-test
 	python3 tools/summarize-app-heap.py --self-test

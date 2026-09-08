@@ -21,4 +21,4 @@ safe test conditions and evidence; untested behavior is not complete.
 
 ## Milestones
 
-- 2026-09-08 | G11 | host-pass: arena ASan/UBSan, cleanup and full host suite; native SDK built | `.local/g11-*.log` | native gate next.
+- 2026-09-08 | G11 | host and native deferred-draw regression passed; clean teardown/health, lock released | `.local/g11-*.log`, `results/g11-arena-20260908/`.

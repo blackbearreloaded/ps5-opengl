@@ -206,8 +206,8 @@ with tempfile.TemporaryDirectory() as tmp:
 print("PASS: scanout flush retained at batch/CPU-access/pool boundaries; default path unchanged")
 
 screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()
-start = screen.index("struct ps5_depth_flush_cache {")
-depth_cache = screen[start:screen.index("\nstatic bool\nps5_stage_packed_depth_samples", start)]
+start = screen.index("struct ps5_batch_flush_cache {")
+flush_cache = screen[start:screen.index("\nstatic bool\nps5_stage_packed_depth_samples", start)]
 start = screen.index("#ifdef PS5_GPU_PRESENT_BATCH\n      /* Disabled depth AND stencil")
 policy = screen[start:screen.index("#endif", start) + len("#endif")] + "\n"
 start = screen.index("      if (flush_depth_stencil)")
@@ -219,10 +219,11 @@ code = r'''
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#define PS5_MAX_TEXTURE_UNITS 16
 static unsigned flushes;
 static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); ++flushes; }
-''' + depth_cache + r'''
-static void run(uint32_t control, struct ps5_depth_flush_cache *depth_cache,
+''' + flush_cache + r'''
+static void run(uint32_t control, struct ps5_batch_flush_cache *flush_cache,
                 char *backing, size_t bytes) {
     struct { uint32_t depth_control; } native = {control};
     (void)native;
@@ -251,7 +252,7 @@ int main(void) {
     assert(flushes == 8);
 #endif
     /* Disabled first draw must not warm the cache. Both planes remain distinct. */
-    struct ps5_depth_flush_cache cache = {0};
+    struct ps5_batch_flush_cache cache = {0};
     flushes = 0;
     run(0, &cache, backing, 32);
     run(2, &cache, backing, 32);
@@ -265,7 +266,7 @@ int main(void) {
     flushes = 0;
     run(2, &cache, backing, 64); /* Depth size only: stencil backing unchanged. */
     run(2, &cache, backing + 1, 64); /* Both pointers change. */
-    cache = (struct ps5_depth_flush_cache){0};
+    cache = (struct ps5_batch_flush_cache){0};
     run(2, &cache, backing + 1, 64); /* New batch / CPU-write boundary. */
 #ifdef PS5_GPU_PRESENT_BATCH
     assert(flushes == 5);
@@ -278,8 +279,8 @@ int main(void) {
     run(2, NULL, backing + 1, 64);
     assert(flushes == 4);
     flushes = 0;
-    ps5_flush_depth_backing(&cache, 1, backing + 2, 16);
-    ps5_flush_depth_backing(&cache, 1, backing + 2, 16);
+    ps5_flush_batch_backing(&cache, 1, backing + 2, 16);
+    ps5_flush_batch_backing(&cache, 1, backing + 2, 16);
 #ifdef PS5_GPU_PRESENT_BATCH
     assert(flushes == 1); /* Stencil size changes independently of depth. */
 #else
