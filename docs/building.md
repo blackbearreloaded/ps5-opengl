@@ -1,7 +1,9 @@
 # Building
 
-Build on x86-64 Linux or WSL. This source publication does not ship prebuilt
-applications or an SDK binary release.
+Build on x86-64 Linux or WSL. A [frozen sample-validated SDK](sdk-bundle.md)
+is available separately. [GitHub Actions](ci-releases.md) can also build fresh
+SDK archives; those binaries are host-checked, not console-validated. Neither
+package includes ready-to-launch applications.
 
 ## Prerequisites
 
@@ -47,9 +49,10 @@ make imgui-demo
 Source fetch checks immutable commits and the Mesa archive hash. Unexpected
 revisions or tracked edits are rejected, not reset. PSBC changes are supplied as
 one patch over public commit `a92a1228`; the resulting Git tree must match
-`psbc_patch.patched_tree` in `dependencies.json`. The compiler and runtime changes
-are covered by the new frozen campaign in [Validation](validation.md); no private
-research commit is a build prerequisite.
+`psbc_patch.patched_tree` in `dependencies.json`. The frozen campaign in
+[Validation](validation.md) identifies its tested sources; later runtime changes
+have focused checks, not inherited full-matrix acceptance. No private research
+commit is a build prerequisite.
 
 The Mesa patch is checked before application. `make sdk` builds host and PS5
 compiler libraries, Mesa, the native backend and the installed SDK. ImGui,

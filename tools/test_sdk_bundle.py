@@ -7,6 +7,23 @@ BUNDLE = importlib.import_module("build-sdk-bundle")
 
 
 class SampleGateTests(unittest.TestCase):
+    def test_ci_requires_matching_complete_host_checks(self):
+        report = dict(status="PASS", manifest={"sha256": "sdk-hash"},
+                      consumers=dict.fromkeys(("make", "pkgconfig", "cmake"), {}),
+                      gl33=dict(commands=344, exported=344),
+                      outputs=dict.fromkeys(("make.elf", "pkgconfig.elf", "cmake.elf"), "hash"))
+        BUNDLE.require_consumers(report, "sdk-hash")
+        mutations = [lambda r: r.update(status="FAIL"),
+                     lambda r: r["manifest"].update(sha256="other-sdk"),
+                     lambda r: r["consumers"].pop("cmake"),
+                     lambda r: r["gl33"].update(exported=343),
+                     lambda r: r["outputs"].pop("make.elf")]
+        for mutate in mutations:
+            bad = copy.deepcopy(report)
+            mutate(bad)
+            with self.assertRaises(ValueError):
+                BUNDLE.require_consumers(bad, "sdk-hash")
+
     def test_accept_only_four_all_pass_samples(self):
         report = dict(complete=False, clean_cycles=4,
                       render_targets={str(i): {} for i in range(4)},

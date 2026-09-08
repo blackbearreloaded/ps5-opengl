@@ -32,6 +32,8 @@ distinct when reporting compatibility.
   a hardware ceiling. Larger draw counts and broader render-to-texture workloads
   still need optimization; a short 512-object run validates batch boundaries,
   not sustained performance at that count.
+  The later G9 copy4 change improves a matched 1080p offscreen run from 14.10 to
+  19.98 FPS, still CPU-copy limited. See [G9/G10 results](offscreen-stability.md).
 - **Input/visual scope:** the demo has a minimal current-state pad adapter. Its
   earlier TV output was owner-confirmed; the final campaign used numerical
   readbacks, with no recorded widget changes or fresh TV/shell input observation.
@@ -46,6 +48,10 @@ distinct when reporting compatibility.
   not unregister-while-open support or device-loss recovery.
   Its five-minute 1080p60 endurance run also passed 17,970 frames and 11 pixel
   checks with successful close and healthy native teardown.
+  G10 adds a ten-minute ~59.90 FPS TV-demo run and five native launch/exit cycles
+  (15 EGL sessions). Owned-heap use stabilized during the soak and returned to
+  the same post-session level across lifecycle runs. This accounting excludes
+  direct GPU mappings, foreign heaps and process RSS.
 - **Stress:** maximum-axis framebuffers were tested, not an 8192x8192 allocation
   or deliberate hardware OOM exhaustion. Five-minute runs and bounded recreation
   are tested, not exhaustive long sessions, suspend/resume or device-loss recovery.
@@ -61,6 +67,8 @@ distinct when reporting compatibility.
   not promised for another compiler/path. Fresh binaries need their own hardware
   validation. The [sample-validated SDK prerelease](sdk-bundle.md) preserves its
   own frozen bytes and narrower validation scope; it is not a full-matrix successor.
+  [CI-built SDK archives](ci-releases.md) pass host and compile/link checks only;
+  they do not inherit any console acceptance.
 - **Evidence:** the export can be audited offline, but cannot independently prove
   the hardware origin of raw receipts retained privately. This is not formal
   Khronos certification.

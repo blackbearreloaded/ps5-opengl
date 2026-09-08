@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the frozen sampled SDK; no build, console access, or publication."""
+"""Package a frozen sampled SDK or a host-checked CI build; no console access."""
 import argparse
 import gzip
 import importlib
@@ -29,6 +29,17 @@ def require_sample(report):
     for config in report["configurations"].values():
         require(config["executed"] == 51 and config["counts"] == {"Pass": 51},
                 "every selected case must Pass; no exclusions or missing cases")
+
+
+def require_consumers(report, sdk_hash):
+    require(report.get("status") == "PASS" and
+            report.get("manifest", {}).get("sha256") == sdk_hash,
+            "consumer checks must pass for this exact SDK")
+    require(set(report.get("consumers", {})) == {"make", "pkgconfig", "cmake"} and
+            report.get("gl33", {}).get("commands") == 344 and
+            report.get("gl33", {}).get("exported") == 344 and
+            len(report.get("outputs", {})) == 3,
+            "expected three linked consumers and 344 Core exports")
 
 
 def sample_report(repo, candidate, results):
@@ -88,29 +99,51 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
-    parser.add_argument("--candidate", type=Path, required=True)
-    parser.add_argument("--results", type=Path, required=True)
+    parser.add_argument("--candidate", type=Path)
+    parser.add_argument("--results", type=Path)
+    parser.add_argument("--ci-version", help="distinct CI-built, NOT console-validated bundle")
+    parser.add_argument("--consumer-report", type=Path, help="CI SDK consumer summary.json")
+    parser.add_argument("--runtime-config", type=Path, help="CI runtime-config.txt")
     parser.add_argument("--destination", type=Path, required=True, help="new output directory")
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[1]
     sdk, output = args.sdk.resolve(), args.destination.resolve()
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_commit), "use a full source commit")
     require(not output.exists(), "refusing to overwrite a bundle directory")
-    require(CHECK.verify_manifest(sdk)["sha256"] == SDK_HASH and
-            digest(sdk / "lib/libps5_opengl_core33.a") == RUNTIME_HASH,
-            "SDK differs from the frozen optimized candidate")
-    subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", RUNTIME,
-                    args.source_commit, "--", "src", "native-app", "toolchain",
-                    "tests/ps5/native-app.mk", "dependencies.json"], check=True)
-    sampled = sample_report(repo, args.candidate, args.results)
+    sdk_hash = CHECK.verify_manifest(sdk)["sha256"]
+    runtime_hash = digest(sdk / "lib/libps5_opengl_core33.a")
+    if args.ci_version is not None:
+        require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+-]{0,95}", args.ci_version),
+                "unsafe CI version")
+        require(args.consumer_report and args.runtime_config and
+                not args.candidate and not args.results,
+                "CI mode requires consumer report/config, not hardware receipts")
+        require(subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                                        text=True).strip() == args.source_commit,
+                "CI source snapshot must be the built checkout")
+        subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", "HEAD"], check=True)
+        consumers = json.loads(args.consumer_report.read_text())
+        require_consumers(consumers, sdk_hash)
+        version = args.ci_version
+    else:
+        require(args.candidate and args.results and
+                not args.consumer_report and not args.runtime_config,
+                "sampled mode requires the frozen candidate and hardware receipts")
+        require(sdk_hash == SDK_HASH and runtime_hash == RUNTIME_HASH,
+                "SDK differs from the frozen optimized candidate")
+        subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", RUNTIME,
+                        args.source_commit, "--", "src", "native-app", "toolchain",
+                        "tests/ps5/native-app.mk", "dependencies.json"], check=True)
+        sampled = sample_report(repo, args.candidate, args.results)
+        version = VERSION
     epoch = subprocess.check_output(["git", "-C", str(repo), "show", "-s", "--format=%ct",
                                      args.source_commit], text=True).strip()
     require(epoch.isdecimal(), "invalid source timestamp")
-    name = "ps5-opengl-sdk-" + VERSION
+    name = "ps5-opengl-sdk-" + version
     stage = output / name
     stage.mkdir(parents=True, exist_ok=False)
     shutil.copytree(sdk, stage / "sdk")
-    require(CHECK.verify_manifest(stage / "sdk")["sha256"] == SDK_HASH, "SDK copy changed")
+    require(CHECK.verify_manifest(stage / "sdk")["sha256"] == sdk_hash, "SDK copy changed")
     sources = stage / "sources"
     sources.mkdir()
     snapshot(repo, args.source_commit, "ps5-opengl", sources / "ps5-opengl.tar")
@@ -125,7 +158,8 @@ def main():
                 require(".." not in Path(relative).parts and not Path(relative).is_absolute(),
                         "unsafe source path")
                 copy_member(archive, member, stage / relative)
-    shutil.copyfile(stage / "docs/sdk-bundle.md", stage / "README.md")
+    guide = "ci-releases.md" if args.ci_version is not None else "sdk-bundle.md"
+    shutil.copyfile(stage / "docs" / guide, stage / "README.md")
     pins = json.loads((stage / "dependencies.json").read_text())
     mesa = repo / "third_party/mesa-26.2.0.tar.xz"
     require(digest(mesa) == pins["mesa"]["sha256"], "Mesa source archive hash mismatch")
@@ -141,8 +175,7 @@ def main():
         with tarfile.open(sources / (dep + ".tar")) as archive:
             copy_member(archive, archive.getmember(dep + "/" + license_name),
                         stage / "LICENSES" / (dep + ".txt"))
-    write_json(stage / "sample-validation.json", sampled)
-    write_json(stage / "provenance.json", dict(
+    provenance = dict(
         version=VERSION, status="local sample-validated distribution candidate; not published",
         runtime_source_commit=RUNTIME, source_snapshot_commit=args.source_commit,
         sdk_manifest_sha256=SDK_HASH, runtime_archive_sha256=RUNTIME_HASH,
@@ -151,7 +184,21 @@ def main():
                          PS5_SCANOUT_HEIGHT=1080, PS5_SCANOUT_FPS=60,
                          PS5_MULTIDRAW_BATCH=1, PS5_DEFERRED_DRAW_BATCH=1),
         validation="sample-validation.json; historical full-campaign results apply to another SDK",
-        source_archives={p.name: digest(p) for p in sorted(sources.iterdir())}))
+        source_archives={p.name: digest(p) for p in sorted(sources.iterdir())})
+    if args.ci_version is not None:
+        write_json(stage / "consumer-validation.json", consumers)
+        shutil.copyfile(args.runtime_config, stage / "runtime-config.txt")
+        provenance.update(
+            version=version, status="CI-built and host-checked; NOT console-validated",
+            runtime_source_commit=args.source_commit, sdk_manifest_sha256=sdk_hash,
+            runtime_archive_sha256=runtime_hash, build_flags="runtime-config.txt",
+            validation="consumer-validation.json: compile/link only; no GPU execution",
+            hardware_validation="not performed for this binary",
+            payload_sdk=pins["native_boilerplate"]["payload_sdk"],
+            payload_sdk_archive_sha256=pins["native_boilerplate"]["payload_sdk_archive_sha256"])
+    else:
+        write_json(stage / "sample-validation.json", sampled)
+    write_json(stage / "provenance.json", provenance)
     files = sorted(p for p in stage.rglob("*") if p.is_file())
     with (stage / "SHA256SUMS").open("x") as stream:
         stream.writelines(f"{digest(p)}  {p.relative_to(stage).as_posix()}\n" for p in files)

@@ -35,6 +35,9 @@ The minimal TV-demo pad declarations were adapted from the independently authore
 research references are in the main README. Historical test descriptions and
 upstream names do not imply endorsement or formal conformance.
 
-Before distributing binaries, retain the applicable runtime and dependency notices
-alongside them and review their source-distribution requirements. This initial
-publication contains source and derived validation data, not a binary release.
+SDK archives retain runtime/dependency notices and corresponding source archives,
+including the project patches and build files. The public payload SDK and native
+boilerplate remain separate prerequisites, not bundled binaries. Before
+redistributing SDKs or applications, review the applicable component and
+source-distribution requirements; generated application bundles can have additional
+dependencies beyond this static graphics SDK.

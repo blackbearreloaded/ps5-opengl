@@ -20,11 +20,23 @@ contains the frozen 1080p60 performance SDK, source examples/dependencies, licen
 and checksums. This candidate passed **204/204 sampled executions**, not a new
 full CTS campaign. See the [bundle guide](docs/sdk-bundle.md) for its exact scope.
 
+**Current-source SDK builds:** [GitHub Actions](.github/workflows/release.yml)
+produces compiled SDK archives with sources, notices, checksums and provenance.
+These fresh binaries are **host-checked, not console-validated**; see
+[downloads and release procedure](docs/ci-releases.md). The older prerelease above
+is not rebuilt or replaced.
+
 **Latest performance:** the opt-in windowed ImGui benchmark averages **119.88 FPS
 at 1080p, 1440p and 4K**, measured for 30 seconds per size. See the
 [results and limits](docs/performance.md#g5d-verified-high-resolution-120-fps-candidate)
 and [benchmark build instructions](examples/core33-imgui/README.md#high-refresh-window-benchmark-opt-in).
 This is small-scene throughput, not a guarantee of game FPS or perfect frame pacing.
+
+**Latest focused checks:** the matched 1080p offscreen workload improved from
+14.10 to **19.98 FPS**. A ten-minute TV-demo session sustained approximately
+**59.90 FPS**, and **five native launch/exit cycles** passed without post-session
+owned-heap growth. These are bounded results, not exhaustive stability or OOM
+coverage; see [offscreen and stability findings](docs/offscreen-stability.md).
 
 ## What is included
 
@@ -32,7 +44,7 @@ This is small-scene throughput, not a guarantee of game FPS or perfect frame pac
   the PS5 Gallium driver, and the native GPU/presentation backend.
 - **Native EGL:** fullscreen surfaces and the tested context/resource lifecycle.
 - **Developer SDK:** headers, static archives, import stubs, and Make,
-  pkg-config and CMake integration. Build artifacts are generated locally.
+  pkg-config and CMake integration. Build locally or download a scoped SDK archive.
 - **Examples:** a triangle, Dear ImGui, NanoVG, Sokol and a 3D cube benchmark using public APIs.
 - **Validation:** 39,544 individual results, exclusion reviews, provenance
   hashes, and an offline evidence verifier.
@@ -111,11 +123,13 @@ integration. The SDK does not replace GLX, WGL, SDL or GLFW platform code.
 | [Building](docs/building.md) | Dependencies, source setup, SDK and native apps |
 | [Using the SDK](docs/consumer-build.md) | Make, pkg-config and CMake integration |
 | [Sample-validated SDK bundle](docs/sdk-bundle.md) | Frozen 1080p60 package contents, verification and scope |
+| [CI-built SDK archives](docs/ci-releases.md) | Current-source builds, checksums and draft-release workflow |
 | [Architecture](docs/architecture.md) | Frontend, shader compiler, driver and platform boundaries |
 | [Testing](docs/testing.md) | Host checks, bounded hardware cases and acceptance |
 | [Validation report](docs/validation.md) | Exact results, identity and exceptions |
 | [Limitations](docs/limitations.md) | Compatibility, performance and hardware scope |
 | [Performance](docs/performance.md) | Measured bottlenecks, GPU acceleration candidates and validation boundaries |
+| [Offscreen and stability](docs/offscreen-stability.md) | Later copy optimization, ten-minute soak and five launch/exit checks |
 | [Contributing](CONTRIBUTING.md) | Changes, regression selection and reporting |
 | [Third-party notices](THIRD_PARTY_NOTICES.md) | Upstream projects, licenses and source pins |
 

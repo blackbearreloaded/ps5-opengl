@@ -68,7 +68,8 @@ Subsequent [performance changes](performance.md) modify the runtime and have
 their own host checks and focused hardware regressions. **Current source does
 not inherit this full CTS acceptance.** The 120 FPS windowed measurements use
 an opt-in configuration; neither they nor a new local SDK build update the
-frozen evidence below. This publication includes source, not a new binary SDK release.
+frozen evidence below. The [sampled SDK release](sdk-bundle.md) and fresh
+[CI-built archives](ci-releases.md) have separate, narrower validation scopes.
 
 ```text
 CTS eboot  7cad32744b80e5eeafbc6d6188686c10ef9c0bfc882b4a001972b5eecdccf077
