@@ -56,7 +56,7 @@ is a manual cold launch of PPSA77800 with TV/controller confirmation. No blanket
 | Area | Current state | Remaining acceptance |
 | --- | --- | --- |
 | Core implementation and focused regressions | G11/G12/G13/G15/G16 pass for their frozen candidates | No new full-matrix claim; retain historical baseline separately. |
-| Distribution | Local G13 sampled-bundle recipe added; older release unchanged | Package, verify every file, and link relocated consumers before marking the archive prepared. |
+| Distribution | Local G13 archive prepared; 118 file checksums and all three relocated consumers pass | Local only; publication requires a separate request. Older release unchanged. |
 | Manual startup and controls | G14 automated supported-mode/exit run passes | Cold launch, visible animation, controls and clean exit; earlier zero-support cause remains unresolved. |
 | Broader platform coverage | Explicitly unqualified | Separate safe conditions for suspend/resume, device loss, hardware OOM, multi-hour sessions and another firmware. |
 | Application integration | Fullscreen EGL and public GL examples supplied | SDL/GLFW are separate platform ports, not missing Core 3.3 commands. |
@@ -70,3 +70,11 @@ The owner subsequently requested desktop-independent testing: use the existing
 headless runner for numerical rendering/startup/lifecycle acceptance. Home-menu
 navigation and physical controller/HDMI observations are separate, not prerequisites
 for that lane and not implied by its results.
+
+- 2026-09-08 | G14 headless | 35,740 frames/300 s, 11 probes, 119.83–119.87 FPS, 4K120 and restored 60 Hz; clean native exit/health/unlock | local app `results/g14-headless-relaunch-20260908/`. No widget input; earlier zero-support cause remains open.
+- 2026-09-08 | Distribution | source `96d5cc5`, frozen G13 SDK, 204/204 sample Pass, 118/118 file checks, 344 exports and Make/pkg-config/CMake consumers pass after fresh extraction | `.local/g17-package-final.log`, `.local/g17-final-consumers/`; no push.
+
+Prepared local archive: `build/bundles/g13-sampled-20260908-final/ps5-opengl-sdk-0.1.0-perf20260908-sampled.tar.gz`,
+239,298,358 bytes, SHA-256 `47011df02b8fd282199b02333b7d2762e6699b7e225edaf325ca1189d34858f3`.
+The earlier preparation directory without `-final` has superseded documentation;
+use only the archive identified above. Neither archive changes the SDK binaries.
