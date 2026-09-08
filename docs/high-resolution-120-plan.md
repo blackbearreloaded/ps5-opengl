@@ -27,6 +27,7 @@ separate from console logs. Keep changes local unless publication is requested.
 - 2026-09-08 | G31 host | pass: both 38-entry SDK manifests, 344 exports and six relocated consumer links | .local/g31-consumers-{1440,2160}.log | SDL integration next.
 - 2026-09-08 | G32 host | ac2a52a | pass: main host suite, three real-SDL sanitizer profiles, legacy G25 receipt, 51 integrity mutations/six tar cases and four relocated SDL consumer links | offline SDL handoff retained.
 - 2026-09-08 | G32 native | ac2a52a | pass: 180 frames/two exact pixels per size, correct SDL drawable, restoration/teardown/health/unlock | results/g32-sdl2-{1440,2160}-20260908/acceptance.json | HDMI still 1080p120.
+- 2026-09-08 | G33 | a60a0cb | partial-pass: profile consumed, 119.883 FPS/cleanup pass; HDMI still 1080p120 | results/g33-title-profile-2160-20260908/display-report.json | inspect sink/settings.
 
 ## Current boundary and next check
 
@@ -73,3 +74,13 @@ specifically addresses 4K120 falling back to 1080p120: the direct supported HDMI
 input/cable and owner-selected resolution/transfer-rate settings matter.
 Its separate 1440p output test/selection is necessary to qualify native 1440p
 HDMI; a 1440p framebuffer alone does not select it. Agents do not enter Settings.
+
+G33 outcome: the log changed to ProsperoLight's `HDR:o` / HDCP23 preference
+and matching application/session attributes, so stale main metadata is not the
+explanation for this run. HDMI stayed `1080P_11988`, restoring 4K59.94 afterward.
+The title-profile difference alone is therefore insufficient; no production
+metadata change is justified. The diagnostic folder remains local in the closed
+PPSA99005 test slot; production source metadata and published SDKs are unchanged.
+Next evidence needed from the owner: display model/HDMI connection chain, the
+connected-device capability screen, and current resolution/transfer-rate/120 Hz
+settings. No further identical hardware run is useful before resolving that gap.
