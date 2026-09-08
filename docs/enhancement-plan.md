@@ -12,6 +12,7 @@ no console interaction without the shared lock, and no graphics ELF injection.
 | G14 | Reliable high-refresh startup and app failure handling | Supported/unsupported/error paths have bounded outcomes; repeated launches render or exit cleanly. Distinguish render cadence, API status and the negotiated HDMI signal. |
 | G15 | Account for GPU allocations and mappings | Partial allocation/map failures and release ordering tested on host; native lifecycle returns tracked live bytes/counts to baseline. |
 | G16 | Focused acceptance | Frozen candidate, targeted regressions and matched workloads, sustained session and launch/exit checks; no automatic full CTS rerun. |
+| G18 | Mip transfer/object-churn regression | 24 ordered native copy/upload/draw/sample cycles, exact mip/layer/base guards, balanced tracked GPU memory and clean teardown. |
 
 Keep G11/G12 separate from game-specific changes and preserve G9's copy optimization.
 Use existing tests and batching infrastructure. Hardware fault injection, console
@@ -80,3 +81,16 @@ The earlier preparation directory without `-final` has superseded documentation;
 use only the archive identified above. Neither archive changes the SDK binaries.
 
 - 2026-09-08 | G14 display path | Owner identifies capture-card use during the zero-support failure; TV-only launches always worked. No speculative runtime retry. Saved local-app successful cycles report HDMI `1080P_11988` while rendering 3840x2160 at ~120 FPS, then restore `3840_2160P_5994`. These are not 4K120 HDMI receipts; local checker corrected, runtime/SDK unchanged.
+- 2026-09-08 | G18 | G13 failed mip-copy pixels; `a00ce20` passes 24/24 cycles, GPU bytes/counts zero after cleanup; healthy/unlocked | `results/g18-mip-blit-20260908/`, `.local/g18-fixed-transfer-candidate.json`.
+
+G18 removes a blanket nonzero-color-mip blit rejection; existing mapped mip/layer
+bounds handle linear storage, while native tiled destinations still require mip 0.
+The actual color branch and transfer mapper pass host sanitizer checks for all
+level-0/1 pairs, 2D/array/volume layers, flip/scissor and invalid-map cleanup.
+The original native failure is retained in `results/g18-transfer-20260908/`.
+The corrected run peaks at 92,798,976 tracked direct/mapped GPU bytes, returns
+both to zero with zero failures/invalid flags, and ends at 9,375 owned-heap bytes
+in 21 blocks. One session does not measure long-term growth or module-owned memory.
+The new SDK is `build/sdk/ps5-opengl-core33-g18-mip-blit`; host tests, its manifest,
+344 exports and Make/pkg-config/CMake consumers pass. Frozen G13 bytes are unchanged;
+their 204-case sample and soak must not be relabeled as G18 hardware acceptance.

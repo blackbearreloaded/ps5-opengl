@@ -2,6 +2,11 @@
 
 This **local-only, sample-validated 1080p60 SDK** preserves the frozen G13
 runtime. It is not published, a full CTS rerun, or Khronos certification.
+**Known gap found later:** the G18 transfer workload exposed rejected copies into
+nonzero color mip levels in these frozen bytes. Local source `a00ce20` fixes the
+mapped-copy path and passes 24 native cycles; this archive does not contain that
+fix. Preserve it as historical evidence, not the next distribution candidate.
+See [the G18 milestone](enhancement-plan.md).
 The September 7 prerelease remains unchanged. The separate PPSA77800 app and
 its private artwork are not included. That app uses the older G6 SDK, not G13.
 Its three successful receipts show 3840x2160 rendering at ~120 FPS, while klog
