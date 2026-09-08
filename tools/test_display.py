@@ -26,6 +26,7 @@ class DisplayTests(unittest.TestCase):
         self.assertEqual(mismatch['negotiated_active']['height'], 1080)
         self.assertFalse(mismatch['render_size_matches_hdmi'])
         for modes in ([], [restore], ['2160P_11988'], ['unknown', '2160P_11988', restore],
+                      ['', '2160P_11988', restore],
                       ['1080P_11988', '2160P_11988', restore],
                       ['2160P_11988', restore, '2160P_11988', restore],
                       ['1920_2160P_11988', restore]):

@@ -178,6 +178,21 @@ target to 90, retaining the 120 Hz SDK. It uses application pacing, not VRR or
 native 90 Hz. The latest 4K90 candidate has not been measured; do not infer a
 completed twelve-target matrix from the three new 120 FPS results.
 
+To audit the HDMI negotiation separately, retain the exact runner receipt and
+its adjacent `-klog.log`, `-result.json` and `-runner.json` files:
+
+```sh
+python3 tools/summarize-display.py PATH/PPSA99005-TIMESTAMP-opengl.log --height 2160
+```
+
+The audit requires one clean native-title cycle, a stable captured high-refresh
+mode and restoration to 60 Hz. It reports `verified-match`, `verified-mismatch`
+or `inconclusive`; a successfully measured mismatch is not a failed renderer.
+A 3840x2160 render buffer or VideoOut status alone does not prove 4K HDMI output.
+The HDMI log is still console-side evidence: TV/capture-device signal information
+is a separate check, and a capture card can constrain negotiation. Do not change
+console Settings or force a mode unsupported by the connected display path.
+
 ## Bounded offscreen performance matrix
 
 ```sh

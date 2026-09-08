@@ -28,10 +28,10 @@ def hdmi_report(klog, title, width, height, active_hz):
                           klog, re.I), 'capture contains a runtime fault')
     # Exclude a pre-entry display change; never borrow a mode from another run.
     text = klog.split('EXEC /app0/eboot.bin', 1)[1]
-    lines = re.findall(r'\[AvControl\]\s+video: port:HDMI ([^\r\n]+)', text)
+    lines = re.findall(r'\[AvControl\][ \t]+video: port:HDMI ([^\r\n]*)', text)
     rows = []
     for line in lines:
-        mode = line.split()[0]
+        mode = line.split()[0] if line.strip() else ''
         match = re.fullmatch(r'(?:(1920|2560|3840)_)?(1080|1440|2160)P_(5994|6000|8991|9000|11988|12000)', mode)
         row = dict(mode=mode, details=line, width=None, height=None, refresh_hz=None)
         if match:
