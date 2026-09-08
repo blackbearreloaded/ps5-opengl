@@ -730,6 +730,25 @@ the [sampled validation gate](testing.md#current-optimized-candidate-sampled-val
 instead of a new full matrix and is not yet a published bundle.
 Provenance: `build/frozen/g7-60fps-sdk-consumers-20260907.md`.
 
+### G8 sampled validation complete
+
+- 2026-09-07 | G8 | runtime cef6c1b / CTS ec49122c | pass: 204/204 sampled executions, four exact targets, clean teardown/health/unlock | results/g8-60fps-cts-smoke-20260907
+
+The same frozen SDK/runtime passes all 51 selected CTS cases on each of four
+targets: 64x64 and 113x47 pbuffers, plus 64x8192 and 8192x64 depth/stencil FBOs.
+There are zero failures, NotSupported results, warnings or waivers. The strict
+combined audit verifies all four ordered receipts, actual target properties,
+binary identities and clean lifecycles. The last wide-target sample takes
+199.77 case-seconds; it is not replaced by a faster or weaker selection.
+
+Per the owner's reduced-validation decision, these **204 executions** and the
+G7 host/native/SDK checks above complete the current **sampled** gate. The full
+39,544-execution rerun is deferred, not silently counted as passed: the strict
+full-matrix audit correctly remains `complete=false`. This evidence is specific
+to the optimized candidate on one recorded firmware-6.02 console. It does not
+replace the historical baseline campaign or establish Khronos certification.
+Local identity/receipt index: `build/frozen/g8-60fps-cts-smoke-20260907/manifest.md`.
+
 ## Next steps
 
 1. Profile the accepted workload; change one measured bottleneck at a time with
