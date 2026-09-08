@@ -9,7 +9,7 @@ no console interaction without the shared lock, and no graphics ELF injection.
 | G11 | Reserve the resource arena for buffers | Actual allocator/eligibility host tests, cleanup/fallback regressions, native texture/buffer creation and rendering. |
 | G12 | Reuse fragment-texture flushes within retained batches | Changed backing/size, updates, batch/context boundaries and uncached stages remain correct; compare matched workloads and substantiate any speedup claim. |
 | G13 | Reuse native tiled storage for single-mip 2D RGBA8 render/sample images | Existing transfer-map ownership instead of dual copies; other formats/mips/layers unchanged; upload/readback/copy/batching regressions and matched FBO timing/pixels. |
-| G14 | Reliable high-refresh startup and app failure handling | Supported/unsupported/error paths have bounded outcomes; repeated manual launches render or exit cleanly, never silently claim 120 Hz. |
+| G14 | Reliable high-refresh startup and app failure handling | Supported/unsupported/error paths have bounded outcomes; repeated launches render or exit cleanly. Distinguish render cadence, API status and the negotiated HDMI signal. |
 | G15 | Account for GPU allocations and mappings | Partial allocation/map failures and release ordering tested on host; native lifecycle returns tracked live bytes/counts to baseline. |
 | G16 | Focused acceptance | Frozen candidate, targeted regressions and matched workloads, sustained session and launch/exit checks; no automatic full CTS rerun. |
 
@@ -57,7 +57,7 @@ is a manual cold launch of PPSA77800 with TV/controller confirmation. No blanket
 | --- | --- | --- |
 | Core implementation and focused regressions | G11/G12/G13/G15/G16 pass for their frozen candidates | No new full-matrix claim; retain historical baseline separately. |
 | Distribution | Local G13 archive prepared; 118 file checksums and all three relocated consumers pass | Local only; publication requires a separate request. Older release unchanged. |
-| Manual startup and controls | G14 automated supported-mode/exit run passes | Cold launch, visible animation, controls and clean exit; earlier zero-support cause remains unresolved. |
+| Manual startup and controls | G14 automated supported-mode/exit runs pass; owner reports TV-only launches always work | Fresh physical-control acceptance remains separate. Earlier zero support occurred with a capture card; do not force an unsupported display mode. |
 | Broader platform coverage | Explicitly unqualified | Separate safe conditions for suspend/resume, device loss, hardware OOM, multi-hour sessions and another firmware. |
 | Application integration | Fullscreen EGL and public GL examples supplied | SDL/GLFW are separate platform ports, not missing Core 3.3 commands. |
 
@@ -71,10 +71,12 @@ headless runner for numerical rendering/startup/lifecycle acceptance. Home-menu
 navigation and physical controller/HDMI observations are separate, not prerequisites
 for that lane and not implied by its results.
 
-- 2026-09-08 | G14 headless | 35,740 frames/300 s, 11 probes, 119.83–119.87 FPS, 4K120 and restored 60 Hz; clean native exit/health/unlock | local app `results/g14-headless-relaunch-20260908/`. No widget input; earlier zero-support cause remains open.
+- 2026-09-08 | G14 headless | 35,740 frames/300 s, 11 probes, 119.83–119.87 FPS rendering 4K, API 120 Hz and restored 60 Hz; clean native exit/health/unlock | local app `results/g14-headless-relaunch-20260908/`. No widget input; HDMI qualification below.
 - 2026-09-08 | Distribution | source `96d5cc5`, frozen G13 SDK, 204/204 sample Pass, 118/118 file checks, 344 exports and Make/pkg-config/CMake consumers pass after fresh extraction | `.local/g17-package-final.log`, `.local/g17-final-consumers/`; no push.
 
 Prepared local archive: `build/bundles/g13-sampled-20260908-final/ps5-opengl-sdk-0.1.0-perf20260908-sampled.tar.gz`,
 239,298,358 bytes, SHA-256 `47011df02b8fd282199b02333b7d2762e6699b7e225edaf325ca1189d34858f3`.
 The earlier preparation directory without `-final` has superseded documentation;
 use only the archive identified above. Neither archive changes the SDK binaries.
+
+- 2026-09-08 | G14 display path | Owner identifies capture-card use during the zero-support failure; TV-only launches always worked. No speculative runtime retry. Saved local-app successful cycles report HDMI `1080P_11988` while rendering 3840x2160 at ~120 FPS, then restore `3840_2160P_5994`. These are not 4K120 HDMI receipts; local checker corrected, runtime/SDK unchanged.
