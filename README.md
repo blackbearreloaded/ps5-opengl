@@ -27,10 +27,11 @@ complete sources, examples, licenses, checksums and exact-binary provenance.
 
 | SDK | Display profile | Acceptance for the downloaded binaries |
 | --- | --- | --- |
+| [G55 depth-fix preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g55-hfr-sdl2-focused) | Separate **4K120** and **1440p120** archives | 4K: six focused native checks; 1440p: host-checked only. Corrected depth/stencil mip blits and packed mip clears; no new CTS campaign |
 | [G47 HFR preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g47-hfr-sdl2-focused) | Separate **1440p120** and **4K120** archives | Fresh ImGui timing/pixels, SDL functional checks and native HDMI logs; no new CTS campaign |
 | [G25 + SDL2 preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260908-g25-sdl2-sampled) | **1080p60** | 204/204 sampled executions, matched offscreen/3D profiles, bounded memory/lifecycle and SDL checks |
 
-**New HFR release, September 9:** the frozen G47 ImGui apps measured
+**Earlier G47 qualification, September 9:** the frozen G47 ImGui apps measured
 **119.880 FPS at 2560×1440** and **119.879 FPS at 3840×2160**, for 30 seconds
 each. Console logs confirmed matching native **119.88 Hz HDMI**, followed by
 same-resolution 59.94 Hz restoration. Each SDL app passed 180 frames/two exact
@@ -47,7 +48,7 @@ The [G25 guide](docs/sdk-bundle-g25.md) and
 [September 7 prerelease](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/v0.1.0-perf20260907-sampled)
 retain their separate historical acceptance. Older downloads are unchanged.
 
-**Local G55 successor, not yet published:** depth/stencil mip blits and packed
+**G55 release, September 9:** depth/stencil mip blits and packed
 mip clears are fixed, with the regressions required by CI. The final 4K GL/SDL
 pair passed six focused native checks, including the 112-case mip-blit batch,
 array/MSAA checks, ImGui and SDL with matching HDMI. **4K is now the hardware
@@ -55,7 +56,7 @@ release gate; duplicate 1440p console runs are omitted by owner decision.** The
 1440p pair is built and host-checked, not separately console-validated. See the
 [G55 release guide](docs/sdk-g55-release.md). These results do not apply to the
 G47/G25 downloads or constitute a new full CTS campaign.
-Both local archives passed all 244 file checksums, GL/SDL manifests and five
+Both published archives passed all 244 file checksums, GL/SDL manifests and five
 consumer builds after extraction; their identities are recorded in that guide.
 
 **Current-source SDK builds:** [GitHub Actions](.github/workflows/release.yml)

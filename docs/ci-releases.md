@@ -116,3 +116,8 @@ The [G47 native 1440p120/4K120 release](sdk-bundle-hfr.md) follows the same
 frozen-asset `sdk-*` process, with two separately qualified GL/SDL2 archives.
 Its release tag identifies the publication source; each archive's provenance
 retains its original packaging and runtime-build commits.
+
+The [G55 release](sdk-g55-release.md) also uses the frozen-asset `sdk-*` process:
+4K has six focused native checks, while 1440p is explicitly host-checked only
+under the owner's 4K-only hardware gate. Its published binaries were not rebuilt
+by the SDK workflow; the host and staging workflow passed on publication source.

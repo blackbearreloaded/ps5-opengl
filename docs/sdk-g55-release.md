@@ -6,7 +6,8 @@ G55 is a separate fixed-profile successor for 1440p120 and 2160p120. The final
 The 1440p pair is built and host-checked, not separately console-validated.
 **By owner decision, 4K is the hardware release gate and duplicate 1440p native
 runs are no longer required after it passes.** No output-setting change is
-needed. Neither pair has been published.
+needed. Both archives are available in the
+[G55 prerelease](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g55-hfr-sdl2-focused).
 
 The successor fixes depth/stencil mip-subresource blits and packed mip clears,
 including masks and preservation of neighboring images. Its 112-case native
@@ -44,8 +45,16 @@ The 4K entry supersedes the unpublished packaging draft ending in checksum
 `0c0113`; that draft is preserved locally. Historical G47/G25 downloads are
 unchanged. Local `make test`, `make test-staging`, 43 packaging regressions and
 SDL integrity/profile checks passed. The staging gates are required by both
-GitHub workflows; the updated workflows have not yet run on GitHub. Publication
-of source and these exact archives is still a separate step.
+GitHub workflows. The [host and staging workflow](https://github.com/blackbearreloaded/ps5-opengl/actions/runs/34386920120)
+also passed on publication source `9eb75fc467d7888f13ff66d54404b4d1c646c638`.
+This was not a fresh SDK-build workflow or a new console run.
+
+The source and these exact archives were published on September 9. GitHub's
+asset SHA-256 and size fields match both archives and their checksum sidecars;
+older releases/assets and repository visibility are unchanged. The release tag
+points to the publication source above, separately from the runtime and packaging
+commits. Frozen archives retain their preparation-time wording; these notes
+record publication without rewriting the verified downloads.
 
 ## Maintainer integration API
 

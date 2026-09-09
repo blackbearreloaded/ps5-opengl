@@ -326,3 +326,5 @@ The packager recomputes raw numerical/lifecycle/HDMI receipts before distributio
 43 packaging regressions and SDL integrity/profile checks pass. No publication.
 
 - 2026-09-09 | G55 release preparation complete | 6de0298 packaging / 9f3b6dd runtime | two archives: 244 checksums, GL/SDL manifests and five extracted consumer links each; 4K native-qualified, 1440p host-only per owner policy | [archive identities](sdk-g55-release.md#prepared-archives--september-9). No GitHub push/upload.
+
+- 2026-09-09 | G55 published | 9eb75fc publication / unchanged frozen archives | hosted host/staging checks passed; four uploaded assets match local hashes/sizes; older releases unchanged | [release](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g55-hfr-sdl2-focused). No new console run.
