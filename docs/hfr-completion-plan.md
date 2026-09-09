@@ -128,3 +128,23 @@ and command construction/flush, preserving the existing warmup exclusion only
 for steady averages. No new per-frame clocks, changed retries, initialization
 order, or acceptance. A separate G47-derived diagnostic changes only the runtime
 backend object; do not mix it into the clear-performance comparison.
+
+- 2026-09-09 | G48 focused regression | scissor/4x-depth/lifecycle pass; 18 lifecycle pixels, zero post-session tracked heap growth, GPU baseline restored; all clean/healthy/unlocked | results/g48-layer-xor-{scissor,msaa-depth,lifecycle}-1440-20260909/.
+- 2026-09-09 | G48 paired 1440p | clear 6.10→3.05ms; ordinary 57.24→59.94 FPS, instanced 114.81→119.88 FPS; all pixels/counts/HDMI/cleanup pass | results/g48-{control,layer-xor}-cubes-1440-20260909/; .local/g48-cubes-1440-comparison-v1.json.
+- 2026-09-09 | G49 native startup | video acquisition/preparation 1,856.544ms of first-clear 1,862.156ms; setup 0.163ms, one open attempt, no retry sleep; diagnostic/pixels/HDMI/cleanup/health/unlock pass, not cadence acceptance | results/g49-startup-prepare-1440-20260909/.
+
+Both 1440/2160 G48 derivatives pass their manifests and three installed consumer
+links; full host tests and the actual AMD-layout/depth-fill checks pass. The
+1440 candidate SDK manifest is `ced3acfcb0a7650197692acef1f102d802c2e44897af7849e9d2b8fa9abb94b4`;
+the diagnostic SDK manifest is `b7ea5ac1c8713a6d1049b7b674c5d62c85777d63d80d81f6b82f7ad632419432`.
+They change only `ps5_screen.o` and only `ps5_agc_runtime_backend.o`, respectively,
+against frozen G47; all other runtime members and dependencies are byte-identical.
+Source is local, not pushed; a combined release build remains unqualified.
+
+Next: owner selects 2160p and returns home. Reuse exactly the frozen 4K cube
+folders `.local/g48-control-apps/2160/cubes` (eboot
+`282ae274947a9145af3f1025a77088ec3be90d9f6b50c06078c6bf0f46126abc`)
+and `.local/g48-layer-xor-regression-apps/2160/cubes` (eboot
+`1a042b20a56cfa444a83a0e797d926119197a36c57b03311da761fd4cd3c2626`).
+Require native 2160p119.88/restoration evidence and the unchanged profile auditor.
+No performance extrapolation from 1440p, new long soak or whole-CTS rerun.

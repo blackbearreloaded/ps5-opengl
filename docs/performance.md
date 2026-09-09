@@ -1,6 +1,7 @@
 # Performance
 
-Current high-resolution workload checks are summarized [below](#high-resolution-application-checks-g44g45-local).
+Current local optimization results are summarized [below](#local-clear-optimization-and-startup-diagnosis-g48g49-unreleased).
+Released high-resolution workload checks retain their [separate identities](#release-derivative-high-resolution-checks-g47-local).
 The earlier G13 native storage reuse for
 single-mip 2D RGBA8 images (`16e651b`) improves the matched 1080p ImGui FBO
 workload from **19.98 to 59.95 FPS**. Both 30-second runs pass pixels, completion
@@ -20,6 +21,40 @@ See [G5d results and limits](#g5d-verified-high-resolution-120-fps-candidate) an
 These render-throughput measurements do not qualify the 1080p60 SDK bundles or
 establish 4K120 HDMI output. The September 7 milestones below retain their original
 candidates and decisions; later acceptance does not rewrite those receipts.
+
+## Local clear optimization and startup diagnosis (G48/G49, unreleased)
+
+September 9, same firmware-6.02 console, native 1440p119.88 output. Replacing
+the full-layer depth-fill loop with Mesa's `util_memset32` preserves flushing,
+masks and retirement. Matched 128-cube profiles ran 30 seconds per mode:
+
+| Workload | G47 control FPS | Candidate FPS | Mean clear, control → candidate |
+| --- | ---: | ---: | ---: |
+| Ordinary draws | 57.24 | 59.94 | 6.101 → 3.043 ms |
+| Instanced draws | 114.81 | 119.88 | 6.107 → 3.053 ms |
+
+These are completed workload frames, not arbitrary-game guarantees. Both runs
+passed before/after pixels, draw counts, HDMI restoration, teardown and health.
+Focused checks also exposed and fixed missing slice XOR in CPU depth/stencil
+addressing: all three depth layers now match. Masked scissor, 4x depth sampling/
+resolve and three EGL sessions passed; the latter checked 18 pixels with no
+post-session tracked heap growth and balanced GPU allocations. No full CTS rerun.
+The 4K candidates are built and host-linked, but not yet hardware measured.
+
+A separate G47-derived startup diagnostic attributes **1,856.544 ms** to the
+first video acquisition/preparation interval, out of a **1,862.156 ms** first
+clear. Native setup was **0.163 ms**, scanout flush **0.572 ms**, and opening
+succeeded on attempt one. This includes output opening/configuration/registration
+and preparation, not an individually timed VideoOut API or proof of physical
+HDMI handshake duration. The first 30-second window remains about **112.3 FPS**;
+startup was not excluded and no startup-latency improvement is claimed.
+
+Local evidence: `results/g48-{control,layer-xor}-cubes-1440-20260909/`,
+`results/g48-layer-xor-{scissor,msaa-depth,lifecycle}-1440-20260909/`, and
+`results/g49-startup-prepare-1440-20260909/`. Frozen SDK/app hashes and remaining
+qualification gaps are recorded in the [completion plan](hfr-completion-plan.md).
+These separate derivatives do not replace the published G47 SDKs or qualify a
+new combined release build.
 
 ## Display negotiation audit (September 8, local)
 
