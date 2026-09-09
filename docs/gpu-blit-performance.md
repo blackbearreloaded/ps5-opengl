@@ -95,3 +95,10 @@ by the [OpenGL blit rules](https://registry.khronos.org/OpenGL/specs/gl/glspec46
 The successor pair uses identical corrected source; the CPU control sets the
 existing `PS5_GPU_BLIT_MIN_PIXELS` compile-time threshold to `UINT32_MAX`.
 This disables accelerated blits for these workloads without changing their oracle.
+
+- 2026-09-09 | G57/G59 | 9a43127 | 4K | pass: paired 22-case blit/MSAA oracle, 19,558,400 pixels each; clean/healthy/unlocked | results/g57-blit-{control,candidate}-2160-20260909-v2.
+
+The GPU candidate completed scaling, nearest/linear filtering, both-axis flips,
+scissoring, image-edge filtering, state reuse and distinct-sample 4x RGBA8 resolves.
+Every admitted operation recorded one GPU draw; the tiny fallback recorded none.
+This is focused local qualification, not a new whole-CTS or display certification.
