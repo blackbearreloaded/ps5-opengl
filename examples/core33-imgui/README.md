@@ -210,7 +210,8 @@ or one second (at least two completed frames), then runs
 The host check shortens each case to two warm-up and six measured frames without
 pacing; its timing is not a PS5 performance prediction.
 
-Only a static 1080p preview is presented between cases. The measured rendering
+Only a static preview at the SDK's 1080p, 1440p or 2160p window size is presented
+between cases. The measured rendering
 uses offscreen RGBA8 buffers: **no 1440p/4K or 90/120 Hz display claim** follows
 from these results. See the [measurement scope](../../docs/performance.md).
 Use the locked native-folder runner with gate `egl_public_core33_imgui_benchmark.o`,

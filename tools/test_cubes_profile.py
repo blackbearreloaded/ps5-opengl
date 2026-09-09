@@ -12,8 +12,8 @@ api = runpy.run_path(str(Path(__file__).with_name("summarize-cubes-profile.py"))
 summarize, compare = api["summarize"], api["compare"]
 
 
-def receipt(host=False, completion=1, gpu_clear=False):
-    lines = [f"[ps5-cubes-profile] config version=2 width=1920 height=1080 objects=128 "
+def receipt(host=False, completion=1, gpu_clear=False, height=1080):
+    lines = [f"[ps5-cubes-profile] config version=2 width={height * 16 // 9} height={height} objects=128 "
              f"modes=2 warmup=30 seconds=1 swap_completed={completion} host={int(host)} max_frames=16384"]
     for mode in (0, 1):
         public_draws = 1 if mode else 128
@@ -76,6 +76,12 @@ def main():
     assert cell["phases"]["interval"]["budget_misses"] == 0
     assert summarize(text, seconds=1, budget_hz=120)["workloads"][0]["phases"]["interval"]["budget_misses"] == 100
     assert summarize(text.replace("\n", "\r\n"), seconds=1) == report
+    for height in (1440, 2160):
+        high_res = summarize(receipt(height=height), seconds=1, height=height)
+        assert high_res["height"] == height and high_res["width"] == height * 16 // 9
+        rejected(receipt(height=height))
+        rejected(text, height=height)
+    rejected(text, height=720)
     host_report = summarize(receipt(host=True), host=True, seconds=1)
     assert host_report["mode"] == "host-reference"
     assert all(row["clear_path"] == "host" and row["native_draws_per_frame"] == 0
@@ -91,7 +97,8 @@ def main():
         pass
     else:
         raise AssertionError("Host/native performance comparison accepted")
-    for field, value in (("objects", 512), ("seconds", 30), ("budget_hz", 120)):
+    for field, value in (("objects", 512), ("seconds", 30), ("budget_hz", 120),
+                         ("height", 1440), ("width", 2560)):
         bad = dict(report, **{field: value})
         try:
             compare(bad, report)

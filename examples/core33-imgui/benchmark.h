@@ -167,7 +167,9 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     EGLint window_width = 0, window_height = 0;
     if (!check(eglQuerySurface(display, surface, EGL_WIDTH, &window_width) &&
                eglQuerySurface(display, surface, EGL_HEIGHT, &window_height) &&
-               window_width == 1920 && window_height == 1080, "benchmark preview window")) return false;
+               ((window_width == 1920 && window_height == 1080) ||
+                (window_width == 2560 && window_height == 1440) ||
+                (window_width == 3840 && window_height == 2160)), "benchmark preview window")) return false;
     const int sizes[][2] = {{1920, 1080}, {2560, 1440}, {3840, 2160}};
     const int rates[] = {30, 60, 90, 120};
     GLuint fbo = 0, color = 0;

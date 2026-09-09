@@ -29,17 +29,19 @@ def timing(values, budget_hz):
                 budget_misses=sum(value * budget_hz > 1_000_000_000 for value in ordered))
 
 
-def summarize(text, host=False, objects=128, seconds=30, swap_completed=1, budget_hz=60):
+def summarize(text, host=False, objects=128, seconds=30, swap_completed=1, budget_hz=60, height=1080):
     require(objects in (32, 128, 512) and 1 <= seconds <= 60 and
-            swap_completed in (0, 1) and math.isfinite(budget_hz) and 0 < budget_hz <= 1000,
+            swap_completed in (0, 1) and math.isfinite(budget_hz) and 0 < budget_hz <= 1000 and
+            height in (1080, 1440, 2160),
             "Invalid requested configuration")
+    width = height * 16 // 9
     lines = iter(line for line in text.splitlines()
                  if line.startswith(("[ps5-cubes]", "[ps5-cubes-profile]")))
 
     def take():
         return next(lines, "")
 
-    config = (f"[ps5-cubes-profile] config version=2 width=1920 height=1080 objects={objects} "
+    config = (f"[ps5-cubes-profile] config version=2 width={width} height={height} objects={objects} "
               f"modes=2 warmup=30 seconds={seconds} swap_completed={swap_completed} "
               f"host={int(host)} max_frames=16384")
     require(take() == config, "Wrong or missing profile configuration")
@@ -102,7 +104,7 @@ def summarize(text, host=False, objects=128, seconds=30, swap_completed=1, budge
     if not host:
         require(re.findall(r"\[pss-opengl-native\] gate completed status=(-?\d+)", text) == ["0"],
                 "Native gate incomplete or failed")
-    return dict(version=2, mode="host-reference" if host else "PS5", width=1920, height=1080,
+    return dict(version=2, mode="host-reference" if host else "PS5", width=width, height=height,
                 objects=objects, triangles=12 * objects, textures=2, texture_size=2,
                 seconds=seconds, warmup=30, completion="swap" if swap_completed else "finish-before-swap",
                 budget_hz=budget_hz, budget_ms=1000 / budget_hz, workloads=report,
@@ -130,6 +132,8 @@ if __name__ == "__main__":
     parser.add_argument("--host", action="store_true")
     parser.add_argument("--objects", type=int, choices=(32, 128, 512), default=128)
     parser.add_argument("--seconds", type=int, default=30)
+    parser.add_argument("--height", type=int, choices=(1080, 1440, 2160), default=1080,
+                        help="Required render-surface height; this does not validate HDMI output")
     parser.add_argument("--swap-completed", type=int, choices=(0, 1), default=1)
     parser.add_argument("--budget-hz", type=float, default=60,
                         help="CPU-wall budget frequency, e.g. 60 or measured 59.94; does not set output mode")
@@ -140,7 +144,7 @@ if __name__ == "__main__":
     try:
         def read(path, completion):
             raw = path.read_bytes()
-            result = summarize(raw.decode(), args.host, args.objects, args.seconds, completion, args.budget_hz)
+            result = summarize(raw.decode(), args.host, args.objects, args.seconds, completion, args.budget_hz, args.height)
             result["receipt_sha256"] = hashlib.sha256(raw).hexdigest()
             return result
         result = read(args.receipt, args.swap_completed)

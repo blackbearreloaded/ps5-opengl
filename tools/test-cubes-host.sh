@@ -51,15 +51,15 @@ echo 'UV diagnostic host PASS: independent coordinate oracle and fault rejection
 
 # Software EGL validates the workload and parser, never console performance.
 profile_flags=(-DPS5_CUBES_PROFILE=1 -DPS5_CUBES_SECONDS=1)
-for config in 0:128 1:128 1:512; do
-    swap=${config%:*}; objects=${config#*:}
-    name="profile-$swap-$objects"
+for config in 0:128:1080 1:128:1080 1:512:1080 1:128:1440 1:128:2160; do
+    IFS=: read -r swap objects height <<< "$config"
+    name="profile-$swap-$objects-$height"
     clang-18 "${flags[@]}" "${profile_flags[@]}" -DPS5_CUBES_SWAP_COMPLETED="$swap" \
-        -DPS5_CUBES_OBJECTS="$objects" "$root/examples/core33-cubes/main.c" \
+        -DPS5_CUBES_OBJECTS="$objects" -DPS5_CUBES_HOST_HEIGHT="$height" "$root/examples/core33-cubes/main.c" \
         -l:libEGL.so.1 -l:libGL.so.1 -lm -o "$out/$name"
     "$out/$name" > "$out/$name.log"
     python3 "$root/tools/summarize-cubes-profile.py" --host --seconds 1 \
-        --objects "$objects" --swap-completed "$swap" "$out/$name.log"
+        --objects "$objects" --swap-completed "$swap" --height "$height" "$out/$name.log"
 done
 for fault in depth texture instances; do
     if [[ $fault == depth ]]; then
@@ -78,4 +78,4 @@ for fault in depth texture instances; do
     fi
     grep -F '[ps5-cubes] pixel=' "$out/profile-fault-$fault.log" >/dev/null
 done
-echo 'Cubes profile host PASS: both completion modes, 512 objects, depth/texture/instance fault rejection (host timings only)'
+echo 'Cubes profile host PASS: both completion modes, 512 objects, 1080/1440/2160p, depth/texture/instance fault rejection (host timings only)'

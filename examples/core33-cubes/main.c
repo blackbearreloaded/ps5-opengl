@@ -16,8 +16,19 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/gl.h>
 
-enum { WIDTH = 1920, HEIGHT = 1080, WARMUP = 2, FRAMES = 8 };
-#ifndef PS5_CUBES_PROFILE
+enum { WARMUP = 2, FRAMES = 8 };
+#ifdef PS5_CUBES_PROFILE
+static unsigned WIDTH = 1920, HEIGHT = 1080;
+#ifdef PS5_CUBES_HOST_REFERENCE
+#ifndef PS5_CUBES_HOST_HEIGHT
+#define PS5_CUBES_HOST_HEIGHT 1080
+#endif
+#if PS5_CUBES_HOST_HEIGHT != 1080 && PS5_CUBES_HOST_HEIGHT != 1440 && PS5_CUBES_HOST_HEIGHT != 2160
+#error "Host profile height must be 1080, 1440 or 2160"
+#endif
+#endif
+#else
+enum { WIDTH = 1920, HEIGHT = 1080 };
 static const unsigned workloads[] = {1, 8, 32};
 #endif
 static const uint8_t texels[2][16] = {
@@ -185,6 +196,10 @@ int main(void)
    if (!check(display != EGL_NO_DISPLAY && eglInitialize(display,NULL,NULL) && eglBindAPI(EGL_OPENGL_API) &&
        eglChooseConfig(display,ca,&config,1,&count) && count == 1, "EGL init")) goto cleanup;
 #ifdef PS5_CUBES_HOST_REFERENCE
+#ifdef PS5_CUBES_PROFILE
+   WIDTH = PS5_CUBES_HOST_HEIGHT * 16 / 9;
+   HEIGHT = PS5_CUBES_HOST_HEIGHT;
+#endif
    const EGLint sa[] = {EGL_WIDTH,WIDTH,EGL_HEIGHT,HEIGHT,EGL_NONE};
    surface = eglCreatePbufferSurface(display,config,sa);
 #else
@@ -196,8 +211,17 @@ int main(void)
    current = 1;
    EGLint width = 0, height = 0;
    if (!check(eglQuerySurface(display,surface,EGL_WIDTH,&width) &&
-       eglQuerySurface(display,surface,EGL_HEIGHT,&height) && width == WIDTH && height == HEIGHT,
+       eglQuerySurface(display,surface,EGL_HEIGHT,&height) &&
+#ifdef PS5_CUBES_PROFILE
+       (height == 1080 || height == 1440 || height == 2160) && width == height * 16 / 9,
+#else
+       width == WIDTH && height == HEIGHT,
+#endif
        "surface dimensions")) goto cleanup;
+#ifdef PS5_CUBES_PROFILE
+   WIDTH = (unsigned)width;
+   HEIGHT = (unsigned)height;
+#endif
    vs = compile(GL_VERTEX_SHADER, "#version 330 core\n"
       "layout(location=0) in vec3 p; layout(location=1) in vec3 normal; layout(location=2) in vec2 uv;"
       "layout(location=3) in vec4 instance_placement; uniform int instanced; uniform int object_index;"

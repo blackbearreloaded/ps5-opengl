@@ -109,6 +109,11 @@ python3 tools/summarize-cubes-profile.py results/profile-opengl.log \
   --objects 128 --seconds 30 --swap-completed 1 --budget-hz 59.94
 ```
 
+Profile mode uses the actual EGL window size from the selected SDK: 1920x1080,
+2560x1440 or 3840x2160. Pass `--height 1440` or `--height 2160` to require that
+size in the receipt auditor (default: 1080). Unsupported sizes and mismatched
+receipts fail. This queries the render surface, not the negotiated HDMI signal.
+
 The report includes clear, submission, finish, swap, active-frame and completed
 frame-interval means, nearest-rank p50/p95/p99/max, and budget misses. Completed
 FPS uses the entire measured interval including inter-frame loop overhead.
@@ -140,7 +145,7 @@ python3 -m unittest discover -s tools -p test_cubes_profile.py
 ```
 
 The host lane preserves the historical and UV checks, tests both profile modes
-at 128 cubes and the 512-cube upper limit, and requires deliberate depth,
+at 128 cubes, the 512-cube upper limit and 1440p/2160p profiles, and requires deliberate depth,
 texture and missing-instance faults to fail the new path. Short host profiles
 run one second per mode; use `--host --seconds 1` to audit them. They validate
 the workload, timing accounting and oracles, not PS5 throughput or retirement.
@@ -149,7 +154,7 @@ native completion/counts, mismatched comparisons and invalid timing budgets.
 The host script also runs the real profile loop against a mock native counter,
 checking both clear paths and lost/extra draws at every frame in both modes.
 
-The profile remains 1920x1080 and does not select a display mode. It makes no new
-4K90, HDMI pacing, suspend/recovery, release-acceptance or physical-controller
-claim. Start with the single matched 128-cube native case after the runtime owner
-clears its current hardware investigation, rather than launching another matrix.
+The historical benchmark remains 1920x1080. Neither benchmark selects a display
+mode. Host profile tests can set `PS5_CUBES_HOST_HEIGHT=1080|1440|2160`; native
+profiles obtain their dimensions from EGL. Neither path alone establishes HDMI
+pacing, suspend/recovery, release acceptance or physical-controller behavior.
