@@ -246,3 +246,11 @@ covers both depth formats, color controls, odd/1D extents, selected layers and
 base levels, and rejects the old dispatch. Native qualification is pending.
 The console recorded an app-level segmentation fault, not a kernel panic; the
 failed receipt is retained and was not retried unchanged.
+
+- 2026-09-09 | G48 paired 4K | pass: clear 12.1→5.6ms; ordinary 39.96→57.69 / instanced 59.94→119.02 FPS; pixels/HDMI/cleanup/health/unlock | results/g48-{control,layer-xor}-cubes-2160-20260909-v1/.
+
+The paired cube runs use the two frozen G48 executables listed above, 128
+objects and 30 seconds per mode. `.local/g48-cubes-2160-comparison-v1.json`
+binds the unchanged auditor and receipt hashes. Both negotiated 2160p119.88
+and restored 2160p59.94. These are completed workload averages, not a promise
+of steady 60/120 FPS or an arbitrary game's performance; cadence misses remain.
