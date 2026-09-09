@@ -2811,6 +2811,9 @@ int ps5_agc_gate2_set_color_target_extents(const uint32_t *widths,
 int ps5_agc_gate2_set_color_target_views(const uint32_t *views,
                                          unsigned count)
    __attribute__((weak));
+int ps5_agc_gate2_set_color_target_layouts(void *const *targets, const size_t *sizes,
+   const uint32_t *infos, const uint32_t *widths, const uint32_t *heights,
+   const uint32_t *pitches, unsigned count) __attribute__((weak));
 int ps5_agc_gate2_set_border_color_table(const void *table, size_t size)
    __attribute__((weak));
 
@@ -4310,6 +4313,53 @@ ps5_surface_layer_count(const struct pipe_surface *surface)
    return ps5_texture_level_layers(surface->texture, surface->level);
 }
 
+static unsigned
+ps5_linear_color_pitch(const struct pipe_surface *surface)
+{
+   /* Render one existing linear mip/layer directly. Keep allocated staging for
+    * layered draws and unsupported formats; sampler/CPU storage is unchanged. */
+   if (!PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE ||
+       !ps5_agc_gate2_set_color_target_layouts || !surface || !surface->texture)
+      return 0;
+   const struct ps5_resource *r = (const struct ps5_resource *)surface->texture;
+   if ((r->base.target != PIPE_TEXTURE_2D && r->base.target != PIPE_TEXTURE_2D_ARRAY) ||
+       !r->base.width0 || !r->base.height0 || r->base.depth0 != 1 ||
+       r->base.last_level >= ARRAY_SIZE(r->level_stride) || r->base.last_level >= 16 ||
+       r->base.width0 > PS5_MAX_COLOR_WIDTH || r->base.height0 > PS5_MAX_COLOR_HEIGHT ||
+       (r->base.target == PIPE_TEXTURE_2D && r->base.array_size != 1) ||
+       (r->base.bind & PIPE_BIND_DISPLAY_TARGET) || !(r->base.bind & PIPE_BIND_RENDER_TARGET) ||
+       r->base.nr_samples > 1 || r->base.nr_storage_samples > 1 ||
+       surface->format != r->base.format || !r->render_staging_size || r->depth_staging_size ||
+       !ps5_linear_sampled_layout(&r->base) || !r->data || r->size > r->allocation_size ||
+       surface->level > r->base.last_level || surface->level >= ARRAY_SIZE(r->level_stride) ||
+       surface->level >= 32 || surface->first_layer != surface->last_layer ||
+       surface->last_layer >= ps5_surface_layer_count(surface) || !r->layer_stride ||
+       surface->last_layer >= r->size / r->layer_stride ||
+       (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
+        surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT))
+      return 0;
+   unsigned width = ps5_surface_width(surface), height = ps5_surface_height(surface);
+   unsigned stride = r->level_stride[surface->level];
+   unsigned bpp = ps5_texture_format_size(surface->format);
+   if (!width || !height || width > PS5_MAX_COLOR_WIDTH || height > PS5_MAX_COLOR_HEIGHT ||
+       !stride || (stride & 255u) || !bpp || stride < (uint64_t)width * bpp ||
+       stride / bpp > PS5_MAX_COLOR_WIDTH || stride > SIZE_MAX / height)
+      return 0;
+   size_t span = (size_t)(height - 1u) * stride + (size_t)width * bpp;
+   size_t level = r->level_offset[surface->level];
+   if (level > r->layer_stride || span > r->layer_stride - level)
+      return 0;
+   size_t offset = (size_t)surface->first_layer * r->layer_stride + level;
+   uintptr_t address = (uintptr_t)r->data;
+   if (offset > r->size || offset > UINTPTR_MAX - address || span > r->size - offset)
+      return 0;
+   address += offset;
+   if ((address & 255u) || address >= (UINT64_C(1) << 48) ||
+       span > (UINT64_C(1) << 48) - address)
+      return 0;
+   return stride;
+}
+
 static bool
 ps5_stage_color_surface(const struct pipe_surface *surface, bool to_staging)
 {
@@ -5359,14 +5409,13 @@ ps5_replicate_depth_stencil_msaa4(struct pipe_context *context,
 static bool
 ps5_blit_gpu_color(struct ps5_context *context, const struct pipe_blit_info *info)
 {
-   /* ponytail: only large native RGBA8 copies; retain the existing
-    * fallback for all other layouts. Tune the floor with paired measurements. */
+   /* ponytail: large plain-color copies using existing sampler layouts and
+    * directly renderable views. Keep the measured floor and other fallbacks. */
    if (!PS5_ENABLE_RENDER_TO_TEXTURE_CANDIDATE || !PS5_ENABLE_MRT_CANDIDATE ||
        !PS5_ENABLE_UBO_CANDIDATE || !context || !info ||
        !info->src.resource || !info->dst.resource ||
        info->mask != PIPE_MASK_RGBA ||
        (info->filter != PIPE_TEX_FILTER_NEAREST && info->filter != PIPE_TEX_FILTER_LINEAR) ||
-       info->src.level || info->dst.level ||
        info->num_window_rectangles || info->alpha_blend || info->swizzle_enable ||
        info->sample0_only || info->dst_sample || context->render_condition_query ||
        context->stream_output_target_count || context->active_occlusion_query ||
@@ -5401,40 +5450,69 @@ ps5_blit_gpu_color(struct ps5_context *context, const struct pipe_blit_info *inf
       (const struct ps5_resource *)info->dst.resource,
    };
    const struct pipe_box *boxes[] = {&info->src.box, &info->dst.box};
-   if (info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM ||
-       info->dst.format != PIPE_FORMAT_R8G8B8A8_UNORM)
+   const unsigned levels[] = {info->src.level, info->dst.level};
+   uintptr_t addresses[2];
+   size_t spans[2];
+   if (info->src.format != info->dst.format ||
+       (info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM &&
+        info->src.format != PIPE_FORMAT_R8_UNORM &&
+        info->src.format != PIPE_FORMAT_R8G8_UNORM &&
+        info->src.format != PIPE_FORMAT_R16G16B16A16_FLOAT) ||
+       (resolve && info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM))
       return false;
    for (unsigned i = 0; i < 2; ++i) {
       const struct ps5_resource *r = resources[i];
       const struct pipe_box *b = boxes[i];
-      if (r->base.target != PIPE_TEXTURE_2D || r->base.last_level ||
-          r->base.depth0 != 1 || r->base.array_size != 1 ||
+      if ((r->base.target != PIPE_TEXTURE_2D && r->base.target != PIPE_TEXTURE_2D_ARRAY) ||
+          r->base.depth0 != 1 || !r->base.array_size ||
+          (r->base.target == PIPE_TEXTURE_2D && r->base.array_size != 1) ||
+          levels[i] > r->base.last_level || r->base.last_level >= ARRAY_SIZE(r->level_stride) ||
+          r->base.last_level >= 16 ||
           ((!resolve || i) &&
            (r->base.nr_samples > 1 || r->base.nr_storage_samples > 1)) ||
-          r->base.format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+          r->base.format != info->src.format ||
           !(r->base.bind & PIPE_BIND_RENDER_TARGET) ||
           (r->base.bind & PIPE_BIND_DISPLAY_TARGET) ||
-          ps5_linear_sampled_layout(&r->base) ||
-          r->render_staging_size || r->depth_staging_size ||
+          r->depth_staging_size ||
           !r->data || !r->allocation_size ||
           r->allocation_size > UINTPTR_MAX - (uintptr_t)r->data ||
           !r->base.width0 || !r->base.height0 ||
           r->base.width0 > PS5_MAX_COLOR_WIDTH || r->base.height0 > PS5_MAX_COLOR_HEIGHT ||
-          (resolve && !i ? ps5_tiled_color_msaa4_surface_size(
+          b->x < 0 || b->y < 0 || b->z < 0 ||
+          (unsigned)b->z >= r->base.array_size || b->depth != 1)
+         return false;
+      unsigned width = MAX2(r->base.width0 >> levels[i], 1u);
+      unsigned height = MAX2(r->base.height0 >> levels[i], 1u);
+      if ((unsigned)b->x > width || (unsigned)b->y > height ||
+          (int64_t)b->x + b->width < 0 || (int64_t)b->y + b->height < 0 ||
+          (int64_t)b->x + b->width > width || (int64_t)b->y + b->height > height)
+         return false;
+      struct pipe_surface selected = {
+         .texture = (struct pipe_resource *)&r->base, .format = r->base.format,
+         .level = levels[i], .first_layer = b->z, .last_layer = b->z,
+      };
+      unsigned pitch = ps5_linear_color_pitch(&selected);
+      size_t offset = 0;
+      if (pitch) {
+         offset = (size_t)b->z * r->layer_stride + r->level_offset[levels[i]];
+         spans[i] = (size_t)(height - 1u) * pitch +
+                    (size_t)width * ps5_texture_format_size(r->base.format);
+      } else {
+         if (r->base.target != PIPE_TEXTURE_2D || r->base.last_level || b->z ||
+             ps5_linear_sampled_layout(&r->base) || r->render_staging_size)
+            return false;
+         spans[i] = resolve && !i ? ps5_tiled_color_msaa4_surface_size(
              r->base.format, r->base.width0, r->base.height0) :
              ps5_tiled_color_surface_size(r->base.format, r->base.width0,
-                                          r->base.height0)) > r->allocation_size ||
-          b->x < 0 || b->y < 0 || b->z || b->depth != 1 ||
-          (unsigned)b->x > r->base.width0 || (unsigned)b->y > r->base.height0 ||
-          (int64_t)b->x + b->width < 0 || (int64_t)b->y + b->height < 0 ||
-          (int64_t)b->x + b->width > r->base.width0 ||
-          (int64_t)b->y + b->height > r->base.height0)
+                                           r->base.height0);
+      }
+      if (!spans[i] || offset > r->allocation_size || spans[i] > r->allocation_size - offset)
          return false;
+      addresses[i] = (uintptr_t)r->data + offset;
    }
-   /* Resource objects can alias a shared render pool. Check actual byte ranges. */
-   uintptr_t src = (uintptr_t)resources[0]->data, dst = (uintptr_t)resources[1]->data;
-   if (src < dst + resources[1]->allocation_size &&
-       dst < src + resources[0]->allocation_size)
+   /* Different mips/layers can share an allocation, never the same bytes. */
+   if (addresses[0] < addresses[1] + spans[1] &&
+       addresses[1] < addresses[0] + spans[0])
       return false;
 
    if (!context->blitter)
@@ -5444,8 +5522,8 @@ ps5_blit_gpu_color(struct ps5_context *context, const struct pipe_blit_info *inf
       return false;
    struct pipe_surface surface;
    struct pipe_sampler_view templ;
-   util_blitter_default_dst_texture(&surface, info->dst.resource, 0, 0);
-   util_blitter_default_src_texture(blitter, &templ, info->src.resource, 0);
+   util_blitter_default_dst_texture(&surface, info->dst.resource, info->dst.level, info->dst.box.z);
+   util_blitter_default_src_texture(blitter, &templ, info->src.resource, info->src.level);
    struct pipe_sampler_view *view = context->base.create_sampler_view(
       &context->base, info->src.resource, &templ);
    if (!view)
@@ -5974,11 +6052,11 @@ ps5_generate_mipmap(struct pipe_context *context,
    bool depth;
    unsigned components;
 
-   (void)context;
    ps5_draw_batch_drain();
    if (!PS5_ENABLE_TEXTURE_MIPMAP_CANDIDATE || !resource ||
        format != resource->base.format ||
        base_level >= last_level || last_level > resource->base.last_level ||
+       last_level >= ARRAY_SIZE(resource->level_stride) || last_level >= 32 ||
        !ps5_linear_sampled_layout(&resource->base) ||
        !ps5_sampled_texture_target(resource->base.target) ||
        !(format_size = ps5_texture_format_size(format)) ||
@@ -6020,6 +6098,29 @@ ps5_generate_mipmap(struct pipe_context *context,
       }
 
       for (unsigned layer = dst_first; layer <= dst_last; ++layer) {
+         /* A linear 2x2 filter is the existing box average for exact halvings.
+          * Reuse checked blits for large levels; CPU handles NPOT and the tail.
+          * No recursive draw while inside a staging/queue lock. */
+         if (!depth && (base->target == PIPE_TEXTURE_2D || base->target == PIPE_TEXTURE_2D_ARRAY) &&
+             (src_width == 2u * dst_width || src_width == 1) &&
+             (src_height == 2u * dst_height || src_height == 1) &&
+             (uint64_t)dst_width * dst_height >= PS5_GPU_BLIT_MIN_PIXELS) {
+            struct pipe_blit_info blit = {0};
+            blit.src.resource = blit.dst.resource = base;
+            blit.src.format = blit.dst.format = format;
+            blit.src.level = level - 1;
+            blit.dst.level = level;
+            blit.src.box = (struct pipe_box){0, 0, layer, src_width, src_height, 1};
+            blit.dst.box = (struct pipe_box){0, 0, layer, dst_width, dst_height, 1};
+            blit.mask = PIPE_MASK_RGBA;
+            blit.filter = PIPE_TEX_FILTER_LINEAR;
+            if (ps5_blit_gpu_color((struct ps5_context *)context, &blit)) {
+               if (((struct ps5_context *)context)->last_draw_status)
+                  return true; /* Attempted GPU failure must not replay another path. */
+               ps5_flush_gpu_data(resource->data, resource->size);
+               continue;
+            }
+         }
          unsigned src_z0 = resource->base.target == PIPE_TEXTURE_3D
                               ? (unsigned)((uint64_t)layer * src_depth /
                                            dst_depth)
@@ -7349,6 +7450,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       uint32_t target_widths[PS5_MAX_RENDER_TARGETS];
       uint32_t target_heights[PS5_MAX_RENDER_TARGETS];
       uint32_t target_views[PS5_MAX_RENDER_TARGETS];
+      uint32_t target_pitches[PS5_MAX_RENDER_TARGETS] = {0};
+      bool any_linear = false;
       struct ps5_resource *fallback = NULL;
       struct ps5_screen *screen = (struct ps5_screen *)base->screen;
 
@@ -7368,13 +7471,17 @@ ps5_draw_vbo_locked(struct pipe_context *base,
 
       for (unsigned i = 0; i < color_target_count; ++i) {
          const struct pipe_surface *surface = &context->framebuffer.cbufs[i];
-         struct ps5_resource *target = context->framebuffer.cbufs[i].texture
-            ? (struct ps5_resource *)context->framebuffer.cbufs[i].texture
+         struct ps5_resource *target = surface->texture
+            ? (struct ps5_resource *)surface->texture
             : fallback;
          size_t layer_offset = 0;
+         /* ponytail: qualify single-target mip/layer draws first; MRT retains
+          * existing staging until mixed-layout native coverage is available. */
+         target_pitches[i] = color_target_count == 1 ? ps5_linear_color_pitch(surface) : 0;
+         any_linear |= target_pitches[i] != 0;
 
          if (surface->texture) {
-            if (target->render_staging_size) {
+            if (target->render_staging_size && !target_pitches[i]) {
                if (!ps5_stage_color_surface(surface, true)) {
                   context->last_draw_status = -5;
                   return;
@@ -7392,7 +7499,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             return;
          }
          targets[i] = target->data + layer_offset;
-         target_sizes[i] = surface->texture && target->render_staging_size
+         target_sizes[i] = target_pitches[i] ? target->size - layer_offset :
+                          surface->texture && target->render_staging_size
                               ? target->render_staging_size
                               : target->allocation_size - layer_offset;
          target_widths[i] = surface->texture ? ps5_surface_width(surface)
@@ -7424,7 +7532,13 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             return;
          }
       }
-      if (((PS5_ENABLE_MRT_CANDIDATE ||
+      if (any_linear) {
+         if (ps5_agc_gate2_set_color_target_layouts(targets, target_sizes, target_info,
+                target_widths, target_heights, target_pitches, color_target_count) != 0) {
+            context->last_draw_status = -25;
+            return;
+         }
+      } else if (((PS5_ENABLE_MRT_CANDIDATE ||
             PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE)
              ? ps5_agc_gate2_set_framebuffers(
                   targets, target_sizes, color_target_count)
@@ -7433,14 +7547,14 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          context->last_draw_status = -5;
          return;
       }
-      if ((PS5_ENABLE_FRAMEBUFFER_SRGB_CANDIDATE ||
+      if (!any_linear && (PS5_ENABLE_FRAMEBUFFER_SRGB_CANDIDATE ||
            PS5_ENABLE_TEXTURE_RG_CANDIDATE) &&
           ps5_agc_gate2_set_color_target_info(
              target_info, color_target_count) != 0) {
          context->last_draw_status = -24;
          return;
       }
-      if (PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE &&
+      if (!any_linear && PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE &&
           ps5_agc_gate2_set_color_target_extents(
              target_widths, target_heights,
              color_target_count) != 0) {
@@ -7641,11 +7755,13 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             ? (const struct ps5_resource *)surface->texture : NULL;
 
          if (target && target->render_staging_size &&
+             (context->framebuffer.nr_cbufs != 1 || !ps5_linear_color_pitch(surface)) &&
              !ps5_stage_color_surface(surface, false)) {
             context->last_draw_status = -29;
             break;
          }
          if (target && target->render_staging_size &&
+             (context->framebuffer.nr_cbufs != 1 || !ps5_linear_color_pitch(surface)) &&
              context->samplers[1][0] &&
              ((const struct ps5_sampler_state *)
                  context->samplers[1][0])->base.compare_mode)

@@ -84,7 +84,7 @@ resolve compile; extended software-GL oracles pass (22 blit/resolve cases,
 also promotes single-level 2D R8/RG8/RGBA16F storage and large scissored/full-mask
 depth/stencil clears. Host checks are not native qualification. Full-depth
 memset, partial masks and unsupported layouts retain the existing CPU paths.
-Mip chains and arrays still require further work; G60 is not implemented yet.
+At this milestone, mip chains and arrays still required further work (G60).
 
 - 2026-09-09 | G57 control | 442ec97 | 4K | failed: inset LINEAR edge pixels; clean/healthy/unlocked | results/g57-blit-control-2160-20260909-v1 | fix CPU filter halo before pairing.
 
@@ -122,3 +122,10 @@ for D32/D32S8. Full-depth CPU clears remained approximately 0.77 ms. Ordinary
 to 8.38, 8.25 and 8.33 ms, respectively. These isolate tested operations, not
 game FPS or sustained throughput. The single-level format promotion removes
 draw-time staging; explicit CPU upload/readback still converts the tiled image.
+
+G60 local candidate reuses canonical linear storage for selected single-target
+2D/array mip/layer rendering, and checked large exact-halving blits for mipmap
+generation. Small mip tails, odd reductions, depth/integer formats, layered
+draws and MRT retain existing fallbacks. Allocation and sampling layouts are
+unchanged. Full fast host/staging checks pass; paired native qualification is
+pending. Mixed-layout backend register checks are host evidence only.

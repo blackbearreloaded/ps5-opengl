@@ -15,8 +15,10 @@ screen = (ROOT / "src/gallium/ps5/ps5_screen.c").read_text()
 
 
 def function(name):
-    start = backend.index("int\n" + name + "(")
-    return backend[start:backend.index("\n}", start) + 2]
+    match = re.search(r"^(?:static )?(?:int|unsigned)\n" +
+                      re.escape(name) + r"\(", backend, re.M)
+    assert match, name
+    return backend[match.start():backend.index("\n}", match.end()) + 2]
 
 
 defines = "\n".join(re.findall(
@@ -41,15 +43,18 @@ static unsigned ps5_agc_mrt_count = 1, ps5_agc_mrt_samples = 1;
 static void *ps5_agc_scanout_target, *ps5_agc_mrt_targets[8], *submitted_target;
 static size_t ps5_agc_scanout_size, ps5_agc_mrt_sizes[8];
 static uint32_t ps5_agc_mrt_color_info[8], ps5_agc_mrt_attrib2[8];
+static uint32_t ps5_agc_mrt_pitches[8];
 static uint32_t ps5_agc_depth_width, ps5_agc_depth_height;
 static int ps5_agc_gate2_set_framebuffer(void *target, size_t size) {
     assert(size >= PS5_AGC_FRAMEBUFFER_BYTES);
     submitted_target = target;
     return 0;
 }
-''' + "\n".join(function("ps5_agc_gate2_" + name) for name in (
-    "set_scanout", "set_framebuffers", "set_color_target_extents",
-    "set_depth_target_extents")) + r'''
+''' + "\n".join(function(name) for name in (
+    "ps5_agc_linear_color_bytes", "ps5_agc_color_target_extent",
+    "ps5_agc_gate2_set_scanout", "ps5_agc_gate2_set_framebuffers",
+    "ps5_agc_gate2_set_color_target_extents",
+    "ps5_agc_gate2_set_depth_target_extents")) + r'''
 struct pipe_scissor_state { unsigned minx, miny, maxx, maxy; };
 struct rasterizer { bool scissor; };
 struct context {
@@ -67,9 +72,10 @@ static bool encode_scissor(struct context *context, struct native *native) {
 #define PS5_ENABLE_SHARED_RENDER_POOL_CANDIDATE 1
 #define PIPE_BIND_DISPLAY_TARGET 1
 #define PIPE_FORMAT_Z32_FLOAT_S8X24_UINT 1
+#define PIPE_BUFFER 0
 struct ps5_screen { void *render_pool; };
 struct ps5_resource { int unused; };
-struct pipe_resource { unsigned bind, format, nr_samples; };
+struct pipe_resource { unsigned bind, format, nr_samples, target; };
 static bool arena_available;
 static unsigned direct_allocations;
 static bool ps5_render_arena_allocate(struct ps5_screen *screen,
@@ -79,7 +85,8 @@ static bool ps5_render_arena_allocate(struct ps5_screen *screen,
 }
 static struct ps5_resource *allocate(size_t allocation_size) {
     struct ps5_screen storage = {(void *)(uintptr_t)1}, *ps5 = &storage;
-    struct pipe_resource description = {0, 0, 1}, *templ = &description;
+    struct pipe_resource description = {.nr_samples = 1, .target = PIPE_BUFFER};
+    struct pipe_resource *templ = &description;
     struct ps5_resource *resource = calloc(1, sizeof(*resource));
     size_t allocation_alignment = 0x200000;
     bool render_staging = false;

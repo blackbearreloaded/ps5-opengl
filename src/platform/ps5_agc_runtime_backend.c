@@ -90,6 +90,8 @@ static uint32_t ps5_agc_mrt_attrib2[PS5_AGC_MRT_TARGETS] = {
    UINT32_C(0x01dfc437), UINT32_C(0x01dfc437),
 };
 static uint32_t ps5_agc_mrt_views[PS5_AGC_MRT_TARGETS];
+/* Byte pitches: zero retains the existing 64KB_R_X target layout. */
+static uint32_t ps5_agc_mrt_pitches[PS5_AGC_MRT_TARGETS];
 static uint32_t ps5_agc_mrt_mask = UINT32_C(0xf);
 static unsigned ps5_agc_mrt_count = 1;
 static unsigned ps5_agc_mrt_samples = 1;
@@ -255,6 +257,12 @@ ps5_agc_set_cx_mrt(void *command, const void *table, uint32_t count)
       records && ps5_agc_find_register(records, count, 0x0318u) >= 0 &&
       ps5_agc_find_register(records, count, 0x02d5u) >= 0;
 
+   for (unsigned target = 0; target < ps5_agc_mrt_count; ++target) {
+      if (ps5_agc_mrt_pitches[target] &&
+          (ps5_agc_mrt_samples != 1 || ps5_agc_mrt_views[target]))
+         return NULL;
+   }
+
    if (records) {
       uintptr_t address = (uintptr_t)ps5_agc_mrt_targets[0];
       int color_base = ps5_agc_find_register(records, count, 0x0318u);
@@ -364,6 +372,33 @@ ps5_agc_set_cx_mrt(void *command, const void *table, uint32_t count)
                ps5_agc_mrt_blend[target],
             };
          }
+      }
+   }
+   /* Apply layouts after cloning MRT0: a linear MRT0 must not change tiled
+    * siblings. Mesa ac_init_gfx10_cb_surface: standalone 2D, mip/slice zero;
+    * ac_set_mutable_cb_surface_fields supplies COLOR_SW_MODE (bits 14..18).
+    * Retain the existing RESOURCE_LEVEL and disabled-metadata policy. */
+   if (records) {
+      for (unsigned target = 0; target < ps5_agc_mrt_count; ++target) {
+         int attrib3 = ps5_agc_find_register(records, count, 0x03b8u + target);
+         int attrib = ps5_agc_find_register(records, count, 0x031du + 15u * target);
+
+         if (ps5_agc_mrt_pitches[target] && attrib >= 0) {
+            bool no_alpha = ps5_agc_mrt_color_info[target] == UINT32_C(0x8004) ||
+                            ps5_agc_mrt_color_info[target] == UINT32_C(0x800c);
+            /* ac_init_cb_surface: absent destination alpha is one. */
+            records[attrib].value = (records[attrib].value & ~UINT32_C(0x20000)) |
+                                    (no_alpha ? UINT32_C(0x20000) : 0);
+         }
+
+         if (attrib3 < 0)
+            continue;
+         uint32_t value = records[attrib3].value & ~UINT32_C(0x0007c000);
+         if (ps5_agc_mrt_pitches[target])
+            value = (value & ~UINT32_C(0x03f83fff)) | UINT32_C(0x01000000);
+         else
+            value |= UINT32_C(0x0006c000); /* 64KB_R_X, including after reset. */
+         records[attrib3].value = value;
       }
    }
    if (ps5_agc_occlusion_query && initial_graphics_table &&
@@ -817,25 +852,47 @@ ps5_agc_gate2_set_depth_to_texture_barrier(uint32_t enabled)
    return 0;
 }
 
-int
-ps5_agc_gate2_set_color_target_extents(const uint32_t *widths,
-                                       const uint32_t *heights,
-                                       unsigned count)
+static unsigned
+ps5_agc_linear_color_bytes(uint32_t info)
 {
-   if (!widths || !heights || !count || count > PS5_AGC_MRT_TARGETS ||
-       count != ps5_agc_mrt_count)
+   switch (info) {
+   case UINT32_C(0x00008028): return 4; /* RGBA8_UNORM */
+   case UINT32_C(0x00008004): return 1; /* R8_UNORM */
+   case UINT32_C(0x0000800c): return 2; /* RG8_UNORM */
+   case UINT32_C(0x00060730): return 8; /* RGBA16F */
+   default: return 0;
+   }
+}
+
+static int
+ps5_agc_color_target_extent(uint32_t info, uint32_t width, uint32_t height,
+                            uint32_t pitch, size_t size, uint32_t *attrib2)
+{
+   size_t required;
+   unsigned bytes_per_pixel;
+   unsigned encoded_width = width;
+
+   if (!width || width > PS5_AGC_MAX_COLOR_WIDTH ||
+       !height || height > PS5_AGC_MAX_COLOR_HEIGHT)
       return -1;
-   for (unsigned target = 0; target < count; ++target) {
-      size_t required;
+   if (pitch) {
+      bytes_per_pixel = ps5_agc_linear_color_bytes(info);
+      if (!bytes_per_pixel || ps5_agc_mrt_samples != 1 || (pitch & 255u) ||
+          pitch / bytes_per_pixel < width ||
+          pitch / bytes_per_pixel > UINT32_C(0x4000))
+         return -1;
+      encoded_width = pitch / bytes_per_pixel;
+      /* Only the logical final row is required; Gallium bounds rendering to
+       * width, and supplies the allocation remaining from the rebased mip. */
+      size_t row_bytes = (size_t)width * bytes_per_pixel;
+      if ((size_t)(height - 1u) > (SIZE_MAX - row_bytes) / pitch)
+         return -1;
+      required = (size_t)(height - 1u) * pitch + row_bytes;
+   } else {
       unsigned tile_width = 128;
       unsigned tile_height = 128;
-      unsigned format = (ps5_agc_mrt_color_info[target] >> 2) & 0x1fu;
-      unsigned bytes_per_pixel;
 
-      if (!widths[target] || widths[target] > PS5_AGC_MAX_COLOR_WIDTH ||
-          !heights[target] || heights[target] > PS5_AGC_MAX_COLOR_HEIGHT)
-         return -1;
-      switch (format) {
+      switch ((info >> 2) & 0x1fu) {
       case 1: bytes_per_pixel = 1; break;
       case 2:
       case 3: bytes_per_pixel = 2; break;
@@ -868,13 +925,31 @@ ps5_agc_gate2_set_color_target_extents(const uint32_t *widths,
          tile_width /= 2;
          tile_height /= 2;
       }
-      required = (size_t)((widths[target] + tile_width - 1u) / tile_width) *
-                 ((heights[target] + tile_height - 1u) / tile_height) *
+      required = (size_t)((width + tile_width - 1u) / tile_width) *
+                 ((height + tile_height - 1u) / tile_height) *
                  UINT32_C(0x10000);
-      if (ps5_agc_mrt_sizes[target] < required)
+   }
+   if (size < required)
+      return -1;
+   /* GFX10.3 custom linear pitch is in texels in MIP0_WIDTH; MAX_MIP=0. */
+   *attrib2 = (height - 1u) | ((encoded_width - 1u) << 14);
+   return 0;
+}
+
+int
+ps5_agc_gate2_set_color_target_extents(const uint32_t *widths,
+                                       const uint32_t *heights,
+                                       unsigned count)
+{
+   if (!widths || !heights || !count || count > PS5_AGC_MRT_TARGETS ||
+       count != ps5_agc_mrt_count)
+      return -1;
+   for (unsigned target = 0; target < count; ++target) {
+      if (ps5_agc_color_target_extent(
+             ps5_agc_mrt_color_info[target], widths[target], heights[target],
+             ps5_agc_mrt_pitches[target], ps5_agc_mrt_sizes[target],
+             &ps5_agc_mrt_attrib2[target]) != 0)
          return -1;
-      ps5_agc_mrt_attrib2[target] =
-         (heights[target] - 1u) | ((widths[target] - 1u) << 14);
    }
    return 0;
 }
@@ -892,11 +967,30 @@ ps5_agc_gate2_set_color_target_views(const uint32_t *views, unsigned count)
       unsigned first = views[target] & UINT32_C(0x7ff);
       unsigned last = (views[target] >> 13) & UINT32_C(0x7ff);
 
-      if ((views[target] & ~view_mask) || first > last)
+      if ((views[target] & ~view_mask) || first > last ||
+          (ps5_agc_mrt_pitches[target] && views[target]))
          return -1;
    }
    memcpy(ps5_agc_mrt_views, views, count * sizeof(views[0]));
    return 0;
+}
+
+static bool
+ps5_agc_color_info_valid(uint32_t value)
+{
+   unsigned format = (value >> 2) & 0x1fu;
+   unsigned number_type = (value >> 8) & 7u;
+   unsigned swap = (value >> 11) & 3u;
+   uint32_t expected = (format << 2) | (number_type << 8) | (swap << 11);
+
+   if (number_type <= 1u || number_type == 6u)
+      expected |= UINT32_C(1) << 15;
+   else
+      expected |= (UINT32_C(1) << 17) | (UINT32_C(1) << 18);
+   if (number_type == 4u || number_type == 5u)
+      expected |= UINT32_C(1) << 16;
+   return value == expected && format &&
+          format != 7u && format != 13u && format <= 14u;
 }
 
 int
@@ -906,20 +1000,9 @@ ps5_agc_gate2_set_color_target_info(const uint32_t *values, unsigned count)
        count != ps5_agc_mrt_count)
       return -1;
    for (unsigned target = 0; target < count; ++target) {
-      unsigned format = (values[target] >> 2) & 0x1fu;
-      unsigned number_type = (values[target] >> 8) & 7u;
-      unsigned swap = (values[target] >> 11) & 3u;
-      uint32_t expected = (format << 2) | (number_type << 8) |
-                          (swap << 11);
-
-      if (number_type <= 1u || number_type == 6u)
-         expected |= UINT32_C(1) << 15;
-      else
-         expected |= (UINT32_C(1) << 17) | (UINT32_C(1) << 18);
-      if (number_type == 4u || number_type == 5u)
-         expected |= UINT32_C(1) << 16;
-      if (values[target] != expected || !format ||
-          format == 7u || format == 13u || format > 14u)
+      if (!ps5_agc_color_info_valid(values[target]) ||
+          (ps5_agc_mrt_pitches[target] &&
+           values[target] != ps5_agc_mrt_color_info[target]))
          return -1;
    }
    memcpy(ps5_agc_mrt_color_info, values, count * sizeof(values[0]));
@@ -985,8 +1068,66 @@ ps5_agc_gate2_set_framebuffers(void *const *targets, const size_t *sizes,
 #endif
    memset(ps5_agc_mrt_targets, 0, sizeof(ps5_agc_mrt_targets));
    memset(ps5_agc_mrt_sizes, 0, sizeof(ps5_agc_mrt_sizes));
+   memset(ps5_agc_mrt_pitches, 0, sizeof(ps5_agc_mrt_pitches));
    memcpy(ps5_agc_mrt_targets, targets, count * sizeof(targets[0]));
    memcpy(ps5_agc_mrt_sizes, sizes, count * sizeof(sizes[0]));
+   ps5_agc_mrt_count = count;
+   return 0;
+}
+
+/* Optional mixed-layout ABI; scanout must already be registered separately.
+ * Nonzero pitches are bytes for a rebased, single-sample, single-level/layer
+ * linear 2D view. sizes are the allocations remaining at those bases. The
+ * caller must bound rasterization to the logical widths/heights, not pitch. */
+int
+ps5_agc_gate2_set_color_target_layouts(
+   void *const *targets, const size_t *sizes, const uint32_t *infos,
+   const uint32_t *widths, const uint32_t *heights, const uint32_t *pitches,
+   unsigned count)
+{
+   void *new_targets[PS5_AGC_MRT_TARGETS] = {0};
+   size_t new_sizes[PS5_AGC_MRT_TARGETS] = {0};
+   uint32_t new_infos[PS5_AGC_MRT_TARGETS] = {0};
+   uint32_t new_attrib2[PS5_AGC_MRT_TARGETS] = {0};
+   uint32_t new_pitches[PS5_AGC_MRT_TARGETS] = {0};
+   const uint64_t address_limit = UINT64_C(1) << 48;
+   uintptr_t scanout = (uintptr_t)ps5_agc_scanout_target;
+
+   if (!targets || !sizes || !infos || !widths || !heights || !pitches ||
+       !count || count > PS5_AGC_MRT_TARGETS ||
+       (ps5_agc_dual_source_blend && count != 1) ||
+       !scanout || scanout >= address_limit ||
+       (scanout & (PS5_AGC_FRAMEBUFFER_ALIGNMENT - 1u)) ||
+       ps5_agc_scanout_size < PS5_AGC_FRAMEBUFFER_POOL_BYTES ||
+       ps5_agc_scanout_size > address_limit - scanout)
+      return -1;
+   for (unsigned target = 0; target < count; ++target) {
+      uintptr_t address = (uintptr_t)targets[target];
+      size_t alignment = pitches[target] ? 256u : PS5_AGC_COLOR_TARGET_ALIGNMENT;
+
+      if (!address || address >= address_limit || (address & (alignment - 1u)) ||
+          !sizes[target] || sizes[target] > address_limit - address ||
+          !ps5_agc_color_info_valid(infos[target]) ||
+          ps5_agc_color_target_extent(infos[target], widths[target], heights[target],
+                                      pitches[target], sizes[target],
+                                      &new_attrib2[target]) != 0)
+         return -1;
+      new_targets[target] = targets[target];
+      new_sizes[target] = sizes[target];
+      new_infos[target] = infos[target];
+      new_pitches[target] = pitches[target];
+   }
+   /* Never register an offscreen target as scanout. Nothing above changes
+    * runtime or target state, including when a later MRT is invalid. */
+   if (ps5_agc_gate2_set_framebuffer(ps5_agc_scanout_target,
+                                    ps5_agc_scanout_size) != 0)
+      return -1;
+   memcpy(ps5_agc_mrt_targets, new_targets, sizeof(new_targets));
+   memcpy(ps5_agc_mrt_sizes, new_sizes, sizeof(new_sizes));
+   memcpy(ps5_agc_mrt_color_info, new_infos, sizeof(new_infos));
+   memcpy(ps5_agc_mrt_attrib2, new_attrib2, sizeof(new_attrib2));
+   memcpy(ps5_agc_mrt_pitches, new_pitches, sizeof(new_pitches));
+   memset(ps5_agc_mrt_views, 0, sizeof(ps5_agc_mrt_views));
    ps5_agc_mrt_count = count;
    return 0;
 }

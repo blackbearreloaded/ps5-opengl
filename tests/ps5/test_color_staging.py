@@ -43,7 +43,8 @@ static void ps5_flush_gpu_data(void *p, size_t n) { assert(p && n); ++flushes; }
     "static size_t\nps5_tiled_color_surface_size(", "static uint32_t\nps5_color_target_info(") + section(
     "static size_t\nps5_tiled_affine_offset(", "static size_t\nps5_tiled_depth_offset(") + section(
     "static size_t\nps5_tiled_color_offset(", "static size_t\nps5_tiled_color_msaa4_offset(") + section(
-    "static unsigned\nps5_surface_width(", "static bool\nps5_stage_depth_surface(") + r'''
+    "static unsigned\nps5_surface_width(", "static unsigned\nps5_linear_color_pitch(") + section(
+    "static bool\nps5_stage_color_surface(", "static bool\nps5_stage_depth_surface(") + r'''
 /* Deliberately scalar: no lookup/decomposition shared with the staging loop. */
 static void reference(const struct pipe_surface *s, bool to_staging) {
     struct ps5_resource *r = (struct ps5_resource *)s->texture;

@@ -67,6 +67,7 @@ test-staging:
 	bash tools/test-gpu-blit-extended-host.sh
 	bash tools/test-gpu-clear-extended-host.sh
 	bash tools/test-native-color-formats-host.sh
+	bash tools/test-gpu-mipmap-host.sh
 	bash tools/test-staging-host.sh
 test:
 	python3 -m unittest discover -s tools -p 'test_*.py'
@@ -74,6 +75,8 @@ test:
 	python3 tests/ps5/test_gpu_clear_state.py
 	python3 tests/ps5/test_vertex_layout_state.py
 	python3 tests/ps5/test_gpu_blit.py
+	python3 tests/ps5/test_linear_color_targets.py
+	python3 tests/ps5/test_render_target_extents.py
 	python3 tests/ps5/test_draw_profile.py
 	python3 tests/ps5/test_gpu_present.py
 	python3 tests/ps5/test_submit_batch_probe.py
