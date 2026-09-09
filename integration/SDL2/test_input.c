@@ -158,6 +158,8 @@ static void app_case(const char *name, int expected)
     if (strcmp(name, "virtual") && strcmp(name, "no-device")) {
         users[0] = 10; samples[0].connected = 1;
     }
+    if (!strcmp(name, "initial-cross")) samples[0].buttons = PS5_PAD_BUTTON_CROSS;
+    if (!strcmp(name, "initial-left-x")) samples[0].leftStick.x = 255;
     g42_frame = tick;
     assert(g42_input_main(0, NULL) == expected);
     reset();
@@ -166,6 +168,12 @@ void g42_contract(void)
 {
     driver_contract();
     app_case("supported", 0);
+    /* Real SDL Open must sample before the neutral queries. Status 2 from a
+     * later timeout is insufficient: reject before the first frame callback. */
+    app_case("initial-cross", 2); assert(frame == 0);
+    printf("G42 initial held Cross: PASS incomplete before first swap\n");
+    app_case("initial-left-x", 2); assert(frame == 0);
+    printf("G42 initial deflected left X: PASS incomplete before first swap\n");
     app_case("synthetic", 2);
     app_case("virtual", 2);
     app_case("no-device", 2);
