@@ -32,6 +32,7 @@ separate from console logs. Keep changes local unless publication is requested.
 - 2026-09-08 | G36 | a53133a | inconclusive: live ProsperoLight logs 1080p120; owner TV reports 4K120 | results/g36-prosperolight-live-20260908/comparison.json | reconcile sink evidence.
 - 2026-09-08 | G36 resolved | 7e0c339 | partial-pass: TV now confirms 1080p; its game bar showed refresh, app HUD showed render size | results/g36-prosperolight-live-20260908/photo-review.json | check HDMI path.
 - 2026-09-08 | G37 | f8f5949 | pass: unchanged 4K ImGui 119.884 FPS, HDMI 2160p119.88, pixels/restore/teardown/health/unlock | results/g37-hdmi4-opengl-2160-20260908/comparison.json | native 1440p next.
+- 2026-09-08 | G38 | 31f77fa | pass: unchanged 4K SDL2 app, 180 frames/two exact pixels, HDMI 2160p119.88, restore/teardown/health/unlock | results/g38-hdmi4-sdl2-2160-20260908/acceptance.json | native 1440p awaits owner output selection.
 
 ## Current boundary and next check
 
@@ -50,6 +51,13 @@ The log consumed the original `attribute=0` profile (`HDR:x HFR:o`, `0x2a0057`);
 the G33 multi-bit metadata change is unnecessary. No renderer fix or rebuild
 was needed. The owner and logs confirmed 4K120 for the preceding ProsperoLight
 control; a separate TV confirmation of the OpenGL run was requested, not assumed.
+
+G38 also qualifies the unchanged G32 SDL2 2160p120 app on HDMI4: the drawable
+was 3840x2160, all 180 frames completed, both exact pixel probes passed, and
+console HDMI negotiated `2160P_11988` before restoring 4K59.94. Native teardown,
+service health and exact-token release passed. This is a short SDL functional
+check, not an SDL FPS measurement or a separate TV observation. The local
+reused SDL auditor also rejects the earlier 1080p fallback as a 4K HDMI pass.
 
 Next: verify **native 2560x1440 HDMI at 120 Hz**, distinct from rendering 1440p
 and upscaling to 4K. Sony's documented PS5 1440p test/selection is owner-operated;
