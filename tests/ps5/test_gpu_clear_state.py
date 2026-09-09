@@ -13,7 +13,7 @@ source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 assert "#define PS5_GPU_CLEAR_MIN_PIXELS 16384u" in source
 start = source.index("static bool\nps5_clear_gpu_color(")
 clear_body = source[start:source.index("\nstatic void\nps5_clear(", start)]
-assert clear_body.index("context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0;") < \
+assert clear_body.index("context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0 && !scissor_state &&") < \
        clear_body.index("   util_blitter_clear(") < \
        clear_body.index("context->deferred_color_clear = false;")
 prefix = source[start:source.index("   if (!context->blitter)", start)]
@@ -31,8 +31,11 @@ code = r'''
 #define PIPE_MASK_RGBA 15
 #define PIPE_TEXTURE_2D 2
 #define PIPE_FORMAT_R8G8B8A8_UNORM 1
+#define PIPE_FORMAT_R8_UNORM 2
+#define PIPE_FORMAT_R8G8_UNORM 3
+#define PIPE_FORMAT_R16G16B16A16_FLOAT 4
 union pipe_color_union { uint32_t ui[4]; float f[4]; };
-struct pipe_scissor_state { unsigned unused; };
+struct pipe_scissor_state { unsigned minx,miny,maxx,maxy; };
 struct resource { unsigned target, nr_samples, nr_storage_samples, format; };
 struct ps5_resource { struct resource base; unsigned render_staging_size; uint8_t *data; size_t size; };
 struct pipe_surface { struct ps5_resource *texture; unsigned level, first_layer, last_layer, format; };
@@ -50,6 +53,13 @@ static unsigned target_width = 128, target_height = 128;
 static unsigned ps5_surface_width(const struct pipe_surface *s) { (void)s; return target_width; }
 static unsigned ps5_surface_height(const struct pipe_surface *s) { (void)s; return target_height; }
 static size_t ps5_copied_constant_offset(unsigned slot) { assert(slot == 1); return 16; }
+static void ps5_clear_bounds(const struct pipe_scissor_state *s, unsigned w, unsigned h,
+    unsigned *x0, unsigned *y0, unsigned *x1, unsigned *y1) {
+    *x0=s && s->minx<w ? s->minx : s ? w : 0;
+    *y0=s && s->miny<h ? s->miny : s ? h : 0;
+    *x1=s && s->maxx<w ? s->maxx : w;
+    *y1=s && s->maxy<h ? s->maxy : h;
+}
 ''' + prefix + r'''
    if (state->valid && state->copied) {
        assert(cb.user_buffer == copied_constants && cb.buffer_size == state->size);
@@ -91,6 +101,15 @@ int main(void) {
     assert(!ps5_clear_gpu_color(0, 4, 15, 0, &color));
     assert(!ps5_clear_gpu_color(&good, 4, 15, 0, 0));
     assert(!ps5_clear_gpu_color(&good, 4, 15, &scissor, &color));
+    scissor.maxx=scissor.maxy=128;
+    assert(ps5_clear_gpu_color(&good, 4, 15, &scissor, &color));
+    scissor.minx=1;
+    assert(!ps5_clear_gpu_color(&good, 4, 15, &scissor, &color));
+    for (unsigned format=2;format<=4;++format) {
+        target.base.format=good.framebuffer.cbufs[0].format=format;
+        assert(ps5_clear_gpu_color(&good,4,15,NULL,&color));
+    }
+    target.base.format=good.framebuffer.cbufs[0].format=1;
     assert(!ps5_clear_gpu_color(&good, 4, 7, 0, &color));
     assert(!ps5_clear_gpu_color(&good, 8, 15, 0, &color));
     assert(!ps5_clear_gpu_color(&good, 12, 15, 0, &color));
@@ -188,10 +207,20 @@ static char order[16];
 static unsigned used, pending, expected_depth;
 static bool condition = true, depth_ok = true, gpu_ok = true;
 static int gpu_status;
+static bool gpu_depth;
+static int gpu_depth_status;
 static void record(char stage) { assert(used < 15); order[used++] = stage; }
 static void ps5_draw_batch_drain(void) { record('D'); pending = 0; }
 static bool ps5_render_condition_passes(struct ps5_context *c)
 { assert(c); record('R'); return condition; }
+static bool ps5_clear_gpu_depth_stencil(struct ps5_context *c, unsigned buffers,
+    uint8_t mask, const struct pipe_scissor_state *scissor, double depth, unsigned stencil)
+{
+    assert(c && !pending && buffers == expected_depth && mask == 0x5a && !scissor);
+    assert(depth == .25 && stencil == 0x73);
+    if (!gpu_depth) return false;
+    record('H'); c->last_draw_status = gpu_depth_status; return true;
+}
 static bool ps5_clear_depth_stencil(struct ps5_context *c, unsigned buffers,
     uint8_t mask, const struct pipe_scissor_state *scissor, double depth, unsigned stencil)
 {
@@ -227,6 +256,9 @@ int main(void)
     depth_ok = false; run(7, "DRZ", 0); depth_ok = true;
     gpu_ok = false; run(7, "DRZCF", 0); gpu_ok = true;
     gpu_status = -30; run(7, "DRZC", 1); /* No CPU replay after attempted GPU failure. */
+    gpu_status = 0; gpu_depth = true;
+    run(3, "DRH", 0); run(7, "DRHC", 1);
+    gpu_depth_status = -30; run(7, "DRH", 0); /* No depth/color replay after GPU failure. */
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:
@@ -235,3 +267,97 @@ with tempfile.TemporaryDirectory() as temporary:
                     "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], check=True)
 print("PASS: shared mixed-clear dispatch drains prior work, completes CPU depth/stencil before GPU color, preserves failure/fallback ordering")
+
+# Compile the real depth/stencil admission boundary; no GPU or allocation occurs.
+start = source.index("static bool\nps5_clear_gpu_depth_stencil(")
+prefix = source[start:source.index("   if (!context->blitter)", start)]
+code = r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <math.h>
+#define PS5_ENABLE_MRT_CANDIDATE 1
+#define PS5_GPU_BLIT_MIN_PIXELS (512u*512u)
+#define PS5_MAX_DEPTH_WIDTH 8192
+#define PS5_MAX_DEPTH_HEIGHT 8192
+#define PIPE_CLEAR_DEPTH 1u
+#define PIPE_CLEAR_STENCIL 2u
+#define PIPE_TEXTURE_2D 2
+#define PIPE_FORMAT_Z32_FLOAT 1
+#define PIPE_FORMAT_Z32_FLOAT_S8X24_UINT 2
+struct resource { unsigned target,format,nr_samples,nr_storage_samples,last_level,
+    array_size,depth0,width0,height0; };
+struct ps5_resource { struct resource base; size_t depth_staging_size,allocation_size,
+    stencil_allocation_size; void *data,*stencil_data; };
+struct pipe_surface { struct ps5_resource *texture; unsigned level,first_layer,last_layer,format; };
+struct pipe_scissor_state { unsigned minx,miny,maxx,maxy; };
+struct ps5_context { bool framebuffer_valid; unsigned render_condition_query,
+    stream_output_target_count,active_occlusion_query,active_primitives_generated_query,
+    active_primitives_emitted_query;
+    struct { struct pipe_surface zsbuf; unsigned width,height; } framebuffer; };
+static size_t ps5_tiled_depth_surface_size(unsigned w,unsigned h,unsigned samples)
+{ assert(samples==1); return (size_t)w*h*4; }
+static size_t ps5_tiled_stencil_surface_size(unsigned w,unsigned h) { return (size_t)w*h; }
+static void ps5_clear_bounds(const struct pipe_scissor_state *s,unsigned w,unsigned h,
+    unsigned *x0,unsigned *y0,unsigned *x1,unsigned *y1) {
+    *x0=s && s->minx<w ? s->minx : s ? w : 0;
+    *y0=s && s->miny<h ? s->miny : s ? h : 0;
+    *x1=s && s->maxx<w ? s->maxx : w;
+    *y1=s && s->maxy<h ? s->maxy : h;
+}
+''' + prefix + r'''
+   (void)stencil; return true;
+}
+int main(void) {
+    struct ps5_resource target={.base={.target=2,.format=2,.array_size=1,.depth0=1,
+        .width0=1024,.height0=768},.allocation_size=1024*768*4,.stencil_allocation_size=1024*768,
+        .data=(void*)1,.stencil_data=(void*)1};
+    struct ps5_context good={.framebuffer_valid=true,
+        .framebuffer={.zsbuf={.texture=&target,.format=2},.width=1024,.height=768}};
+    struct pipe_scissor_state scissor={17,29,987,725};
+#define CHECK(c,b,m,s,d) ps5_clear_gpu_depth_stencil(c,b,m,s,d,0x69)
+    assert(CHECK(&good,3,255,NULL,.375));
+    assert(CHECK(&good,2,255,NULL,NAN)); /* Unused depth must not reject stencil. */
+    assert(!CHECK(&good,1,255,NULL,.375)); /* Keep fast full-depth memset. */
+    assert(CHECK(&good,1,0,&scissor,.375));
+    assert(!CHECK(&good,3,15,&scissor,.375));
+    assert(!CHECK(NULL,3,255,NULL,.375));
+    assert(!CHECK(&good,0,255,&scissor,.375));
+    assert(!CHECK(&good,7,255,&scissor,.375));
+    assert(!CHECK(&good,1,255,&scissor,NAN));
+    assert(!CHECK(&good,1,255,&scissor,-.1));
+    assert(!CHECK(&good,1,255,&scissor,1.1));
+#define REJECT(field,value) do { struct ps5_context c=good; c.field=value; \
+    assert(!CHECK(&c,3,255,&scissor,.375)); } while (0)
+    REJECT(framebuffer_valid,false); REJECT(framebuffer.zsbuf.texture,NULL);
+    REJECT(framebuffer.width,0); REJECT(framebuffer.height,769);
+    REJECT(framebuffer.zsbuf.level,1); REJECT(framebuffer.zsbuf.first_layer,1);
+    REJECT(framebuffer.zsbuf.last_layer,1); REJECT(framebuffer.zsbuf.format,1);
+    REJECT(render_condition_query,1); REJECT(stream_output_target_count,1);
+    REJECT(active_occlusion_query,1); REJECT(active_primitives_generated_query,1);
+    REJECT(active_primitives_emitted_query,1);
+#define REJECT_TARGET(field,value) do { struct ps5_resource t=target; t.field=value; \
+    struct ps5_context c=good; c.framebuffer.zsbuf.texture=&t; \
+    assert(!CHECK(&c,3,255,&scissor,.375)); } while (0)
+    REJECT_TARGET(base.target,3); REJECT_TARGET(base.last_level,1);
+    REJECT_TARGET(base.nr_samples,4); REJECT_TARGET(base.nr_storage_samples,4);
+    REJECT_TARGET(base.array_size,2); REJECT_TARGET(base.depth0,2);
+    REJECT_TARGET(base.width0,8193); REJECT_TARGET(base.height0,8193);
+    REJECT_TARGET(data,NULL); REJECT_TARGET(stencil_data,NULL);
+    REJECT_TARGET(allocation_size,1); REJECT_TARGET(stencil_allocation_size,1);
+    REJECT_TARGET(depth_staging_size,1);
+    scissor=(struct pipe_scissor_state){0,0,512,512};
+    assert(CHECK(&good,1,0,&scissor,.375));
+    scissor.minx=1; assert(!CHECK(&good,1,0,&scissor,.375));
+    scissor.minx=1024; assert(!CHECK(&good,1,0,&scissor,.375));
+    return 0;
+}
+'''
+with tempfile.TemporaryDirectory() as temporary:
+    executable = str(Path(temporary) / "gpu-depth-clear-guard")
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                    "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+                    "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
+    subprocess.run([executable], check=True)
+print("PASS: actual GPU depth/stencil clear bounds, masks, scissor, format and state exclusions")

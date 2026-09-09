@@ -1084,19 +1084,23 @@ ps5_sampled_texture_target(enum pipe_texture_target target)
 static bool
 ps5_linear_sampled_layout(const struct pipe_resource *resource)
 {
-   /* Reuse the native render/sample layout for single-mip RGBA8/sRGB images. CPU
+   /* Reuse the native render/sample layout for single-mip color images. CPU
     * access already converts through transfer_map/unmap; draws need no copy.
     * ponytail: other formats, mip chains and layers keep existing staging. */
    if (PS5_ENABLE_RENDER_TO_TEXTURE_CANDIDATE &&
        PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE && resource &&
        resource->target == PIPE_TEXTURE_2D &&
        (resource->format == PIPE_FORMAT_R8G8B8A8_UNORM ||
-        (resource->format == PIPE_FORMAT_R8G8B8A8_SRGB &&
-         ps5_sampled_texture_format(resource->format) &&
-         ps5_render_target_format(resource->format))) &&
+        resource->format == PIPE_FORMAT_R8G8B8A8_SRGB ||
+        resource->format == PIPE_FORMAT_R8_UNORM ||
+        resource->format == PIPE_FORMAT_R8G8_UNORM ||
+        resource->format == PIPE_FORMAT_R16G16B16A16_FLOAT) &&
+       ps5_sampled_texture_format(resource->format) &&
+       ps5_render_target_format(resource->format) &&
        resource->nr_samples <= 1 && resource->nr_storage_samples <= 1 &&
-       !resource->last_level && resource->width0 <= PS5_MAX_COLOR_WIDTH &&
-       resource->height0 <= PS5_MAX_COLOR_HEIGHT &&
+       resource->array_size == 1 && resource->depth0 == 1 &&
+       !resource->last_level && resource->width0 && resource->height0 &&
+       resource->width0 <= PS5_MAX_COLOR_WIDTH && resource->height0 <= PS5_MAX_COLOR_HEIGHT &&
        (resource->bind & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW)) ==
           (PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW))
       return false;
@@ -2478,6 +2482,7 @@ ps5_prepare_texture(struct ps5_context *context,
                        texture->base.format != PIPE_FORMAT_R8G8B8A8_SRGB &&
                        texture->base.format != PIPE_FORMAT_R8_UNORM &&
                        texture->base.format != PIPE_FORMAT_R8G8_UNORM &&
+                       texture->base.format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
                        texture->base.format !=
                           PIPE_FORMAT_R11G11B10_FLOAT &&
                        !(PS5_ENABLE_TEXTURE_INTEGER_CANDIDATE &&
@@ -8476,10 +8481,10 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
                     const struct pipe_scissor_state *scissor_state,
                     const union pipe_color_union *color)
 {
-   /* ponytail: accelerate only full, single-layer RGBA8 clears. Extend after
-    * affected format/mask/query tests; every other case keeps the CPU path. */
+   /* Native, single-layer color targets only. Masks and staged images keep
+    * their checked CPU path; a scissored rectangle uses the same blitter. */
    if (!PS5_ENABLE_MRT_CANDIDATE || !PS5_ENABLE_UBO_CANDIDATE || !context ||
-       !context->framebuffer_valid || !color || scissor_state ||
+       !context->framebuffer_valid || !color ||
        (buffers & PIPE_CLEAR_COLOR) != PIPE_CLEAR_COLOR0 ||
        (color_clear_mask & PIPE_MASK_RGBA) != PIPE_MASK_RGBA ||
        context->framebuffer.nr_cbufs != 1 || context->render_condition_query ||
@@ -8490,7 +8495,11 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    /* Tiny clears cost less on the CPU than the measured ~16 ms GPU round trip.
     * ponytail: conservative floor; tune PS5_GPU_CLEAR_MIN_PIXELS with paired
     * measurements before extending the CPU preference to larger surfaces. */
-   if ((uint64_t)context->framebuffer.width * context->framebuffer.height <
+   unsigned left, bottom, right, top;
+   ps5_clear_bounds(scissor_state, context->framebuffer.width, context->framebuffer.height,
+                     &left, &bottom, &right, &top);
+   if (right <= left || top <= bottom ||
+       (uint64_t)(right - left) * (top - bottom) <
        PS5_GPU_CLEAR_MIN_PIXELS)
       return false;
 
@@ -8499,7 +8508,9 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    if (!target || target->base.target != PIPE_TEXTURE_2D ||
        target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
        target->render_staging_size || surface->level || surface->first_layer ||
-       surface->last_layer || surface->format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+       surface->last_layer ||
+       (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
+        surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT) ||
        target->base.format != surface->format ||
        context->framebuffer.width != ps5_surface_width(surface) ||
        context->framebuffer.height != ps5_surface_height(surface))
@@ -8532,6 +8543,7 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
       return false;
 
    bool viewport_valid = context->viewport_valid;
+   bool framebuffer_valid = context->framebuffer_valid;
    bool queries_enabled = context->queries_enabled;
    unsigned draws_before = context->draw_calls;
    util_blitter_save_vertex_buffers(blitter, context->vertex_buffers, context->vertex_buffer_count);
@@ -8547,19 +8559,29 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    util_blitter_save_viewport(blitter, &context->viewport);
    util_blitter_save_sample_mask(blitter, context->sample_mask, 1);
    util_blitter_save_fragment_constant_buffer_slot(blitter, &cb);
+   if (scissor_state)
+      util_blitter_save_framebuffer(blitter, &context->framebuffer);
 
-   /* Match the CPU fallback's RGBA8 quantization exactly. */
-   uint8_t packed[4];
+   /* Match the CPU fallback's target-format quantization. */
+   uint8_t packed[16];
    union pipe_color_union quantized;
    util_format_pack_rgba(surface->format, packed, color->ui, 1);
    util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
    /* Only this validated color operation may defer its internal fan. The
     * caller has already completed any CPU depth/stencil part of a mixed clear. */
-   context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0;
-   util_blitter_clear(blitter, context->framebuffer.width, context->framebuffer.height,
-                      1, PIPE_CLEAR_COLOR0, &quantized, 0, 0, false);
+   context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0 && !scissor_state &&
+                                  surface->format == PIPE_FORMAT_R8G8B8A8_UNORM;
+   if (scissor_state) {
+      struct pipe_surface selected = *surface;
+      util_blitter_clear_render_target(blitter, &selected, &quantized,
+                                        left, bottom, right - left, top - bottom);
+   } else {
+      util_blitter_clear(blitter, context->framebuffer.width, context->framebuffer.height,
+                         1, PIPE_CLEAR_COLOR0, &quantized, 0, 0, false);
+   }
    context->deferred_color_clear = false;
    context->viewport_valid = viewport_valid;
+   context->framebuffer_valid = framebuffer_valid;
    context->queries_enabled = queries_enabled;
    if (context->draw_calls == draws_before)
       context->last_draw_status = -30; /* Blitter upload failed before drawing. */
@@ -8568,6 +8590,85 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
              context->last_draw_status, context->draw_calls - draws_before);
    /* Never hide an attempted GPU failure by retrying it on the CPU. */
    return true;
+}
+
+static bool
+ps5_clear_gpu_depth_stencil(struct ps5_context *context, unsigned buffers,
+                            uint8_t stencil_clear_mask,
+                            const struct pipe_scissor_state *scissor_state,
+                            double depth, unsigned stencil)
+{
+   /* Full depth memset is already fast; pay a draw round trip only for large
+    * per-pixel clears. Partial stencil masks retain the checked CPU merge. */
+   if (!PS5_ENABLE_MRT_CANDIDATE || !context || !context->framebuffer_valid ||
+       !(buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
+       (buffers & ~(PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
+       (!scissor_state && !(buffers & PIPE_CLEAR_STENCIL)) ||
+       ((buffers & PIPE_CLEAR_STENCIL) && stencil_clear_mask != 0xff) ||
+       ((buffers & PIPE_CLEAR_DEPTH) && !(depth >= 0.0 && depth <= 1.0)) ||
+       context->render_condition_query || context->stream_output_target_count ||
+       context->active_occlusion_query || context->active_primitives_generated_query ||
+       context->active_primitives_emitted_query)
+      return false;
+   struct pipe_surface surface = context->framebuffer.zsbuf;
+   const struct ps5_resource *target = (const struct ps5_resource *)surface.texture;
+   if (!target || target->base.target != PIPE_TEXTURE_2D ||
+       target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
+       target->base.last_level || target->base.array_size != 1 ||
+       target->base.depth0 != 1 || !context->framebuffer.width || !context->framebuffer.height ||
+       target->base.width0 > PS5_MAX_DEPTH_WIDTH || target->base.height0 > PS5_MAX_DEPTH_HEIGHT ||
+       context->framebuffer.width > target->base.width0 ||
+       context->framebuffer.height > target->base.height0 ||
+       target->depth_staging_size || surface.level || surface.first_layer || surface.last_layer ||
+       (surface.format != PIPE_FORMAT_Z32_FLOAT &&
+        surface.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) ||
+       target->base.format != surface.format || !target->data ||
+       ps5_tiled_depth_surface_size(target->base.width0, target->base.height0, 1) >
+          target->allocation_size ||
+       ((buffers & PIPE_CLEAR_STENCIL) &&
+        (surface.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT || !target->stencil_data ||
+         ps5_tiled_stencil_surface_size(target->base.width0, target->base.height0) >
+            target->stencil_allocation_size)))
+      return false;
+   unsigned left, bottom, right, top;
+   ps5_clear_bounds(scissor_state, context->framebuffer.width, context->framebuffer.height,
+                     &left, &bottom, &right, &top);
+   if (right <= left || top <= bottom ||
+       (uint64_t)(right - left) * (top - bottom) < PS5_GPU_BLIT_MIN_PIXELS)
+      return false;
+
+   if (!context->blitter)
+      context->blitter = util_blitter_create(&context->base);
+   struct blitter_context *blitter = context->blitter;
+   if (!blitter || blitter->running)
+      return false;
+   bool viewport_valid = context->viewport_valid, framebuffer_valid = context->framebuffer_valid;
+   bool queries_enabled = context->queries_enabled;
+   unsigned draws_before = context->draw_calls;
+   util_blitter_save_vertex_buffers(blitter, context->vertex_buffers, context->vertex_buffer_count);
+   util_blitter_save_vertex_elements(blitter, context->vertex_elements);
+   util_blitter_save_vertex_shader(blitter, context->vs);
+   util_blitter_save_geometry_shader(blitter, context->gs);
+   util_blitter_save_so_targets(blitter, 0, NULL, context->stream_output_primitive);
+   util_blitter_save_rasterizer(blitter, context->rasterizer);
+   util_blitter_save_fragment_shader(blitter, context->fs);
+   util_blitter_save_depth_stencil_alpha(blitter, context->depth_stencil_alpha);
+   util_blitter_save_blend(blitter, context->blend);
+   util_blitter_save_stencil_ref(blitter, &context->stencil_ref);
+   util_blitter_save_viewport(blitter, &context->viewport);
+   util_blitter_save_sample_mask(blitter, context->sample_mask, 1);
+   util_blitter_save_framebuffer(blitter, &context->framebuffer);
+   util_blitter_clear_depth_stencil(blitter, &surface, buffers, depth, stencil,
+                                     left, bottom, right - left, top - bottom);
+   context->viewport_valid = viewport_valid;
+   context->framebuffer_valid = framebuffer_valid;
+   context->queries_enabled = queries_enabled;
+   if (context->draw_calls == draws_before)
+      context->last_draw_status = -30;
+   if (context->last_draw_status || draws_before < 3)
+      printf("[ps5-gallium] clear-gpu-depth-stencil status=%d draws=%u\n",
+             context->last_draw_status, context->draw_calls - draws_before);
+   return true; /* Handled even on failure: never replay an attempted GPU operation. */
 }
 
 static bool
@@ -8796,7 +8897,11 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
     * queue. No later CPU attachment clear may drain that new color/draw batch. */
    unsigned depth_buffers = buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL);
    if (depth_buffers) {
-      if (!ps5_clear_depth_stencil(context, depth_buffers, stencil_clear_mask,
+      if (ps5_clear_gpu_depth_stencil(context, depth_buffers, stencil_clear_mask,
+                                      scissor_state, depth, stencil)) {
+         if (context->last_draw_status != 0)
+            return;
+      } else if (!ps5_clear_depth_stencil(context, depth_buffers, stencil_clear_mask,
                                    scissor_state, depth, stencil))
          return;
       buffers &= ~depth_buffers;

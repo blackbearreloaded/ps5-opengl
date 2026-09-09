@@ -77,3 +77,11 @@ These are separate optimization gates, not changes to G56 acceptance or publishe
 Keep submission/retirement unchanged, test host-first, and batch bounded numerical
 checks in PPSA99005 under the shared lock. Main owns driver integration and console;
 agents prepare disjoint tests and offline layout analysis. No automatic publication.
+
+Local implementation milestone: scaled/flipped/scissored blits and 4x RGBA8
+resolve compile; extended software-GL oracles pass (22 blit/resolve cases,
+46 clear cases plus state reuse and injected-error rejection). The candidate
+also promotes single-level 2D R8/RG8/RGBA16F storage and large scissored/full-mask
+depth/stencil clears. Host checks are not native qualification. Full-depth
+memset, partial masks and unsupported layouts retain the existing CPU paths.
+Mip chains and arrays still require further work; G60 is not implemented yet.

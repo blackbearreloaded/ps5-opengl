@@ -64,6 +64,8 @@ test-staging:
 	bash tools/test-msaa-depth-array-host.sh
 	bash tools/test-depth-mip-blit-host.sh
 	bash tools/test-gpu-blit-host.sh
+	bash tools/test-gpu-blit-extended-host.sh
+	bash tools/test-gpu-clear-extended-host.sh
 	bash tools/test-staging-host.sh
 test:
 	python3 -m unittest discover -s tools -p 'test_*.py'

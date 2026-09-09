@@ -1728,6 +1728,12 @@ egl_public_core33_scaled_linear_blit.o: egl_public_core33_scaled_linear_blit.c
 egl_public_core33_gpu_blit.o: egl_public_core33_gpu_blit.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_gpu_blit_extended.o: egl_public_core33_gpu_blit_extended.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
+egl_public_core33_gpu_clear_extended.o: egl_public_core33_gpu_clear_extended.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
 egl_public_core33_depth_stencil_blit.o: \
 	egl_public_core33_depth_stencil_blit.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
