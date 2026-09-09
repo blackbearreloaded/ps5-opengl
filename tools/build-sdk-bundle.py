@@ -116,8 +116,11 @@ G47 = {
         imgui_candidate="8be4b5d06d8df8d2cd8c09a9a3957c9416b5a7fddbfa37c7866c8396286c1db3",
         sdl_eboot="ce5dfd55bd93040833947bcebd65cb00f29bacd1c7d98de00e8b053015959fc6",
         sdl_receipt="7d430fdeb4ff8262aaf362e74de2e4304d0c12ac5630dc4355e49282dd384f9e",
-        imgui_record=None, imgui_record_sha256=None,
-        sdl_record=None, sdl_record_sha256=None),
+        date="2026-09-09",
+        imgui_record="g47-window-1440-20260909/PPSA99005-20260909-062212-opengl-g47-audit.json",
+        imgui_record_sha256="3b04666af2cac957287ef98e140b710482b94c9fbf26a07c51e020704717298a",
+        sdl_record="g47-sdl2-1440-20260909/acceptance.json",
+        sdl_record_sha256="a1b85e8aca51264927becc7e5c5ab5b5e9a934a03d6e0a69d0706726a26a30af"),
     "2160p120": dict(
         sdk="1585e458b2ce884bc68c3e0b9439955e0e47e1d895e0ce76023ccd5739a7e577",
         archive="fcca06d1701edae0881105c3cdb24eb92a152397e024184c2eabe9254d79a675",
@@ -198,7 +201,7 @@ def hfr_report(results, profile, sdl, private_hosts=None, window_candidate=None)
             receipt["sdk_runtime_sha256"] == profile["archive"], "HFR SDL/profile identity mismatch")
     report = dict(scope="focused ImGui timing/pixels and SDL functional/HDMI checks only",
                   hardware="one recorded firmware-6.02 console; Hisense 55U78N HDMI4",
-                  date="2026-09-08", display_profile=expected, clean_cycles=2,
+                  date=profile.get("date", "2026-09-08"), display_profile=expected, clean_cycles=2,
                   sample_complete=False, full_matrix_complete=False,
                   extended_soak=False, independent_per_run_tv_observation=False,
                   runtime_source_commit=profile["runtime"],

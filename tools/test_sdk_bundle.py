@@ -488,6 +488,7 @@ class HFRBundleTests(unittest.TestCase):
 
     def test_focused_scope_and_sanitized_identity(self):
         report = self.report()
+        self.assertEqual(report["date"], "2026-09-08")
         self.assertFalse(report["sample_complete"])
         self.assertFalse(report["full_matrix_complete"])
         self.assertFalse(report["extended_soak"])
@@ -704,6 +705,7 @@ class G47BundleTests(unittest.TestCase):
 
     def test_new_identity_and_top_level_hdmi_not_nested_output_flag(self):
         report = self.report()
+        self.assertEqual(report["date"], "2026-09-09")
         self.assertEqual(report["runtime_source_commit"], BUNDLE.G47_RUNTIME)
         self.assertFalse(report["inherited_acceptance"])
         self.assertFalse(report["independent_per_run_tv_observation"])

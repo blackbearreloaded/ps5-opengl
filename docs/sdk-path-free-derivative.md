@@ -87,7 +87,8 @@ retain all six ELF hashes and link traces. Original G31 manifests were
 reverified unchanged. Initial failures and tool probes were retained, not
 rewritten into passing receipts.
 
-Remaining gate: parent packaging and focused hardware checks must qualify
-these exact derivative bytes. Host build/privacy/link gates have no remaining
-blocker; the recorded address-significance exception remains part of their
-identity and review contract.
+Subsequent parent review qualified both exact derivative profiles through new
+focused hardware checks; see [bundle qualification](sdk-bundle-hfr.md).
+Those later receipts do not change this host-only build audit or inherit CTS
+acceptance. The recorded address-significance exception remains part of the
+derivatives' identity and review contract.

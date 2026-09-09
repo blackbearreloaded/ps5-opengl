@@ -43,6 +43,7 @@ full 39,544-case rerun for example, documentation or packaging-only changes.
 - 2026-09-08 | G47 4K | five cycles closed: window 119.879 FPS, offscreen 119.901 completed FPS, three EGL sessions/18 pixels, SDL 180 frames/two pixels; 120s memory pass/cadence partial; HDMI/cleanup/health/unlock passed, no live TV observation | results/g47-{window,offscreen,soak,lifecycle,sdl2}-2160-20260908/.
 - 2026-09-08 | G46/G47 | local 4K bundle verified: 242 checksummed files, extracted GL/SDL manifests and five consumer links pass; integrated host suite/31 packaging tests pass; unpublished | docs/sdk-bundle-hfr.md.
 - 2026-09-08 | G47 1440p | no-run: owner requested Chiaki configuration, but Windows denied desktop access before launch; no settings changed, post-health passed and exact lock released | results/g47-chiaki-display-20260908/.
+- 2026-09-09 | G47 1440p | pass: window 119.880 FPS; SDL 180 frames/two pixels; both native HDMI/restore/cleanup/health/unlock passed | results/g47-{window,sdl2}-1440-20260909/.
 
 The 1440p soak's first 30-second window was 112.17 FPS; the remaining nineteen
 were 119.83–119.87 FPS. Its strict 120-Hz cadence target failed. Explicit
@@ -56,8 +57,8 @@ To avoid duplicate console cycles, the 4K offscreen, two-minute memory check
 and three-session EGL check used G47's separately verified release derivative.
 Prepared but unrun G31 versions stay preserved. New 30-second ImGui and
 180-frame SDL receipts bind the 4K derivative to its actual binaries. The
-equivalent two 1440p checks await confirmed 1440p output; do not qualify
-them using the current 2160p setting or assumed TV capabilities. Packaging
-and the 4K archive are verified locally. The owner authorized changing only
-the output resolution through Chiaki; desktop access must be restored first.
-No console lock is held while waiting.
+equivalent two 1440p checks also passed after the owner selected 1440p,
+with fresh 1440p119.88 negotiation and 1440p59.94 restoration in both logs.
+No desktop control or new app build was needed. Packaging and the 4K archive
+are verified locally; the matching 1440p archive is the remaining local
+assembly/extraction check. No console lock is held during packaging.

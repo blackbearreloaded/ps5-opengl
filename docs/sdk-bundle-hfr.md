@@ -111,8 +111,17 @@ SDL frames; two exact pixels per workload. Both native HDMI captures show
 Window acceptance SHA-256 is
 `241720ec3328603b819f8c7a6508bda4f28c5672f9a445d75ddd22cd9bedc912`;
 SDL acceptance is `90417420114e0b4fe941c50ddf8bb5c4b8c9783c278a971a0a6f38b7a661facd`.
-1440 has no new focused hardware qualification; both receipt pins remain absent
-and packaging fails before staging.
+On September 9, the frozen 1440p pair passed its new focused qualification:
+3,597 window frames over 30.004993 seconds (**119.880050 FPS**) and 180 SDL
+frames, with two exact pixel probes each. Both captured native 2560×1440 at
+119.88 Hz, restoration to 59.94 Hz, clean teardown and healthy services.
+The runner checkout was `92dc5ac3dce314f70b188024bd10db809dcd52fe`; app build
+and library identities remain unchanged. Window acceptance SHA-256:
+`3b04666af2cac957287ef98e140b710482b94c9fbf26a07c51e020704717298a`;
+SDL acceptance: `a1b85e8aca51264927becc7e5c5ab5b5e9a934a03d6e0a69d0706726a26a30af`.
+Both profile receipt pairs are now pinned; missing or modified evidence still
+fails packaging. The owner reported the TV on, but no per-run visual or
+physical-input acceptance is claimed for these two tests.
 
 The local 2160p archive was subsequently assembled from source snapshot
 `e41dea9d6799c8ad0c4ebe053fcb83174c5ecc55`. Archive SHA-256:
@@ -125,12 +134,12 @@ Local output: `build/bundle-g47-2160p120-v1/`; extraction checks:
 `build/g47-extracted-2160-v1/`. This later documentation does not change that
 archive's source snapshot or frozen library identities.
 
-For qualified 2160 assembly, set `DERIVATIVE` and `SDL_BUILDS` to the preserved
+For either qualified profile, set `DERIVATIVE` and `SDL_BUILDS` to the preserved
 `build/g47-path-free-v1` and `build/g47-sdl-v1` roots and run from the clean
 packaging checkout (destination must not exist):
 
 ```sh
-PROFILE=2160p120 # repeat with 1440p120 after exact HDMI qualification
+PROFILE=2160p120 # or 1440p120, with HEIGHT=1440
 HEIGHT=2160
 python3 tools/build-sdk-bundle.py --g47-profile "$PROFILE" \
   --sdk "$DERIVATIVE/relocated/$PROFILE/gl" \

@@ -124,7 +124,7 @@ Local receipt identities and remaining release checks are indexed in the
 [independent source builds](independent-hfr-build.md) do not confer new CTS
 acceptance or change older SDK download identities.
 
-### Release-derivative 4K checks (G47, local)
+### Release-derivative high-resolution checks (G47, local)
 
 The separately identified [G47 SDK derivative](sdk-path-free-derivative.md)
 completed five native-app cycles on the same console. Its 30-second ImGui
@@ -147,9 +147,15 @@ were not measured in this run. Every cycle restored normal output, closed
 cleanly and passed service-health/lock-release checks. Console logs recorded
 2160p119.88 negotiation and 2160p59.94 restoration, including three pairs in
 the lifecycle test. The owner reported the TV off; no live sink observation
-is claimed. The new 1440p derivative still awaits matching-output hardware
-qualification. These results do not transfer the earlier full CTS campaign
-to the changed SDK bytes.
+is claimed.
+
+On September 9, the frozen 1440p derivative also passed its 30-second window
+check: **119.880050 FPS**, 3,597 frames and two pixel probes. Its matching SDL
+app passed 180 frames and two exact pixel probes. Both console logs confirmed
+1440p119.88 negotiation and 1440p59.94 restoration; both titles closed cleanly
+with healthy services and exact-token release. The owner reported the TV on;
+no per-run visual confirmation or measured SDL FPS is claimed. These results
+do not transfer the earlier full CTS campaign to the changed SDK bytes.
 
 ## Broader format and subresource coverage (G25, local)
 
