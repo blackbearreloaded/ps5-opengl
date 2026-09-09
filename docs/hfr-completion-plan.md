@@ -254,3 +254,5 @@ objects and 30 seconds per mode. `.local/g48-cubes-2160-comparison-v1.json`
 binds the unchanged auditor and receipt hashes. Both negotiated 2160p119.88
 and restored 2160p59.94. These are completed workload averages, not a promise
 of steady 60/120 FPS or an arbitrary game's performance; cadence misses remain.
+
+- 2026-09-09 | G52 depth-array | caa5d7c | pass: corrected mip generation/raw/shadow sampling, cleanup/health/unlock | results/g52-depth-array-2160-20260909-v1/.
