@@ -72,6 +72,167 @@ TARGETED = dict(
         "-result.json": "db335da69882d23a4802bba327f9ca3570117cff39769ceb161ff733c91fcab8",
         "-runner.json": "8634c6b75db1bfa39eab2595401717e30db39a9f30909b9f90e161034f3a55b0"})
 
+DISPLAY = importlib.import_module("summarize-display")
+DISPLAY_PROFILES = {f"{height}p{fps}": dict(width=height * 16 // 9, height=height, fps=fps)
+                    for height, fps in ((1080, 60), (1440, 120), (2160, 120))}
+HFR_RUNTIME = "3cdc90bbc14def6bc3025b4460fba0892841114a"
+HFR_SDL_SOURCE = "ac2a52aa7faac5e7b9bcd6660cee36263f3e5324"
+HFR = {
+    "1440p120": dict(
+        sdk="d2d6169960d379f3987b8b7c3b8f81cf05f97072cdfa67eaba393fc82e327567",
+        archive="b7f3ca590d9befa516691b893617d8ae049ce187c47737aad041c5788b93fabe",
+        imgui_eboot="1860dc15b22a064136fcf9b9de79c262f339dd1e426a9eb3363b550c09bfcb90",
+        sdl_eboot="63baeb465b89a04f8569d04e50f122a42c253df3bd020256e905a61e58184296",
+        sdl_receipt="1d970f2268ccef33712ab893464410b9f95e02e19c0d2b6cdf5c45d375285527",
+        imgui_record="g39-hdmi4-opengl-1440-20260908/display-report.json",
+        imgui_record_sha256="41242867fc376295a0ed89294aaf43b72e85db6f6e4db896f6d332276b5c896c",
+        sdl_record="g40-hdmi4-sdl2-1440-20260908/acceptance.json",
+        sdl_record_sha256="52c2133faddff14caf48c6e2fa270d6863047541128c0b5c315437c1259faea4"),
+    "2160p120": dict(
+        sdk="2785038b1020824a882e533b874bb7658e6f41210e689a79ccd363ffc3af1b61",
+        archive="83a8f4729bafcb0b61be6e4b96f1603c1d682b26243f47475cff2d2af7353374",
+        imgui_eboot="91f2d5cd08d3e7f46e85c8396c1ba5511de874d8a807e77f9c5ab5c2a8905fc0",
+        sdl_eboot="5578cbb4b40725dfb21918ebea967209753af4ff34442d45a2e15609674f5ff5",
+        sdl_receipt="027bff821586f6baa51822a7a4304b914bd59f84d81f64bf765973313db61c84",
+        imgui_record="g37-hdmi4-opengl-2160-20260908/display-report.json",
+        imgui_record_sha256="69f4b7b9b773016574055b4e1956e773330d54bc160f25ec7d763a53604bcaee",
+        sdl_record="g38-hdmi4-sdl2-2160-20260908/acceptance.json",
+        sdl_record_sha256="4e4dfa73bacd5041a81f8d03e4fd69f83911898471723044b2fa2e834b687e76"),
+}
+for key, value in HFR.items():
+    value.update(runtime=HFR_RUNTIME, display=DISPLAY_PROFILES[key], guide="sdk-bundle-hfr.md",
+                 native_paths=["native-app"], version=f"0.1.0-perf20260908-g41-{key}-sdl2-focused")
+
+
+def require_ci_profile(sdk, config, name):
+    profile = CHECK.display_profile(sdk)
+    require(profile == DISPLAY_PROFILES[name], "CI display profile differs from the SDK")
+    for key in ("height", "fps"):
+        values = re.findall(r"(?:^|\s)-DPS5_SCANOUT_" + key.upper() + r"=([^\s]+)", config)
+        require(values == [str(profile[key])], "CI runtime configuration profile mismatch")
+    return profile
+
+
+def hfr_report(results, profile, sdl):
+    """Re-audit hash-pinned G37/G38/G39/G40 receipts; emit only selected fields."""
+    receipt, receipt_hash, _ = sdl
+    expected = profile["display"]
+    require(receipt_hash == profile["sdl_receipt"] and
+            receipt["display_profile"] == expected and
+            receipt["sdk_manifest_sha256"] == profile["sdk"] and
+            receipt["sdk_runtime_sha256"] == profile["archive"], "HFR SDL/profile identity mismatch")
+    report = dict(scope="focused ImGui timing/pixels and SDL functional/HDMI checks only",
+                  hardware="one recorded firmware-6.02 console; Hisense 55U78N HDMI4",
+                  date="2026-09-08", display_profile=expected, clean_cycles=2,
+                  sample_complete=False, full_matrix_complete=False,
+                  extended_soak=False, independent_per_run_tv_observation=False,
+                  runtime_source_commit=HFR_RUNTIME, sdl_source_companion=HFR_SDL_SOURCE)
+    for kind in ("imgui", "sdl"):
+        record_path = results / profile[kind + "_record"]
+        require(digest(record_path) == profile[kind + "_record_sha256"], "HFR acceptance record changed: " + kind)
+        accepted = json.loads(record_path.read_text())
+        logs = list(record_path.parent.glob("*-opengl.log"))
+        require(len(logs) == 1, "HFR receipt must identify exactly one native run")
+        prefix = str(logs[0]).removesuffix("-opengl.log")
+        paths = {key: Path(prefix + suffix) for key, suffix in (
+            ("app", "-opengl.log"), ("klog", "-klog.log"),
+            ("cycle", "-result.json"), ("runner", "-runner.json"))}
+        require(set(accepted["raw_sha256"]) == set(paths), "HFR raw receipt set mismatch")
+        for key, path in paths.items():
+            require(digest(path) == accepted["raw_sha256"][key], "HFR raw receipt changed: " + kind + "/" + key)
+        cycle, runner = [json.loads(paths[key].read_text(encoding="utf-8-sig"))
+                         for key in ("cycle", "runner")]
+        require(cycle["titleId"] == "PPSA99005" and cycle["outcome"] == "entered-eboot" and
+                cycle["teardownSignal"] == "runtime-layers-released" and
+                cycle["ebootSha256"].lower() == accepted["eboot_sha256"] == profile[kind + "_eboot"] and
+                cycle["libcSha256"].lower() == "e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036" and
+                runner["checkoutCommit"] == accepted["source_companion"] and
+                runner["protocolCommit"] == "7195c969e60735f158d46b5034cd53ae62ef0ebc" and
+                runner["postHealthChecked"] is True and runner["lockReleased"] is True,
+                "HFR native identity/lifecycle mismatch")
+        if kind == "imgui":
+            audited = DISPLAY.summarize(paths["app"], expected["height"])
+            require(audited == accepted, "HFR ImGui acceptance does not reproduce")
+            benchmark = audited["window_benchmark"]
+            require(benchmark["target_met"] is True and benchmark["achieved_fps"] >= 114 and
+                    30 <= benchmark["seconds"] <= 31, "HFR ImGui timing failed")
+            hdmi = audited
+            measurements = dict(frames=round(benchmark["seconds"] * benchmark["achieved_fps"]), pixel_probes=2, **{key: benchmark[key] for key in
+                                ("seconds", "achieved_fps", "frame_p50_ms", "frame_p95_ms", "frame_p99_ms")})
+        else:
+            require(runner["gate"] == "egl_public_core33_sdl2.o", "wrong HFR SDL workload")
+            text = paths["app"].read_text()
+            require(text.count(f'[sdl2-g19] GL=3.3 (Core Profile) Mesa 26.2.0 drawable={expected["width"]}x{expected["height"]} nominal_refresh=120Hz (not negotiated HDMI)') == 1,
+                    "HFR SDL drawable mismatch")
+            # Same two exact probes as the recorded G32/G38/G40 local auditor.
+            probes = re.findall(r"^\[sdl2-g19\] probe frame=(\d+) rgba=(\d+,\d+,\d+,\d+) expected=(\d+,\d+,\d+,\d+) pass=1$", text, re.M)
+            require(probes == [("0", "0,38,102,255", "0,38,102,255"),
+                               ("179", "254,38,102,255", "254,38,102,255")] and
+                    text.count("[sdl2-g19] probe ") == 2 and
+                    text.count("[sdl2-g19] frames=180 probes=2 status=0") == 1 and
+                    text.count("[pss-opengl-native] gate completed status=0") == 1,
+                    "HFR SDL frame/pixel checks failed")
+            hdmi = DISPLAY.hdmi_report(paths["klog"].read_text(encoding="utf-8-sig"),
+                                       "PPSA99005", expected["width"], expected["height"], 119.88)
+            require(accepted["status"] == "pass" and accepted["frames"] == 180 and
+                    accepted["pixel_probes"] == 2 and accepted["measured_fps"] is None and
+                    accepted["display_profile"] == expected and accepted["hdmi"] == hdmi and
+                    accepted["sdk_manifest_sha256"] == profile["sdk"] and
+                    accepted["sdk_runtime_sha256"] == profile["archive"] and
+                    accepted["sdl_manifest_sha256"] == receipt["payload_manifest_sha256"] and
+                    accepted["native_receipt_sha256"] == receipt_hash and
+                    accepted["native_teardown"] == "runtime-layers-released" and
+                    accepted["healthy"] is True and accepted["lock_released"] is True and
+                    accepted["physical_input_verified"] is False,
+                    "HFR SDL acceptance does not reproduce")
+            measurements = dict(frames=180, pixel_probes=2, measured_fps=None, physical_input_verified=False)
+        require(hdmi["classification"] == "verified-match" and hdmi["restored_60hz"] is True and
+                hdmi["render_size"] == {key: expected[key] for key in ("width", "height")} and
+                all(hdmi["captured_hdmi_sequence"][-1][key] == expected[key] for key in ("width", "height")),
+                "HFR HDMI profile/restoration mismatch")
+        report[kind] = dict(
+            **measurements, eboot_sha256=profile[kind + "_eboot"],
+            source_companion_at_run=accepted["source_companion"],
+            acceptance_record_sha256=profile[kind + "_record_sha256"], raw_sha256=accepted["raw_sha256"],
+            hdmi={label: {key: row[key] for key in ("width", "height", "refresh_hz")}
+                  for label, row in (("active", hdmi["negotiated_active"]),
+                                     ("restored", hdmi["captured_hdmi_sequence"][-1]))},
+            teardown="runtime-layers-released", post_health=True, lock_released=True)
+    return report
+
+
+def require_distributable_tree(root):
+    """Fail closed on personal paths, LAN URLs, raw receipts or native title files.
+
+    Frozen bytes are never stripped or rewritten to pass this packaging gate.
+    Source tars are inspected too; hashes/provenance still describe exact sources.
+    """
+    forbidden = re.compile(rb"(?:/mnt/[a-z]/Users/|[A-Za-z]:[/\\]+Users[/\\]+|/Users/|/home/(?!%|\$|<)[A-Za-z0-9_.-]+/|https?://(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.))")
+
+    def check(stream, name):
+        require(Path(name).suffix.lower() not in (".log", ".qpa", ".prx", ".bin", ".dds", ".at9") and
+                "sce_sys" not in Path(name).parts,
+                "raw receipt or native title asset in bundle input: " + name)
+        tail = b""
+        while chunk := stream.read(1024 * 1024):
+            require(not forbidden.search(tail + chunk), "private build path or URL in bundle input: " + name)
+            tail = chunk[-256:]
+
+    for path in sorted(root.rglob("*")):
+        require(not path.is_symlink() and (path.is_file() or path.is_dir()), "non-regular bundle input")
+        if not path.is_file():
+            continue
+        name = path.relative_to(root).as_posix()
+        if path.name.endswith((".tar", ".tar.xz", ".tar.gz")):
+            with tarfile.open(path) as archive:
+                for member in archive:
+                    if member.isfile():
+                        with archive.extractfile(member) as stream:
+                            check(stream, name + ":" + member.name)
+        else:
+            with path.open("rb") as stream:
+                check(stream, name)
+
 
 def targeted_report(candidate, results):
     require(digest(candidate) == TARGETED["candidate"], "not the frozen targeted candidate")
@@ -146,10 +307,10 @@ def require_consumers(report, sdk_hash):
             "expected three linked consumers and 344 Core exports")
 
 
-def sample_report(repo, candidate, results, profile):
+def sample_report(repo, candidate, results, profile, third_party=None):
     require(digest(candidate) == profile["candidate"], "not the frozen sampled candidate")
     manifest = json.loads(candidate.read_text())
-    mustpass = repo / "third_party/VK-GL-CTS/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass/main/gl33-main.txt"
+    mustpass = (third_party or repo / "third_party") / "VK-GL-CTS/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass/main/gl33-main.txt"
     require(digest(mustpass) == manifest["mustpass_sha256"], "must-pass identity mismatch")
     official = mustpass.read_text().splitlines()
     require(len(official) == len(set(official)) == 9886, "must-pass count mismatch")
@@ -259,6 +420,25 @@ def copy_sdl(native, stage, checked, epoch):
             "receipt_tool_sha256", "artifacts")})
 
 
+def archive_bundle(stage, epoch):
+    files = sorted(p for p in stage.rglob("*") if p.is_file())
+    with (stage / "SHA256SUMS").open("x") as stream:
+        stream.writelines(f"{digest(p)}  {p.relative_to(stage).as_posix()}\n" for p in files)
+    archive_path = stage.parent / (stage.name + ".tar.gz")
+    with archive_path.open("xb") as stream:
+        with gzip.GzipFile(filename="", fileobj=stream, mode="wb", mtime=0) as compressed:
+            # Standard tar gives stable ordering, ownership, modes and timestamps.
+            with subprocess.Popen(["tar", "--sort=name", "--mtime=@" + epoch,
+                                   "--owner=0", "--group=0", "--numeric-owner", "--format=gnu",
+                                   "--mode=a=rX,u+w", "-C", str(stage.parent), "-cf", "-", stage.name],
+                                  stdout=subprocess.PIPE) as process:
+                shutil.copyfileobj(process.stdout, compressed)
+                require(process.wait() == 0, "tar failed; archive is incomplete")
+    with Path(str(archive_path) + ".sha256").open("x") as stream:
+        stream.write(f"{digest(archive_path)}  {archive_path.name}\n")
+    return archive_path, len(files)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", type=Path, required=True)
@@ -266,27 +446,36 @@ def main():
     parser.add_argument("--candidate", type=Path)
     parser.add_argument("--results", type=Path)
     parser.add_argument("--ci-version", help="distinct CI-built, NOT console-validated bundle")
+    parser.add_argument("--ci-profile", choices=DISPLAY_PROFILES,
+                        help="fresh-build profile (default: 1080p60); no hardware acceptance")
     parser.add_argument("--sample-version", choices=SAMPLES,
                         help="frozen sampled release (default: September 7)")
     parser.add_argument("--targeted-version", choices=[TARGETED_VERSION],
                         help="frozen G19 native regression bundle; not CTS acceptance")
-    parser.add_argument("--consumer-report", type=Path, help="CI/targeted SDK consumer summary.json")
+    parser.add_argument("--hfr-profile", choices=HFR,
+                        help="frozen G31 GL + G32 SDL; focused G37/G38/G39/G40 evidence only")
+    parser.add_argument("--consumer-report", type=Path, help="CI/targeted/HFR SDK consumer summary.json")
     parser.add_argument("--runtime-config", type=Path, help="CI runtime-config.txt")
     parser.add_argument("--sdl-build", type=Path,
                         help="optional verified native SDL build; packaged separately in sdl2/")
+    parser.add_argument("--third-party", type=Path,
+                        help="read-only existing dependency source directory; never rebuilds dependencies")
     parser.add_argument("--destination", type=Path, required=True, help="new output directory")
     args = parser.parse_args()
     require(sum(value is not None for value in
-                (args.ci_version, args.sample_version, args.targeted_version)) <= 1,
-            "CI, sampled and targeted release modes are mutually exclusive")
-    profile = TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
+                (args.ci_version, args.sample_version, args.targeted_version, args.hfr_profile)) <= 1,
+            "CI, sampled, targeted and HFR release modes are mutually exclusive")
+    require(args.ci_profile is None or args.ci_version is not None, "--ci-profile requires CI mode")
+    profile = HFR[args.hfr_profile] if args.hfr_profile else TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
     if not args.ci_version and profile.get("sdl_receipt"):
         require(args.sdl_build is not None, "this frozen release requires its accepted SDL build")
     repo = Path(__file__).resolve().parents[1]
+    third_party = (args.third_party or repo / "third_party").resolve()
     sdk, output = args.sdk.resolve(), args.destination.resolve()
     require(re.fullmatch(r"[0-9a-f]{40}", args.source_commit), "use a full source commit")
     require(not output.is_relative_to(sdk), "bundle destination must be outside the SDK")
     require(not output.exists(), "refusing to overwrite a bundle directory")
+    require(not output.is_relative_to(third_party), "bundle destination must be outside dependency sources")
     if args.sdl_build is not None:
         require(not any(p.is_symlink() for p in
                         (args.sdl_build, *args.sdl_build.absolute().parents)),
@@ -312,7 +501,27 @@ def main():
         subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", "HEAD"], check=True)
         consumers = json.loads(args.consumer_report.read_text())
         require_consumers(consumers, sdk_hash)
+        display_profile = require_ci_profile(sdk, args.runtime_config.read_text(), args.ci_profile or "1080p60")
         version = args.ci_version
+    elif args.hfr_profile:
+        require(args.results and args.consumer_report and not args.candidate and not args.runtime_config,
+                "HFR requires the acceptance results root, SDL build and consumer report; no CTS candidate")
+        require_frozen_sdk(profile, sdk_hash, runtime_hash)
+        require(CHECK.display_profile(sdk) == profile["display"], "HFR SDK display profile mismatch")
+        require(subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+                == args.source_commit, "HFR source snapshot must own this packaging checkout")
+        subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", "HEAD"], check=True)
+        subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", HFR_RUNTIME,
+                        args.source_commit, "--", "src", "toolchain", "dependencies.json",
+                        "tests/ps5/native-app.mk", "native-app"], check=True)
+        consumers = json.loads(args.consumer_report.read_text())
+        require_consumers(consumers, sdk_hash)
+        focused = hfr_report(args.results.resolve(), profile, sdl)
+        # Do this before creating any distribution output: path removal would
+        # change the frozen library identities and needs a separate decision.
+        require_distributable_tree(sdk)
+        require_distributable_tree(native / "sdk")
+        version = profile["version"]
     else:
         require(args.candidate and args.results and
                 bool(args.consumer_report) == bool(args.targeted_version) and not args.runtime_config,
@@ -327,7 +536,7 @@ def main():
             consumers = json.loads(args.consumer_report.read_text())
             require_consumers(consumers, sdk_hash)
         else:
-            sampled = sample_report(repo, args.candidate, args.results, profile)
+            sampled = sample_report(repo, args.candidate, args.results, profile, third_party)
         version = args.targeted_version or args.sample_version or VERSION
     epoch = subprocess.check_output(["git", "-C", str(repo), "show", "-s", "--format=%ct",
                                      args.source_commit], text=True).strip()
@@ -359,24 +568,29 @@ def main():
     (stage / "README.md").write_text(
         f"# PS5 OpenGL SDK {version}\n\n"
         + ("Host-checked only; NOT console-validated.\n\n" if args.ci_version is not None
+           else f"Frozen {args.hfr_profile} GL + SDL2; focused timing/pixels/HDMI checks only. No sampled or full CTS acceptance.\n\n" if args.hfr_profile
            else "Targeted native checks: 24 mip cycles + 18 format checks; NOT a full CTS campaign or certification.\n\n" if args.targeted_version
            else "Sample-validated; NOT a full CTS campaign or certification.\n\n")
         + f"Read [scope, verification and use](docs/{guide}) before using this SDK.\n\n"
         "Compiled libraries and headers are in `sdk/`; sources, examples, licenses,\n"
         "checksums and provenance are included. Nothing is automatically installed.\n"
-        + ("\nOptional SDL2 is in `sdl2/`, with its own manifest and receipts. Its native\n"
+        + ("\nSDL2 is in `sdl2/`; its offline build receipt remains unchanged. Separate\n"
+           "`focused-validation.json` records the exact frozen pair's short hardware checks.\n"
+           "SDL and integration sources are in `sources/SDL2*.tar`; licenses are in\n"
+           "`sdl2/share/licenses/`.\n" if args.hfr_profile else
+           "\nOptional SDL2 is in `sdl2/`, with its own manifest and receipts. Its native\n"
            "compile results do not establish SDL hardware, controller or display acceptance.\n"
            "SDL and integration sources are in `sources/SDL2*.tar`; licenses are in\n"
            "`sdl2/share/licenses/`. See `provenance.json` for exact input and payload identities.\n"
            if args.sdl_build is not None else ""),
         encoding="utf-8")
     pins = json.loads((stage / "dependencies.json").read_text())
-    mesa = repo / "third_party/mesa-26.2.0.tar.xz"
+    mesa = third_party / "mesa-26.2.0.tar.xz"
     require(digest(mesa) == pins["mesa"]["sha256"], "Mesa source archive hash mismatch")
     shutil.copyfile(mesa, sources / mesa.name)
     for dep in ("opengnm-psbc", "opengnm", "SPIRV-Headers", "Vulkan-Headers",
                 "imgui", "nanovg", "sokol", "sokol-samples"):
-        snapshot(repo / "third_party" / dep, pins["repositories"][dep]["revision"],
+        snapshot(third_party / dep, pins["repositories"][dep]["revision"],
                  dep, sources / (dep + ".tar"))
     with tarfile.open(mesa) as archive:
         copy_member(archive, archive.getmember("mesa-26.2.0/src/mesa/glapi/glapi/registry/gl.xml"),
@@ -402,12 +616,14 @@ def main():
             version=version, status="Host-built and host-checked; NOT console-validated",
             runtime_source_commit=args.source_commit, sdk_manifest_sha256=sdk_hash,
             runtime_archive_sha256=runtime_hash, build_flags="runtime-config.txt",
+            display_profile=display_profile,
             validation="consumer-validation.json: compile/link only; no GPU execution",
             hardware_validation="not performed for this binary",
             payload_sdk=pins["native_boilerplate"]["payload_sdk"],
             payload_sdk_archive_sha256=pins["native_boilerplate"]["payload_sdk_archive_sha256"])
-    elif args.targeted_version:
-        write_json(stage / "targeted-validation.json", sampled)
+    elif args.targeted_version or args.hfr_profile:
+        write_json(stage / ("focused-validation.json" if args.hfr_profile else "targeted-validation.json"),
+                   focused if args.hfr_profile else sampled)
         write_json(stage / "consumer-validation.json", dict(
             scope="installed-SDK compile/link checks, not GPU execution", status="PASS",
             manifest=consumers["manifest"], gl33=dict(commands=344, exported=344),
@@ -415,27 +631,22 @@ def main():
             outputs=consumers["outputs"], raw_report_sha256=digest(args.consumer_report)))
         provenance.update(status="local targeted-native-validated candidate; not published",
                           validation="targeted-validation.json and consumer-validation.json; no inherited CTS results")
+        if args.hfr_profile:
+            provenance["build_flags"].update(PS5_SCANOUT_HEIGHT=profile["display"]["height"], PS5_SCANOUT_FPS=120)
+            provenance.update(status="local frozen HFR focused-validation candidate; not published",
+                              display_profile=profile["display"], packaging_source_commit=args.source_commit,
+                              sdl_source_companion=HFR_SDL_SOURCE,
+                              validation="focused-validation.json and consumer-validation.json; no sampled/full CTS or extended soak")
+            sdl_provenance["focused_hardware_validation"] = "focused-validation.json: SDL functional check; not measured FPS"
     else:
         write_json(stage / "sample-validation.json", sampled)
     if args.sdl_build is not None:
         provenance["sdl2"] = sdl_provenance
     write_json(stage / "provenance.json", provenance)
-    files = sorted(p for p in stage.rglob("*") if p.is_file())
-    with (stage / "SHA256SUMS").open("x") as stream:
-        stream.writelines(f"{digest(p)}  {p.relative_to(stage).as_posix()}\n" for p in files)
-    archive_path = output / (name + ".tar.gz")
-    with archive_path.open("xb") as stream:
-        with gzip.GzipFile(filename="", fileobj=stream, mode="wb", mtime=0) as compressed:
-            # Standard tar gives stable ordering, ownership, modes and timestamps.
-            with subprocess.Popen(["tar", "--sort=name", "--mtime=@" + epoch,
-                                   "--owner=0", "--group=0", "--numeric-owner", "--format=gnu",
-                                   "--mode=a=rX,u+w", "-C", str(output), "-cf", "-", name],
-                                  stdout=subprocess.PIPE) as process:
-                shutil.copyfileobj(process.stdout, compressed)
-                require(process.wait() == 0, "tar failed; archive is incomplete")
-    with Path(str(archive_path) + ".sha256").open("x") as stream:
-        stream.write(f"{digest(archive_path)}  {archive_path.name}\n")
-    print(f"BUNDLE={archive_path}\nFILES={len(files)}\nSHA256={digest(archive_path)}")
+    if args.hfr_profile:
+        require_distributable_tree(stage)
+    archive_path, count = archive_bundle(stage, epoch)
+    print(f"BUNDLE={archive_path}\nFILES={count}\nSHA256={digest(archive_path)}")
 
 
 if __name__ == "__main__":

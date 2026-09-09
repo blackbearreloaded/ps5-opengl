@@ -8,6 +8,7 @@ import importlib
 import io
 import json
 from pathlib import Path
+import shutil
 import tarfile
 from tempfile import TemporaryDirectory
 import unittest
@@ -156,19 +157,20 @@ class SDLBundleTests(unittest.TestCase):
         self.assertEqual(provenance["mode"], "native")
         self.assertIn("no SDL hardware", provenance["validation"])
 
-    def test_named_g25_sdl_release_cannot_omit_or_substitute_sdl(self):
+    def test_named_frozen_sdl_releases_cannot_omit_or_substitute_sdl(self):
         version = "0.1.0-perf20260908-g25-sdl2-sampled"
         destination = self.root / "frozen-g25"
-        with mock.patch("sys.argv", self.argv(destination, sdl=False) + ["--sample-version", version]):
-            with self.assertRaisesRegex(ValueError, "requires its accepted SDL build"):
-                BUNDLE.main()
-        with mock.patch("sys.argv", self.argv(destination) + ["--sample-version", version]), \
-                mock.patch.object(BUNDLE.CHECK, "verify_manifest", return_value={"sha256": "a" * 64}), \
-                mock.patch.object(BUNDLE, "digest", return_value="b" * 64), \
-                mock.patch.object(BUNDLE, "verify_sdl", return_value=({}, "changed", {})):
-            with self.assertRaisesRegex(ValueError, "SDL differs from the frozen release receipt"):
-                BUNDLE.main()
-        self.assertFalse(destination.exists())
+        for mode in (["--sample-version", version], ["--hfr-profile", "1440p120"], ["--hfr-profile", "2160p120"]):
+            with mock.patch("sys.argv", self.argv(destination, sdl=False) + mode):
+                with self.assertRaisesRegex(ValueError, "requires its accepted SDL build"):
+                    BUNDLE.main()
+            with mock.patch("sys.argv", self.argv(destination) + mode), \
+                    mock.patch.object(BUNDLE.CHECK, "verify_manifest", return_value={"sha256": "a" * 64}), \
+                    mock.patch.object(BUNDLE, "digest", return_value="b" * 64), \
+                    mock.patch.object(BUNDLE, "verify_sdl", return_value=({}, "changed", {})):
+                with self.assertRaisesRegex(ValueError, "SDL differs from the frozen release receipt"):
+                    BUNDLE.main()
+            self.assertFalse(destination.exists())
 
     def test_tampering_between_verification_and_copy_is_rejected(self):
         checked = self.checked()
@@ -181,6 +183,35 @@ class SDLBundleTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaisesRegex(ValueError, "SDL .*changed"):
                 BUNDLE.copy_sdl(self.native, self.stage(f"tamper-{index}"), checked, "123")
             path.write_bytes(original)
+
+    def test_tar_gzip_extraction_integrity_and_relocation(self):
+        stage = self.stage("archive-a/bundle")
+        BUNDLE.copy_sdl(self.native, stage, self.checked(), "123")
+        BUNDLE.write_json(stage / "provenance.json", dict(scope="format fixture; no hardware evidence"))
+        second = self.root / "archive-b/bundle"
+        shutil.copytree(stage, second)
+        first_archive, count = BUNDLE.archive_bundle(stage, "123")
+        second_archive, _ = BUNDLE.archive_bundle(second, "123")
+        self.assertEqual(BUNDLE.digest(first_archive), BUNDLE.digest(second_archive))
+        self.assertEqual(Path(str(first_archive) + ".sha256").read_text(),
+                         f"{BUNDLE.digest(first_archive)}  bundle.tar.gz\n")
+        relocated = self.root / "relocated"
+        with tarfile.open(first_archive) as archive:
+            self.assertTrue(all(m.uid == m.gid == 0 and m.mtime == 123 for m in archive))
+            archive.extractall(relocated, filter="data")
+        extracted = relocated / "bundle"
+        for manifest, root in ((extracted / "SHA256SUMS", extracted),
+                               (extracted / "sdl2/manifest.sha256", extracted / "sdl2")):
+            for line in manifest.read_text().splitlines():
+                checksum, name = line.split("  ", 1)
+                self.assertEqual(BUNDLE.digest(root / name), checksum)
+        self.assertEqual(len((extracted / "SHA256SUMS").read_text().splitlines()), count)
+        payload = extracted / "sdl2/lib/libSDL2.a"
+        original = BUNDLE.digest(payload)
+        payload.write_bytes(payload.read_bytes() + b"tampered")
+        self.assertNotEqual(BUNDLE.digest(payload), original)
+        with self.assertRaises(FileExistsError):
+            BUNDLE.archive_bundle(stage, "123")
 
     def test_current_sdl_instructions_are_extracted_only_with_option(self):
         current = {"docs/consumer-build.md": b"See ../integration/SDL2/README.md\n",
@@ -267,13 +298,13 @@ class SampleGateTests(unittest.TestCase):
 
     def test_bundle_modes_are_exclusive(self):
         modes = [("--ci-version", "local"), ("--sample-version", BUNDLE.VERSION),
-                 ("--targeted-version", BUNDLE.TARGETED_VERSION)]
+                 ("--targeted-version", BUNDLE.TARGETED_VERSION), ("--hfr-profile", "1440p120")]
         for index, mode in enumerate(modes):
-            with mock.patch("sys.argv", ["build-sdk-bundle.py", "--sdk", "unused",
-                    "--source-commit", "a" * 40, "--destination", "unused",
-                    *mode, *modes[(index + 1) % len(modes)]]):
-                with self.assertRaisesRegex(ValueError, "mutually exclusive"):
-                    BUNDLE.main()
+            for other in modes[index + 1:]:
+                with mock.patch("sys.argv", ["build-sdk-bundle.py", "--sdk", "unused",
+                        "--source-commit", "a" * 40, "--destination", "unused", *mode, *other]):
+                    with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+                        BUNDLE.main()
 
     def test_targeted_batch_requires_identity_completion_and_cleanup(self):
         # Existing transfer/memory auditors have their own numerical regressions.
@@ -379,6 +410,194 @@ class SampleGateTests(unittest.TestCase):
             mutate(bad)
             with self.assertRaises(ValueError):
                 BUNDLE.require_sample(bad)
+
+
+class HFRBundleTests(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.profile = copy.deepcopy(BUNDLE.HFR["1440p120"])
+        self.sdl = (dict(display_profile=self.profile["display"],
+                         sdk_manifest_sha256=self.profile["sdk"], sdk_runtime_sha256=self.profile["archive"],
+                         payload_manifest_sha256="d" * 64), self.profile["sdl_receipt"], {})
+        self.paths, self.records = {}, {}
+        for kind in ("imgui", "sdl"):
+            record_path = self.root / self.profile[kind + "_record"]
+            record_path.parent.mkdir(parents=True)
+            self.paths[kind] = {key: record_path.parent / ("PPSA99005-test" + suffix)
+                               for key, suffix in (("app", "-opengl.log"), ("klog", "-klog.log"),
+                                                   ("cycle", "-result.json"), ("runner", "-runner.json"))}
+            app = "\n".join([
+                "[sdl2-g19] GL=3.3 (Core Profile) Mesa 26.2.0 drawable=2560x1440 nominal_refresh=120Hz (not negotiated HDMI)",
+                "[sdl2-g19] probe frame=0 rgba=0,38,102,255 expected=0,38,102,255 pass=1",
+                "[sdl2-g19] probe frame=179 rgba=254,38,102,255 expected=254,38,102,255 pass=1",
+                "[sdl2-g19] frames=180 probes=2 status=0", "[pss-opengl-native] gate completed status=0"])
+            klog = "launchApp(PPSA99005)\nEXEC /app0/eboot.bin\n" + "".join(
+                "[AvControl] video: port:HDMI " + mode + "\n" for mode in ("1440P_11988", "1440P_5994"))
+            cycle = dict(titleId="PPSA99005", outcome="entered-eboot", teardownSignal="runtime-layers-released",
+                         ebootSha256=self.profile[kind + "_eboot"],
+                         libcSha256="e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036",
+                         appDirectory="private fixture path; must never be copied")
+            runner = dict(checkoutCommit="c" * 40, protocolCommit="7195c969e60735f158d46b5034cd53ae62ef0ebc",
+                          postHealthChecked=True, lockReleased=True,
+                          gate="egl_public_core33_sdl2.o" if kind == "sdl" else "egl_public_core33_imgui_tv.o")
+            for key, data in (("app", app), ("klog", klog), ("cycle", json.dumps(cycle)), ("runner", json.dumps(runner))):
+                self.paths[kind][key].write_text(data)
+            hdmi = BUNDLE.DISPLAY.hdmi_report(klog, "PPSA99005", 2560, 1440, 119.88)
+            accepted = dict(eboot_sha256=cycle["ebootSha256"], source_companion=runner["checkoutCommit"])
+            if kind == "imgui":
+                accepted.update(hdmi, window_benchmark=dict(target_met=True, seconds=30.004589,
+                    achieved_fps=119.881660, frame_p50_ms=8.52, frame_p95_ms=8.69, frame_p99_ms=8.77))
+            else:
+                accepted.update(status="pass", frames=180, pixel_probes=2, measured_fps=None,
+                    display_profile=self.profile["display"], hdmi=hdmi, sdk_manifest_sha256=self.profile["sdk"],
+                    sdk_runtime_sha256=self.profile["archive"], sdl_manifest_sha256=self.sdl[0]["payload_manifest_sha256"],
+                    native_receipt_sha256=self.sdl[1], native_teardown="runtime-layers-released",
+                    healthy=True, lock_released=True, physical_input_verified=False)
+            self.records[kind] = accepted
+            self.repin(kind)
+        # Numerical ImGui auditing is exercised by summarize-imgui-profile's
+        # self-test and the real frozen-receipt check. Isolate the packaging gate.
+        patcher = mock.patch.object(BUNDLE.DISPLAY, "summarize", side_effect=lambda *_: copy.deepcopy(self.records["imgui"]))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def repin(self, kind):
+        record = self.records[kind]
+        record["raw_sha256"] = {key: BUNDLE.digest(path) for key, path in self.paths[kind].items()}
+        path = self.root / self.profile[kind + "_record"]
+        path.write_text(json.dumps(record))
+        self.profile[kind + "_record_sha256"] = BUNDLE.digest(path)
+
+    def report(self):
+        return BUNDLE.hfr_report(self.root, self.profile, self.sdl)
+
+    def test_focused_scope_and_sanitized_identity(self):
+        report = self.report()
+        self.assertFalse(report["sample_complete"])
+        self.assertFalse(report["full_matrix_complete"])
+        self.assertFalse(report["extended_soak"])
+        self.assertIsNone(report["sdl"]["measured_fps"])
+        self.assertEqual(report["imgui"]["frames"], 3597)
+        self.assertEqual(report["sdl"]["hdmi"]["active"]["height"], 1440)
+        self.assertNotIn("private fixture", json.dumps(report))
+        self.assertNotIn("details", json.dumps(report))
+        self.assertNotIn("appDirectory", json.dumps(report))
+
+    def test_records_and_every_raw_receipt_are_pinned(self):
+        for kind in self.records:
+            record = self.root / self.profile[kind + "_record"]
+            for path in (record, *self.paths[kind].values()):
+                original = path.read_bytes()
+                path.write_bytes(original + b"changed")
+                with self.subTest(path=path.name), self.assertRaisesRegex(ValueError, "changed"):
+                    self.report()
+                path.write_bytes(original)
+            record.write_text("{")
+            self.profile[kind + "_record_sha256"] = BUNDLE.digest(record)
+            with self.assertRaises(json.JSONDecodeError):
+                self.report()
+            self.repin(kind)
+
+    def test_mixed_profiles_payloads_and_acceptance_are_rejected(self):
+        for profile in BUNDLE.HFR.values():
+            BUNDLE.require_frozen_sdk(profile, profile["sdk"], profile["archive"])
+        with self.assertRaises(ValueError):
+            BUNDLE.require_frozen_sdk(BUNDLE.HFR["1440p120"], BUNDLE.HFR["2160p120"]["sdk"], self.profile["archive"])
+        for key, value in (("display_profile", BUNDLE.DISPLAY_PROFILES["2160p120"]),
+                           ("sdk_manifest_sha256", "x" * 64), ("sdk_runtime_sha256", "x" * 64)):
+            with mock.patch.dict(self.sdl[0], {key: value}), self.assertRaises(ValueError):
+                self.report()
+        with self.assertRaises(ValueError):
+            BUNDLE.hfr_report(self.root, self.profile, (self.sdl[0], "changed", {}))
+        for kind, key, value in (("sdl", "display_profile", BUNDLE.DISPLAY_PROFILES["2160p120"]),
+                                 ("sdl", "measured_fps", 120), ("sdl", "frames", 179),
+                                 ("sdl", "sdl_manifest_sha256", "wrong"), ("sdl", "healthy", False),
+                                 ("sdl", "lock_released", False), ("sdl", "physical_input_verified", True),
+                                 ("imgui", "eboot_sha256", "wrong")):
+            with mock.patch.dict(self.records[kind], {key: value}):
+                self.repin(kind)
+                with self.subTest(key=key), self.assertRaises(ValueError):
+                    self.report()
+            self.repin(kind)
+
+    def test_rehashed_bad_pixels_hdmi_cleanup_and_timing_still_fail(self):
+        changes = (("app", "pass=1", "pass=0"), ("app", "drawable=2560x1440", "drawable=3840x2160"),
+                   ("app", "frames=180", "frames=179"), ("klog", "1440P_11988", "1080P_11988"),
+                   ("klog", "1440P_5994", "2160P_5994"), ("klog", "1440P_5994", "unknown"),
+                   ("cycle", "runtime-layers-released", "timeout"), ("runner", '"lockReleased": true', '"lockReleased": false'),
+                   ("runner", '"postHealthChecked": true', '"postHealthChecked": false'))
+        for key, before, after in changes:
+            path = self.paths["sdl"][key]
+            original = path.read_text()
+            path.write_text(original.replace(before, after))
+            self.repin("sdl")
+            with self.subTest(key=key, after=after), self.assertRaises(ValueError):
+                self.report()
+            path.write_text(original)
+            self.repin("sdl")
+        for key, value in (("target_met", False), ("seconds", 29), ("achieved_fps", 113)):
+            with mock.patch.dict(self.records["imgui"]["window_benchmark"], {key: value}):
+                self.repin("imgui")
+                with self.assertRaises(ValueError):
+                    self.report()
+            self.repin("imgui")
+
+    def test_ci_profiles_and_runtime_defines_must_match(self):
+        fixture = importlib.import_module("test_sdl_sdk")
+        sdk = self.root / "profile-sdk"
+        for name, profile in BUNDLE.DISPLAY_PROFILES.items():
+            fixture.profile_header(sdk, **profile)
+            flags = f'-DPS5_SCANOUT_HEIGHT={profile["height"]} -DPS5_SCANOUT_FPS={profile["fps"]}\n'
+            self.assertEqual(BUNDLE.require_ci_profile(sdk, flags, name), profile)
+            for bad in ("", flags + flags, flags.replace("FPS=", "FPS=bad"), flags.replace("HEIGHT=", "HEIGHT=0")):
+                with self.assertRaises(ValueError):
+                    BUNDLE.require_ci_profile(sdk, bad, name)
+            with self.assertRaises(ValueError):
+                BUNDLE.require_ci_profile(sdk, flags, "2160p120" if name != "2160p120" else "1080p60")
+        header = sdk / "include/ps5_opengl_display.h"
+        header.write_text(header.read_text() + "#define PS5_OPENGL_NATIVE_FPS 60\n")
+        with self.assertRaises(ValueError):
+            BUNDLE.require_ci_profile(sdk, flags, "2160p120")
+
+    def test_private_bytes_are_rejected_without_rewriting_even_inside_sources(self):
+        root = self.root / "distribution"
+        root.mkdir()
+        path = root / "lib.a"
+        # Split literals so the tests themselves contain no personal path/URL.
+        private = [b"/mnt/" + b"c/Users/person/build", b"C:" + b"\\Users\\person\\build",
+                   b"/home/" + b"person/build", b"https://" + b"192.168.1.2/private"]
+        for value in private:
+            path.write_bytes(b"!<arch>\n" + value)
+            with self.assertRaisesRegex(ValueError, "private build path or URL"):
+                BUNDLE.require_distributable_tree(root)
+            self.assertTrue(path.read_bytes().endswith(value))
+        path.write_bytes(b"!<arch>\n/user/home/%04x/\n")
+        BUNDLE.require_distributable_tree(root)
+        for suffix in (".tar", ".tar.gz", ".tar.xz"):
+            archive_path = root / ("source" + suffix)
+            mode = {".tar": "w", ".tar.gz": "w:gz", ".tar.xz": "w:xz"}[suffix]
+            with tarfile.open(archive_path, mode) as archive:
+                member = tarfile.TarInfo("project/file.c")
+                member.size = len(private[0])
+                archive.addfile(member, io.BytesIO(private[0]))
+            with self.assertRaisesRegex(ValueError, "private build path or URL"):
+                BUNDLE.require_distributable_tree(root)
+            archive_path.unlink()
+        for name in ("raw.log", "eboot.bin", "libc.prx", "pic0.dds", "snd0.at9"):
+            extra = root / name
+            extra.write_text("must not ship")
+            with self.assertRaisesRegex(ValueError, "raw receipt or native title asset"):
+                BUNDLE.require_distributable_tree(root)
+            extra.unlink()
+        for name in ("project/raw.log", "project/sce_sys/icon0.png"):
+            with tarfile.open(root / "title.tar", "w") as archive:
+                member = tarfile.TarInfo(name)
+                member.size = 4
+                archive.addfile(member, io.BytesIO(b"data"))
+            with self.assertRaisesRegex(ValueError, "raw receipt or native title asset"):
+                BUNDLE.require_distributable_tree(root)
 
 
 if __name__ == "__main__":

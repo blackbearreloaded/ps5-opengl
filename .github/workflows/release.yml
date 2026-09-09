@@ -6,6 +6,12 @@ name: Build SDK release
 
 on:
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Fresh SDK build profile (host checks only)
+        type: choice
+        default: 1080p60
+        options: [1080p60, 1440p120, 2160p120]
   push:
     tags: ['v*']
 
@@ -47,12 +53,23 @@ jobs:
         run: make test
       - name: Fetch pinned graphics and example sources
         run: python3 tools/fetch-sources.py --sokol-samples
+      - name: Select fresh build profile
+        env:
+          SDK_PROFILE: ${{ inputs.profile || '1080p60' }}
+        run: |
+          case "$SDK_PROFILE" in
+            1080p60) HEIGHT=1080; FPS=60 ;;
+            1440p120) HEIGHT=1440; FPS=120 ;;
+            2160p120) HEIGHT=2160; FPS=120 ;;
+            *) exit 1 ;;
+          esac
+          echo "SDK_PROFILE=$SDK_PROFILE" >> "$GITHUB_ENV"
+          echo "PS5_SCANOUT_HEIGHT=$HEIGHT" >> "$GITHUB_ENV"
+          echo "PS5_SCANOUT_FPS=$FPS" >> "$GITHUB_ENV"
       - name: Build compiler, Mesa and PS5 static SDK
         env:
           PS5_GPU_PRESENT_BATCH: '1'
           PS5_DRAW_PROFILE: '1'
-          PS5_SCANOUT_HEIGHT: '1080'
-          PS5_SCANOUT_FPS: '60'
           PS5_MULTIDRAW_BATCH: '1'
           PS5_DEFERRED_DRAW_BATCH: '1'
         run: make sdk
@@ -68,7 +85,8 @@ jobs:
         run: |
           VERSION="ci-${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then VERSION="$GITHUB_REF_NAME"; fi
-          python3 tools/build-sdk-bundle.py --ci-version "$VERSION" \
+          if [[ "$SDK_PROFILE" != 1080p60 ]]; then VERSION="$VERSION-$SDK_PROFILE"; fi
+          python3 tools/build-sdk-bundle.py --ci-version "$VERSION" --ci-profile "$SDK_PROFILE" \
             --sdk "$RUNNER_TEMP/relocated-sdk" --source-commit "$(git rev-parse HEAD)" \
             --consumer-report "$RUNNER_TEMP/consumer-checks/summary.json" \
             --runtime-config build/core33-native-runtime/runtime-config.txt \
