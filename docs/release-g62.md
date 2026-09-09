@@ -44,3 +44,4 @@ offline. No graphics ELF injection, settings changes or routine screenshots.
 ## Milestones
 
 - 2026-09-09 | G62 preparation | reused b42f771 runtime and 82-case evidence; owner capped stability session at 120 seconds; remaining gates pending.
+- 2026-09-09 | G62 SDL | dccc5af | 4K | pass: matched SDL2, 180 frames/two probes, HDMI/restoration, clean/healthy/unlocked | results/g62-sdl-2160-20260909-v1.
