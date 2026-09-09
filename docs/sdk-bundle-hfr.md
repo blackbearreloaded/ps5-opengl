@@ -7,12 +7,12 @@ SDL2 payload. Version names are
 `.tar.gz` format and checksum sidecar. Existing sampled, targeted and CI
 version modes remain separate.
 
-**Current assembly blocker:** the original GL static libraries contain personal
+**Original frozen-mode blocker:** the original GL static libraries contain personal
 absolute build paths. The HFR packager rejects these bytes before creating a
 distribution directory. Removing paths changes frozen hashes. No distributable
-HFR archive has been produced. The reviewed next step is a separate derivative,
-not an override for the frozen mode. It needs new runtime identity and parent
-focused hardware validation before publication. Local consumer checks can still
+original-runtime HFR archive has been produced. G47 is a separate, hash-pinned
+derivative input branch, not an override for this frozen mode. It requires new
+runtime identity and maintainer focused hardware qualification. Local consumer checks can still
 use the original libraries. Passing those checks does not waive this blocker.
 
 The read-only ELF audit found nine actual private paths per runtime in
@@ -51,77 +51,90 @@ No strip, derivative or rebuild was performed during this read-only audit.
 New manifests must identify the derivative and original inputs separately;
 retain original SDL/GL receipts and do not transfer frozen hardware acceptance.
 
-## Proposed separate derivative recipe
+## Separate G47 derivative input
 
-This is a parent-reviewed next-build recipe, not an implemented derivative
-packaging mode. Keep the existing `.tar.gz` layout, `manifest.sha256`,
-`provenance.json`, `focused-validation.json` and checksum sidecar. Do not use
-the installer: it also invokes dependency builds.
+`--g47-profile` reuses the existing SDL verifier/copy, source snapshots, privacy
+gate, `.tar.gz` writer and checksum layout. It does not build or strip anything.
+The accepted independent build provenance SHA-256 is
+`fbb0cbc4b3fb872ceb6c9e265c489e92e57a659288b404bff9d4460a4a74d9ed`.
+Its source is `23a594c3a5fda4135599d0dea8d2bf4dcef47a39`; original G31 identities
+remain recorded separately. The independent build audit's documentation signoff is
+`71dd08a558264934a25c94b344df95bf8f3c8ed9`, not the runtime build source.
 
-1. Verify each original SDK/SDL manifest and pinned receipt. Copy the GL SDK
-   to a new, previously absent derivative directory. In those copies only,
-   run `prospero-objcopy --strip-debug INPUT OUTPUT` on the 16 dependency
-   archives (all real GL `.a` files except `libps5_opengl_core33.a`; the
-   uppercase `libPS5OpenGLCore33.a` is a linker script, not an archive).
-   Keep output filenames distinct until comparison passes. Do not strip SDL2
-   or replace the original SDK.
-2. Require exhaustive member order/names, retained section bytes, type, flags,
-   size and alignment equivalence; compare retained symbols, relocations and
-   groups using section/symbol identities rather than renumbered indices.
-   Only debug sections and their exclusively debug references may disappear.
-   Include local and undefined symbols, not just the 344 public exports.
-3. Build the five runtime objects per profile with the frozen flags and mapped
-   source/build/toolchain roots. This includes the existing `u_framebuffer.c`
-   helper in the runtime target, not a Mesa archive rebuild. Keep `-Os`, `-g`
-   and assertions. `-fdebug-prefix-map` alone cannot fix `__FILE__` strings.
+The independent build stripped debug data from **copies** of 16 dependency archives using
+`llvm-strip-21 --strip-debug -o <new-copy> <staged-G31-copy>`. Only the five
+runtime objects were rebuilt with the frozen configuration and file/debug/macro
+prefix maps. No Mesa/PSBC dependency rebuild occurred. The public provenance
+contains the exact mapped Make commands, compiler/input identities, 38-file
+original-to-derived maps per profile and four pinned host audit records.
 
-Set `SOURCE` to a clean committed source checkout whose runtime inputs equal
-G31, and `CANONICAL`/`PS5_PAYLOAD_SDK` to the verified read-only roots. Use
-absolute paths without spaces, as required by these existing Make rules:
+There is one reviewed linker-metadata exception: 1,263 nonallocated LLVM
+address-significance sections per profile retain their bytes/attributes but
+lose the symbol-table link after debug symbols are removed (585 are nonempty).
+LLVM 21 deliberately invalidates these tables when symbol indices change;
+LLD ignores the zero-link table, conservatively limiting safe ICF. All six
+resolved consumer links requested no ICF. This is **not strict semantic or
+optimization equivalence**; other retained sections, normalized symbols,
+relocations, groups and archive inventories passed the exhaustive independent checks.
+No manual ELF repair is used. See the pinned `dependency-audit.json`,
+`addrsig-guard.json` and `consumer-audit.json`; their public bytes are copied
+unchanged under `verification/g47-*.json` together with the privacy audit and
+derivative provenance. The privacy claim is no actual private build paths,
+not absence of public URLs or generic temporary-path constants.
+
+| G47 SHA-256 | 1440p120 | 2160p120 |
+| --- | --- | --- |
+| GL manifest | `5c9da7020167a604400f9a378d20689c78cd8d9d8ec48d889b74aa698e63965c` | `1585e458b2ce884bc68c3e0b9439955e0e47e1d895e0ce76023ccd5739a7e577` |
+| GL runtime | `38072f5d0ed30c43b273fac36ebceabbaf943bfe72a956f38e4d0ad157f2ac8a` | `fcca06d1701edae0881105c3cdb24eb92a152397e024184c2eabe9254d79a675` |
+| New SDL receipt | `7d430fdeb4ff8262aaf362e74de2e4304d0c12ac5630dc4355e49282dd384f9e` | `0646a0792c5ab1278374e4cb0fadc35d732dd373936b1ac36058d6b8a57f1779` |
+
+SDL's source companion is `ad738dca822e0559f8a17b655784dfc72a4fd30a`.
+Its complete recorded integration snapshot is verified, never executed or
+rewritten; it may differ from the packaging checkout. These new offline SDL
+receipts bind the G47 SDKs. Original G32/G42 hardware results do not transfer.
+
+The new focused qualification requires one 30-second ImGui window and one
+180-frame SDL cycle **for each exact new SDK/runtime/eboot**. The window build
+source is pinned independently of the runner checkout: a later documentation
+commit may run the unchanged app. Every acceptance/raw/candidate identity is
+checked. Top-level native HDMI negotiation must reproduce the exact profile
+and same-resolution 60 Hz restoration; render size and the nested ImGui
+`output_mode_verified: false` are not HDMI acceptance. Missing/standby/mismatched
+HDMI evidence fails packaging. Live per-run TV visual confirmation is not
+recorded. No old acceptance, sampled/full CTS, extra workload, controller or
+soak qualification enters this branch.
+
+At this input-branch milestone, 2160's new window and SDL receipts are pinned:
+3,597 measured window frames over 30.005143 seconds (119.879451 FPS), and 180
+SDL frames; two exact pixels per workload. Both native HDMI captures show
+3840×2160 at 119.88 Hz, restored to 59.94 Hz, with clean teardown and health.
+Window acceptance SHA-256 is
+`241720ec3328603b819f8c7a6508bda4f28c5672f9a445d75ddd22cd9bedc912`;
+SDL acceptance is `90417420114e0b4fe941c50ddf8bb5c4b8c9783c278a971a0a6f38b7a661facd`.
+1440 has no new focused hardware qualification; both receipt pins remain absent
+and packaging fails before staging. No G47 archive is claimed at this milestone.
+For qualified 2160 assembly, set `DERIVATIVE` and `SDL_BUILDS` to the preserved
+`build/g47-path-free-v1` and `build/g47-sdl-v1` roots and run from the clean
+packaging checkout (destination must not exist):
 
 ```sh
-HEIGHT=1440 # repeat with 2160 and a distinct RUNTIME
-SDK="$CANONICAL/build/sdk/ps5-opengl-core33-g31-${HEIGHT}p120"
-RUNTIME="$SOURCE/build/g41-proposed-runtime-${HEIGHT}p120-v1"
-test ! -e "$RUNTIME"
-make -n -o ps5-opengl-mesa -C "$SOURCE/tests/ps5" --no-print-directory \
-  -f native-app.mk runtime \
-  PS5_PAYLOAD_SDK="$PS5_PAYLOAD_SDK" PS5_OPENGL_ROOT="$SOURCE" \
-  PS5_OPENGL_BUILD="$RUNTIME" \
-  PS5_OPENGL_MESA_SRC="$CANONICAL/third_party/mesa-26.2.0" \
-  PS5_OPENGL_MESA_BUILD="$CANONICAL/build/mesa-ps5-probe" \
-  PS5_OPENGL_PSBC="$CANONICAL/third_party/opengnm-psbc" \
-  PS5_OPENGL_IMPORT_STUBS="$SDK/lib/libSceAgc.so $SDK/lib/libSceAgcDriver.so" \
-  CC="$PS5_PAYLOAD_SDK/bin/prospero-clang -ffile-prefix-map=$SOURCE=ps5-opengl -ffile-prefix-map=$CANONICAL=ps5-opengl -ffile-prefix-map=$PS5_PAYLOAD_SDK=ps5-payload-sdk" \
-  PS5_SCANOUT_HEIGHT="$HEIGHT" PS5_SCANOUT_FPS=120 PS5_DRAW_PROFILE=1 \
-  PS5_GPU_PRESENT_BATCH=1 PS5_MULTIDRAW_BATCH=1 PS5_DEFERRED_DRAW_BATCH=1
+PROFILE=2160p120 # repeat with 1440p120 after exact HDMI qualification
+HEIGHT=2160
+python3 tools/build-sdk-bundle.py --g47-profile "$PROFILE" \
+  --sdk "$DERIVATIVE/relocated/$PROFILE/gl" \
+  --derivative-provenance "$DERIVATIVE/provenance.json" \
+  --sdl-build "$SDL_BUILDS/native-$PROFILE" \
+  --candidate "$CANONICAL/.local/g47-apps/$HEIGHT/window/candidate.json" \
+  --source-commit "$(git rev-parse HEAD)" --results "$CANONICAL/results" \
+  --third-party "$CANONICAL/third_party" --destination "build/bundle-g47-$PROFILE-v1"
 ```
 
-Both dry runs were checked: exactly five compiles and one archive command;
-zero Ninja, dependency or import-stub builds; all output targets under the
-new runtime directory, with no directory created. Remove only `-n` after
-parent build authorization; retain `-o ps5-opengl-mesa`. Freeze hashes of the
-read-only headers/generated inputs and compiler tools as well as sources.
+Versions are `0.1.0-perf20260908-g47-<profile>-sdl2-focused`. The pinned independent relocated
+consumer audit supplies the host evidence; no separate policy format or runtime
+configuration override is accepted. Repeat extraction/integrity and GL/SDL
+relocated consumer links on each completed distribution as described below.
 
-After the retained-section checks, install the stripped copies and new runtime
-into the new SDK prefix and regenerate its manifest using the installer's
-existing sorted `include lib share` file-hash convention. Record original and
-derived archive/manifest hashes, source and tool identities, mapped build flags
-and comparison results in the existing provenance document. Keep local commands
-with real roots out of public provenance. No derivative equivalence is claimed
-here: stripping comparisons and the actual runtime build remain to be done.
-
-The original SDL receipt still binds its original GL SDK manifest and must stay
-unchanged. A bounded follow-up to `tools/build-sdk-bundle.py` must explicitly
-verify that original identity and the reviewed original-to-derivative mapping;
-the current frozen mode correctly rejects a substituted manifest. Re-run GL
-and SDL relocated consumers, privacy and extraction/integrity checks, then have
-the parent validate the exact derivative GL/SDL native workloads per profile.
-Keep G37–G40 only as original-input evidence and record derivative acceptance
-separately in the existing focused report. New runtime bytes get neither old
-CTS acceptance nor the parent's later original-runtime G42 results.
-
-## Exact scope
+## Original G31/G32 scope (not G47 acceptance)
 
 These bytes have two bounded native cycles per profile on one recorded
 firmware-6.02 console, using HDMI4 on a Hisense 55U78N:
@@ -231,5 +244,5 @@ Packaging regressions: `python3 -m unittest discover -s tools -p test_sdk_bundle
 The archive fixture checks reproducible gzip/tar output, extraction, checksums,
 relocation and tamper detection; it is not a graphics SDK or hardware result.
 
-- 2026-09-08 | G41 | partial-pass: frozen G37–G40 audits, host suite, 22 initial packaging tests and ten relocated links pass; archives blocked by embedded personal paths | parent decision.
+- 2026-09-08 | G41 | partial-pass: frozen G37–G40 audits, host suite, 22 initial packaging tests and ten relocated links pass; archives blocked by embedded personal paths | maintainer decision.
 - 2026-09-08 | G41 review | 24 packaging tests and host suite pass; source privacy cleanup and runtime-only dry runs pass; nine allocated paths per runtime require a prefix-map derivative | originals and receipts preserved; no derivative built.

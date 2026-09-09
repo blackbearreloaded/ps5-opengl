@@ -160,7 +160,9 @@ class SDLBundleTests(unittest.TestCase):
     def test_named_frozen_sdl_releases_cannot_omit_or_substitute_sdl(self):
         version = "0.1.0-perf20260908-g25-sdl2-sampled"
         destination = self.root / "frozen-g25"
-        for mode in (["--sample-version", version], ["--hfr-profile", "1440p120"], ["--hfr-profile", "2160p120"]):
+        for mode in (["--sample-version", version], ["--hfr-profile", "1440p120"], ["--hfr-profile", "2160p120"],
+                     ["--g47-profile", "1440p120", "--derivative-provenance", "unused"],
+                     ["--g47-profile", "2160p120", "--derivative-provenance", "unused"]):
             with mock.patch("sys.argv", self.argv(destination, sdl=False) + mode):
                 with self.assertRaisesRegex(ValueError, "requires its accepted SDL build"):
                     BUNDLE.main()
@@ -298,13 +300,24 @@ class SampleGateTests(unittest.TestCase):
 
     def test_bundle_modes_are_exclusive(self):
         modes = [("--ci-version", "local"), ("--sample-version", BUNDLE.VERSION),
-                 ("--targeted-version", BUNDLE.TARGETED_VERSION), ("--hfr-profile", "1440p120")]
+                 ("--targeted-version", BUNDLE.TARGETED_VERSION), ("--hfr-profile", "1440p120"),
+                 ("--g47-profile", "1440p120")]
         for index, mode in enumerate(modes):
             for other in modes[index + 1:]:
                 with mock.patch("sys.argv", ["build-sdk-bundle.py", "--sdk", "unused",
                         "--source-commit", "a" * 40, "--destination", "unused", *mode, *other]):
                     with self.assertRaisesRegex(ValueError, "mutually exclusive"):
                         BUNDLE.main()
+
+    def test_derivative_contract_argument_is_exclusive_and_required(self):
+        with TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "must-not-be-created"
+            for mode in (["--derivative-provenance", "unused"], ["--g47-profile", "2160p120"]):
+                with mock.patch("sys.argv", ["build-sdk-bundle.py", "--sdk", "unused",
+                        "--source-commit", "a" * 40, "--destination", str(destination), *mode]), \
+                        self.assertRaisesRegex(ValueError, "requires --derivative-provenance"):
+                    BUNDLE.main()
+                self.assertFalse(destination.exists())
 
     def test_targeted_batch_requires_identity_completion_and_cleanup(self):
         # Existing transfer/memory auditors have their own numerical regressions.
@@ -641,6 +654,177 @@ class HFRBundleTests(unittest.TestCase):
         (root / "docs/example.md").write_text("actual receipt host: " + host)
         with self.assertRaisesRegex(ValueError, "private build path or host"):
             BUNDLE.require_distributable_tree(root, BUNDLE.private_markers([], [host]))
+
+
+class G47BundleTests(unittest.TestCase):
+    repin = HFRBundleTests.repin
+
+    def setUp(self):
+        # Reuse the old receipt fixture, then replace every runtime-bound input.
+        HFRBundleTests.setUp(self)
+        records = {key: value for key, value in self.profile.items() if "_record" in key}
+        self.profile.update(copy.deepcopy(BUNDLE.G47["1440p120"]), **records)
+        self.sdl = (dict(self.sdl[0], sdk_manifest_sha256=self.profile["sdk"],
+                         sdk_runtime_sha256=self.profile["archive"]), self.profile["sdl_receipt"], {})
+        self.candidate_path = self.root / "window-candidate.json"
+        self.candidate = dict(source_companion="f0f5bbeb2a5ea8ea96942c653b8085dccdb6c514",
+            gate="egl_public_core33_imgui_tv.o", hardware_run=False, profile=self.profile["display"],
+            sdk_manifest_sha256=self.profile["sdk"], runtime_sha256=self.profile["archive"],
+            files={"eboot.bin": self.profile["imgui_eboot"]},
+            build_flags=dict(PS5_IMGUI_PROFILE="1", PS5_IMGUI_WINDOW_BENCHMARK="1", PS5_IMGUI_WINDOW_TARGET="120"))
+        old = self.records["imgui"]
+        self.records["imgui"] = dict(classification="pass", candidate=self.candidate,
+            runner_companion=self.candidate["source_companion"],
+            workload=dict(frames=3597, window_benchmark=dict(old["window_benchmark"], output_mode_verified=False)),
+            display={key: value for key, value in old.items() if key not in
+                     ("eboot_sha256", "source_companion", "window_benchmark", "raw_sha256")})
+        self.paths["imgui"]["candidate"] = self.candidate_path
+        self.records["sdl"].update(sdk_manifest_sha256=self.profile["sdk"],
+            sdk_runtime_sha256=self.profile["archive"], native_receipt_sha256=self.sdl[1],
+            eboot_sha256=self.profile["sdl_eboot"])
+        for kind in self.records:
+            path = self.paths[kind]["cycle"]
+            path.write_text(json.dumps(dict(json.loads(path.read_text()), ebootSha256=self.profile[kind + "_eboot"])))
+        path = self.paths["imgui"]["runner"]
+        path.write_text(json.dumps(dict(json.loads(path.read_text()), checkoutCommit=self.candidate["source_companion"])))
+        self.repin_candidate()
+        self.repin("sdl")
+        patcher = mock.patch.object(importlib.import_module("summarize-imgui-profile"), "summarize",
+                                    side_effect=lambda *a, **kw: copy.deepcopy(self.records["imgui"]["workload"]))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def repin_candidate(self):
+        self.candidate_path.write_text(json.dumps(self.candidate))
+        self.profile["imgui_candidate"] = BUNDLE.digest(self.candidate_path)
+        self.repin("imgui")
+
+    def report(self):
+        return BUNDLE.hfr_report(self.root, self.profile, self.sdl, window_candidate=self.candidate_path)
+
+    def test_new_identity_and_top_level_hdmi_not_nested_output_flag(self):
+        report = self.report()
+        self.assertEqual(report["runtime_source_commit"], BUNDLE.G47_RUNTIME)
+        self.assertFalse(report["inherited_acceptance"])
+        self.assertFalse(report["independent_per_run_tv_observation"])
+        self.assertFalse(report["sample_complete"])
+        self.assertFalse(report["full_matrix_complete"])
+        self.assertEqual(report["imgui"]["hdmi"]["active"]["refresh_hz"], 119.88)
+        self.assertIn("not recorded", report["tv_visual_confirmation"])
+        self.assertNotIn("private fixture", json.dumps(report))
+
+    def test_all_new_raw_inputs_including_candidate_are_pinned(self):
+        HFRBundleTests.test_records_and_every_raw_receipt_are_pinned(self)
+
+    def test_runner_checkout_is_bound_separately_from_app_build_source(self):
+        path = self.paths["imgui"]["runner"]
+        runner = json.loads(path.read_text())
+        runner["checkoutCommit"] = "b" * 40
+        path.write_text(json.dumps(runner))
+        self.repin("imgui")
+        with self.assertRaisesRegex(ValueError, "identity/lifecycle"):
+            self.report()
+        self.records["imgui"]["runner_companion"] = runner["checkoutCommit"]
+        self.repin("imgui")
+        report = self.report()["imgui"]
+        self.assertEqual(report["source_companion_at_run"], "b" * 40)
+        self.assertEqual(report["app_build_source_companion"], self.candidate["source_companion"])
+        self.records["imgui"]["candidate"] = dict(self.candidate, source_companion="b" * 40)
+        self.repin("imgui")
+        with self.assertRaisesRegex(ValueError, "candidate mismatch"):
+            self.report()
+
+    def test_original_acceptance_and_pending_qualification_cannot_transfer(self):
+        with self.assertRaises(ValueError):
+            BUNDLE.hfr_report(self.root, self.profile,
+                              (self.sdl[0], BUNDLE.HFR["1440p120"]["sdl_receipt"], {}))
+        for key in ("sdl_record", "sdl_record_sha256", "imgui_record", "imgui_record_sha256"):
+            with mock.patch.dict(self.profile, {key: None}), self.assertRaisesRegex(ValueError, "not yet frozen"):
+                self.report()
+
+    def test_rehashed_wrong_candidate_and_native_hdmi_still_fail(self):
+        for key, bad in (("sdk_manifest_sha256", BUNDLE.HFR["1440p120"]["sdk"]),
+                         ("runtime_sha256", BUNDLE.G47["2160p120"]["archive"]),
+                         ("profile", BUNDLE.DISPLAY_PROFILES["2160p120"]),
+                         ("source_companion", "a" * 40), ("hardware_run", True),
+                         ("gate", "offscreen.o"), ("build_flags", {})):
+            with mock.patch.dict(self.candidate, {key: bad}):
+                self.repin_candidate()
+                with self.subTest(key=key), self.assertRaisesRegex(ValueError, "candidate mismatch"):
+                    self.report()
+            self.repin_candidate()
+        path = self.paths["imgui"]["klog"]
+        text, display = path.read_text(), self.records["imgui"]["display"]
+        for bad in ("launchApp(PPSA99005)\nEXEC /app0/eboot.bin\n",
+                    text.replace("1440P_11988", "2160P_11988"), text.replace("1440P_5994", "unknown")):
+            path.write_text(bad)
+            self.records["imgui"]["display"] = BUNDLE.DISPLAY.hdmi_report(bad, "PPSA99005", 2560, 1440, 119.88)
+            self.repin("imgui")
+            with self.assertRaisesRegex(ValueError, "HDMI"):
+                self.report()
+        path.write_text(text)
+        self.records["imgui"]["display"] = display
+        self.repin("imgui")
+
+
+class G47DerivativeTests(unittest.TestCase):
+    def test_pinned_contract_audits_file_mapping_and_scope(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sdk = root / "sdk"
+            (sdk / "lib").mkdir(parents=True)
+            runtime = sdk / "lib/libps5_opengl_core33.a"
+            runtime.write_bytes(b"!<arch>\n")
+            (sdk / "manifest.sha256").write_text("fixture")
+            profile = dict(BUNDLE.G47["1440p120"], archive=BUNDLE.digest(runtime))
+            consumers = dict(status="PASS", manifest=dict(sha256=profile["sdk"]), gl33_exports=344,
+                consumers={key: dict(status="PASS", icf_flags_in_resolved_linker_argv=[])
+                           for key in ("make", "pkgconfig", "cmake")}, outputs=dict.fromkeys(("a", "b", "c"), "hash"))
+            record = dict(format="ps5-opengl-g47-derivative-v1", status="HOST_CHECKED_WITH_ADDRSIG_EXCEPTION",
+                source_commit=BUNDLE.G47_RUNTIME, original_g31_source_commit=BUNDLE.HFR_RUNTIME,
+                hardware_run=False, inherited_acceptance=False, dependency_rebuilds=0,
+                profiles={"1440p120": dict(original_manifest_sha256=BUNDLE.HFR["1440p120"]["sdk"],
+                    original_runtime_sha256=BUNDLE.HFR["1440p120"]["archive"],
+                    derived_manifest_sha256=profile["sdk"], derived_runtime_sha256=profile["archive"],
+                    files={"lib/libps5_opengl_core33.a": dict(derived_sha256=profile["archive"])})})
+            for key in ("dependency_audit", "addrsig_guard", "privacy_audit", "consumer_audit"):
+                path = root / (key.replace("_", "-") + ".json")
+                value = dict(status="PASS_WITH_ADDRSIG_EXCEPTION" if key == "dependency_audit" else "PASS")
+                if key == "consumer_audit":
+                    value["profiles"] = {"1440p120": consumers}
+                path.write_text(json.dumps(value))
+                record[key] = dict(path=path.name, sha256=BUNDLE.digest(path))
+            provenance = root / "provenance.json"
+            provenance.write_text(json.dumps(record))
+            with mock.patch.dict(BUNDLE.G47, {"1440p120": profile}), \
+                    mock.patch.object(BUNDLE, "G47_PROVENANCE", BUNDLE.digest(provenance)), \
+                    mock.patch.object(BUNDLE.CHECK, "verify_manifest", return_value=dict(sha256=profile["sdk"])), \
+                    mock.patch.object(BUNDLE.CHECK, "display_profile", return_value=profile["display"]):
+                def verify():
+                    return BUNDLE.verify_g47_derivative(provenance, sdk, "1440p120")
+                copies, checked = verify()
+                self.assertEqual(len(copies), 5)
+                self.assertEqual(checked, consumers)
+                for path in (provenance, *(root / record[key]["path"] for key in
+                             ("dependency_audit", "addrsig_guard", "privacy_audit", "consumer_audit")), runtime):
+                    original = path.read_bytes()
+                    path.write_bytes(original + b"changed")
+                    with self.subTest(path=path.name), self.assertRaises(ValueError):
+                        verify()
+                    path.write_bytes(original)
+                for key, bad in (("hardware_run", True), ("inherited_acceptance", True),
+                                 ("dependency_rebuilds", 1), ("source_commit", BUNDLE.HFR_RUNTIME)):
+                    with mock.patch.dict(record, {key: bad}):
+                        provenance.write_text(json.dumps(record))
+                        with mock.patch.object(BUNDLE, "G47_PROVENANCE", BUNDLE.digest(provenance)), \
+                                self.assertRaisesRegex(ValueError, "scope mismatch"):
+                            verify()
+                provenance.write_text(json.dumps(record))
+                record["profiles"]["1440p120"]["original_manifest_sha256"] = BUNDLE.HFR["2160p120"]["sdk"]
+                provenance.write_text(json.dumps(record))
+                with mock.patch.object(BUNDLE, "G47_PROVENANCE", BUNDLE.digest(provenance)), \
+                        self.assertRaisesRegex(ValueError, "original-to-derived"):
+                    verify()
 
 
 if __name__ == "__main__":

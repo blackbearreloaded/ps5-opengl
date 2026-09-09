@@ -103,6 +103,78 @@ for key, value in HFR.items():
     value.update(runtime=HFR_RUNTIME, display=DISPLAY_PROFILES[key], guide="sdk-bundle-hfr.md",
                  native_paths=["native-app"], version=f"0.1.0-perf20260908-g41-{key}-sdl2-focused")
 
+G47_PROVENANCE = "fbb0cbc4b3fb872ceb6c9e265c489e92e57a659288b404bff9d4460a4a74d9ed"
+G47_RUNTIME = "23a594c3a5fda4135599d0dea8d2bf4dcef47a39"
+G47_SDL_SOURCE = "ad738dca822e0559f8a17b655784dfc72a4fd30a"
+# New bytes, new receipts. None means qualification is not yet frozen, never
+# permission to fall back to an original-runtime acceptance record.
+G47 = {
+    "1440p120": dict(
+        sdk="5c9da7020167a604400f9a378d20689c78cd8d9d8ec48d889b74aa698e63965c",
+        archive="38072f5d0ed30c43b273fac36ebceabbaf943bfe72a956f38e4d0ad157f2ac8a",
+        imgui_eboot="4b8b6a4ca0cb426bcce742e3215e8b2aef032c7859228020482ce2770a64e350",
+        imgui_candidate="8be4b5d06d8df8d2cd8c09a9a3957c9416b5a7fddbfa37c7866c8396286c1db3",
+        sdl_eboot="ce5dfd55bd93040833947bcebd65cb00f29bacd1c7d98de00e8b053015959fc6",
+        sdl_receipt="7d430fdeb4ff8262aaf362e74de2e4304d0c12ac5630dc4355e49282dd384f9e",
+        imgui_record=None, imgui_record_sha256=None,
+        sdl_record=None, sdl_record_sha256=None),
+    "2160p120": dict(
+        sdk="1585e458b2ce884bc68c3e0b9439955e0e47e1d895e0ce76023ccd5739a7e577",
+        archive="fcca06d1701edae0881105c3cdb24eb92a152397e024184c2eabe9254d79a675",
+        imgui_eboot="302798b80cc33caff54407e949c18e9b099fe707473d2c714f0d5dd9cfa65b44",
+        imgui_candidate="d1918f5e7fd495d54ac8b52d9b8168626cb665fa4595f57b71a939044a6aae46",
+        sdl_eboot="e740b584fe28897453ee3e4f9e57b4a9401b2e711efa0781edeb7152807ce3e1",
+        sdl_receipt="0646a0792c5ab1278374e4cb0fadc35d732dd373936b1ac36058d6b8a57f1779",
+        imgui_record="g47-window-2160-20260908/PPSA99005-20260908-221429-opengl-g47-audit.json",
+        imgui_record_sha256="241720ec3328603b819f8c7a6508bda4f28c5672f9a445d75ddd22cd9bedc912",
+        sdl_record="g47-sdl2-2160-20260908/acceptance.json",
+        sdl_record_sha256="90417420114e0b4fe941c50ddf8bb5c4b8c9783c278a971a0a6f38b7a661facd"),
+}
+for key, value in G47.items():
+    value.update(runtime=G47_RUNTIME, display=DISPLAY_PROFILES[key], guide="sdk-bundle-hfr.md",
+                 derivative=True, sdl_source=G47_SDL_SOURCE,
+                 version=f"0.1.0-perf20260908-g47-{key}-sdl2-focused")
+
+
+def verify_g47_derivative(path, sdk, name):
+    """Accept only the reviewed independent build, not arbitrary derivative policies."""
+    require(digest(path) == G47_PROVENANCE, "G47 derivative provenance changed")
+    record = json.loads(path.read_text())
+    profile, original = G47[name], HFR[name]
+    derived = record["profiles"][name]
+    require(record["format"] == "ps5-opengl-g47-derivative-v1" and
+            record["status"] == "HOST_CHECKED_WITH_ADDRSIG_EXCEPTION" and
+            record["source_commit"] == G47_RUNTIME and record["original_g31_source_commit"] == HFR_RUNTIME and
+            record["hardware_run"] is False and record["inherited_acceptance"] is False and
+            record["dependency_rebuilds"] == 0, "G47 derivative scope mismatch")
+    require((derived["original_manifest_sha256"], derived["original_runtime_sha256"],
+             derived["derived_manifest_sha256"], derived["derived_runtime_sha256"]) ==
+            (original["sdk"], original["archive"], profile["sdk"], profile["archive"]),
+            "G47 original-to-derived identity mismatch")
+    require_frozen_sdk(profile, CHECK.verify_manifest(sdk)["sha256"], digest(sdk / "lib/libps5_opengl_core33.a"))
+    require(CHECK.display_profile(sdk) == profile["display"], "G47 SDK display profile mismatch")
+    files = {p.relative_to(sdk).as_posix() for p in sdk.rglob("*") if p.is_file()} - {"manifest.sha256"}
+    require(files == set(derived["files"]), "G47 derivative file map mismatch")
+    for name in files:
+        require(digest(sdk / name) == derived["files"][name]["derived_sha256"], "G47 derivative file changed: " + name)
+    copies = {"g47-derivative-provenance.json": (path, G47_PROVENANCE)}
+    audits = {}
+    for key, status in (("dependency_audit", "PASS_WITH_ADDRSIG_EXCEPTION"),
+                        ("addrsig_guard", "PASS"), ("privacy_audit", "PASS"), ("consumer_audit", "PASS")):
+        filename = key.replace("_", "-") + ".json"
+        require(record[key]["path"] == filename, "unexpected G47 audit filename")
+        source = path.parent / filename
+        require(digest(source) == record[key]["sha256"], "G47 audit changed: " + key)
+        audits[key] = json.loads(source.read_text())
+        require(audits[key]["status"] == status, "G47 audit failed: " + key)
+        copies["g47-" + filename] = (source, record[key]["sha256"])
+    consumers = audits["consumer_audit"]["profiles"][f'{profile["display"]["height"]}p120']
+    require(consumers["gl33_exports"] == 344 and all(
+        row["status"] == "PASS" and row["icf_flags_in_resolved_linker_argv"] == []
+        for row in consumers["consumers"].values()), "G47 consumer/ICF scope mismatch")
+    require_consumers(dict(consumers, gl33=dict(commands=344, exported=344)), profile["sdk"])
+    return copies, consumers
+
 
 def require_ci_profile(sdk, config, name):
     profile = CHECK.display_profile(sdk)
@@ -113,10 +185,13 @@ def require_ci_profile(sdk, config, name):
     return profile
 
 
-def hfr_report(results, profile, sdl, private_hosts=None):
-    """Re-audit hash-pinned G37/G38/G39/G40 receipts; emit only selected fields."""
+def hfr_report(results, profile, sdl, private_hosts=None, window_candidate=None):
+    """Re-audit the selected frozen receipts; emit only selected public fields."""
     receipt, receipt_hash, _ = sdl
     expected = profile["display"]
+    derivative = profile.get("derivative", False)
+    require(all(profile.get(kind + "_record") and profile.get(kind + "_record_sha256")
+                for kind in ("imgui", "sdl")), "focused hardware qualification is not yet frozen for this profile")
     require(receipt_hash == profile["sdl_receipt"] and
             receipt["display_profile"] == expected and
             receipt["sdk_manifest_sha256"] == profile["sdk"] and
@@ -126,7 +201,11 @@ def hfr_report(results, profile, sdl, private_hosts=None):
                   date="2026-09-08", display_profile=expected, clean_cycles=2,
                   sample_complete=False, full_matrix_complete=False,
                   extended_soak=False, independent_per_run_tv_observation=False,
-                  runtime_source_commit=HFR_RUNTIME, sdl_source_companion=HFR_SDL_SOURCE)
+                  runtime_source_commit=profile["runtime"],
+                  sdl_source_companion=profile.get("sdl_source", HFR_SDL_SOURCE))
+    if derivative:
+        report.update(derivative_provenance_sha256=G47_PROVENANCE, inherited_acceptance=False,
+                      tv_visual_confirmation="not recorded; native HDMI logs only")
     for kind in ("imgui", "sdl"):
         record_path = results / profile[kind + "_record"]
         require(digest(record_path) == profile[kind + "_record_sha256"], "HFR acceptance record changed: " + kind)
@@ -137,6 +216,19 @@ def hfr_report(results, profile, sdl, private_hosts=None):
         paths = {key: Path(prefix + suffix) for key, suffix in (
             ("app", "-opengl.log"), ("klog", "-klog.log"),
             ("cycle", "-result.json"), ("runner", "-runner.json"))}
+        if derivative and kind == "imgui":
+            require(window_candidate is not None and digest(window_candidate) == profile["imgui_candidate"],
+                    "G47 window candidate changed")
+            paths["candidate"] = window_candidate
+            candidate = json.loads(window_candidate.read_text())
+            require(candidate == accepted["candidate"] and candidate["hardware_run"] is False and
+                    candidate["profile"] == expected and candidate["sdk_manifest_sha256"] == profile["sdk"] and
+                    candidate["runtime_sha256"] == profile["archive"] and
+                    candidate["files"]["eboot.bin"] == profile["imgui_eboot"] and
+                    candidate["source_companion"] == "f0f5bbeb2a5ea8ea96942c653b8085dccdb6c514" and
+                    candidate["gate"] == "egl_public_core33_imgui_tv.o" and
+                    candidate["build_flags"] == dict(PS5_IMGUI_PROFILE="1", PS5_IMGUI_WINDOW_BENCHMARK="1",
+                                                     PS5_IMGUI_WINDOW_TARGET="120"), "G47 window candidate mismatch")
         require(set(accepted["raw_sha256"]) == set(paths), "HFR raw receipt set mismatch")
         for key, path in paths.items():
             require(digest(path) == accepted["raw_sha256"][key], "HFR raw receipt changed: " + kind + "/" + key)
@@ -145,21 +237,34 @@ def hfr_report(results, profile, sdl, private_hosts=None):
         if private_hosts is not None:
             require(isinstance(runner.get("ps5Host"), str) and runner["ps5Host"], "missing receipt host")
             private_hosts.add(runner["ps5Host"])
+        eboot = candidate["files"]["eboot.bin"] if derivative and kind == "imgui" else accepted["eboot_sha256"]
+        companion = accepted["runner_companion"] if derivative and kind == "imgui" else accepted["source_companion"]
         require(cycle["titleId"] == "PPSA99005" and cycle["outcome"] == "entered-eboot" and
                 cycle["teardownSignal"] == "runtime-layers-released" and
-                cycle["ebootSha256"].lower() == accepted["eboot_sha256"] == profile[kind + "_eboot"] and
+                cycle["ebootSha256"].lower() == eboot == profile[kind + "_eboot"] and
                 cycle["libcSha256"].lower() == "e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036" and
-                runner["checkoutCommit"] == accepted["source_companion"] and
+                runner["checkoutCommit"] == companion and
                 runner["protocolCommit"] == "7195c969e60735f158d46b5034cd53ae62ef0ebc" and
                 runner["postHealthChecked"] is True and runner["lockReleased"] is True,
                 "HFR native identity/lifecycle mismatch")
         if kind == "imgui":
-            audited = DISPLAY.summarize(paths["app"], expected["height"])
-            require(audited == accepted, "HFR ImGui acceptance does not reproduce")
+            if derivative:
+                require(runner["gate"] == candidate["gate"], "G47 window workload mismatch")
+                text = paths["app"].read_text()
+                require(text.count("[pss-opengl-native] gate completed status=0") == 1, "G47 window gate failed")
+                audited = importlib.import_module("summarize-imgui-profile").summarize(
+                    text, window_target=120, window_height=expected["height"], output_status=True, prepare_profile=True)
+                hdmi = DISPLAY.hdmi_report(paths["klog"].read_text(encoding="utf-8-sig"),
+                                           "PPSA99005", expected["width"], expected["height"], 119.88)
+                require(accepted["classification"] == "pass" and audited == accepted["workload"] and
+                        hdmi == accepted["display"], "G47 window acceptance does not reproduce")
+            else:
+                audited = DISPLAY.summarize(paths["app"], expected["height"])
+                require(audited == accepted, "HFR ImGui acceptance does not reproduce")
+                hdmi = audited
             benchmark = audited["window_benchmark"]
             require(benchmark["target_met"] is True and benchmark["achieved_fps"] >= 114 and
                     30 <= benchmark["seconds"] <= 31, "HFR ImGui timing failed")
-            hdmi = audited
             measurements = dict(frames=round(benchmark["seconds"] * benchmark["achieved_fps"]), pixel_probes=2, **{key: benchmark[key] for key in
                                 ("seconds", "achieved_fps", "frame_p50_ms", "frame_p95_ms", "frame_p99_ms")})
         else:
@@ -195,12 +300,14 @@ def hfr_report(results, profile, sdl, private_hosts=None):
                 "HFR HDMI profile/restoration mismatch")
         report[kind] = dict(
             **measurements, eboot_sha256=profile[kind + "_eboot"],
-            source_companion_at_run=accepted["source_companion"],
+            source_companion_at_run=companion,
             acceptance_record_sha256=profile[kind + "_record_sha256"], raw_sha256=accepted["raw_sha256"],
             hdmi={label: {key: row[key] for key in ("width", "height", "refresh_hz")}
                   for label, row in (("active", hdmi["negotiated_active"]),
                                      ("restored", hdmi["captured_hdmi_sequence"][-1]))},
             teardown="runtime-layers-released", post_health=True, lock_released=True)
+        if derivative and kind == "imgui":
+            report[kind]["app_build_source_companion"] = candidate["source_companion"]
     return report
 
 
@@ -478,6 +585,9 @@ def main():
                         help="frozen G19 native regression bundle; not CTS acceptance")
     parser.add_argument("--hfr-profile", choices=HFR,
                         help="frozen G31 GL + G32 SDL; focused G37/G38/G39/G40 evidence only")
+    parser.add_argument("--g47-profile", choices=G47,
+                        help="pinned G47 derivative + new SDL payload and focused hardware receipts")
+    parser.add_argument("--derivative-provenance", type=Path, help="reviewed G47 provenance.json; G47 only")
     parser.add_argument("--consumer-report", type=Path, help="CI/targeted/HFR SDK consumer summary.json")
     parser.add_argument("--runtime-config", type=Path, help="CI runtime-config.txt")
     parser.add_argument("--sdl-build", type=Path,
@@ -487,10 +597,12 @@ def main():
     parser.add_argument("--destination", type=Path, required=True, help="new output directory")
     args = parser.parse_args()
     require(sum(value is not None for value in
-                (args.ci_version, args.sample_version, args.targeted_version, args.hfr_profile)) <= 1,
-            "CI, sampled, targeted and HFR release modes are mutually exclusive")
+                (args.ci_version, args.sample_version, args.targeted_version, args.hfr_profile, args.g47_profile)) <= 1,
+            "CI, sampled, targeted, HFR and G47 release modes are mutually exclusive")
     require(args.ci_profile is None or args.ci_version is not None, "--ci-profile requires CI mode")
-    profile = HFR[args.hfr_profile] if args.hfr_profile else TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
+    require(bool(args.derivative_provenance) == bool(args.g47_profile), "--g47-profile requires --derivative-provenance, exclusively")
+    hfr = args.hfr_profile or args.g47_profile
+    profile = G47[args.g47_profile] if args.g47_profile else HFR[args.hfr_profile] if args.hfr_profile else TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
     if not args.ci_version and profile.get("sdl_receipt"):
         require(args.sdl_build is not None, "this frozen release requires its accepted SDL build")
     repo = Path(__file__).resolve().parents[1]
@@ -500,6 +612,9 @@ def main():
     require(not output.is_relative_to(sdk), "bundle destination must be outside the SDK")
     require(not output.exists(), "refusing to overwrite a bundle directory")
     require(not output.is_relative_to(third_party), "bundle destination must be outside dependency sources")
+    if args.derivative_provenance:
+        require(not output.is_relative_to(args.derivative_provenance.resolve().parent),
+                "bundle destination must be outside derivative inputs")
     if args.sdl_build is not None:
         require(not any(p.is_symlink() for p in
                         (args.sdl_build, *args.sdl_build.absolute().parents)),
@@ -527,21 +642,27 @@ def main():
         require_consumers(consumers, sdk_hash)
         display_profile = require_ci_profile(sdk, args.runtime_config.read_text(), args.ci_profile or "1080p60")
         version = args.ci_version
-    elif args.hfr_profile:
-        require(args.results and args.consumer_report and not args.candidate and not args.runtime_config,
-                "HFR requires the acceptance results root, SDL build and consumer report; no CTS candidate")
+    elif hfr:
+        require(args.results and not args.runtime_config and
+                (args.candidate and not args.consumer_report if args.g47_profile else args.consumer_report and not args.candidate),
+                "HFR requires results and consumer report; G47 instead requires its window candidate and derivative provenance")
         require_frozen_sdk(profile, sdk_hash, runtime_hash)
         require(CHECK.display_profile(sdk) == profile["display"], "HFR SDK display profile mismatch")
         require(subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
                 == args.source_commit, "HFR source snapshot must own this packaging checkout")
         subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", "HEAD"], check=True)
-        subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", HFR_RUNTIME,
+        subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", profile["runtime"],
                         args.source_commit, "--", "src", "toolchain", "dependencies.json",
                         "tests/ps5/native-app.mk", "native-app"], check=True)
-        consumers = json.loads(args.consumer_report.read_text())
-        require_consumers(consumers, sdk_hash)
+        if args.g47_profile:
+            derivative_copies, consumers = verify_g47_derivative(args.derivative_provenance.resolve(), sdk, args.g47_profile)
+            consumer_report = derivative_copies["g47-consumer-audit.json"][0]
+        else:
+            consumer_report = args.consumer_report
+            consumers = json.loads(consumer_report.read_text())
+            require_consumers(consumers, sdk_hash)
         private_hosts = set()
-        focused = hfr_report(args.results.resolve(), profile, sdl, private_hosts)
+        focused = hfr_report(args.results.resolve(), profile, sdl, private_hosts, args.candidate)
         private = private_markers([repo, sdk, native, third_party, args.results.resolve()], private_hosts)
         # Do this before creating any distribution output: path removal would
         # change the frozen library identities and needs a separate decision.
@@ -594,7 +715,7 @@ def main():
     (stage / "README.md").write_text(
         f"# PS5 OpenGL SDK {version}\n\n"
         + ("Host-checked only; NOT console-validated.\n\n" if args.ci_version is not None
-           else f"Frozen {args.hfr_profile} GL + SDL2; focused timing/pixels/HDMI checks only. No sampled or full CTS acceptance.\n\n" if args.hfr_profile
+           else f"Frozen {hfr} GL + SDL2; focused timing/pixels/HDMI checks only. No sampled or full CTS acceptance.\n\n" if hfr
            else "Targeted native checks: 24 mip cycles + 18 format checks; NOT a full CTS campaign or certification.\n\n" if args.targeted_version
            else "Sample-validated; NOT a full CTS campaign or certification.\n\n")
         + f"Read [scope, verification and use](docs/{guide}) before using this SDK.\n\n"
@@ -603,7 +724,7 @@ def main():
         + ("\nSDL2 is in `sdl2/`; its offline build receipt remains unchanged. Separate\n"
            "`focused-validation.json` records the exact frozen pair's short hardware checks.\n"
            "SDL and integration sources are in `sources/SDL2*.tar`; licenses are in\n"
-           "`sdl2/share/licenses/`.\n" if args.hfr_profile else
+           "`sdl2/share/licenses/`.\n" if hfr else
            "\nOptional SDL2 is in `sdl2/`, with its own manifest and receipts. Its native\n"
            "compile results do not establish SDL hardware, controller or display acceptance.\n"
            "SDL and integration sources are in `sources/SDL2*.tar`; licenses are in\n"
@@ -647,29 +768,36 @@ def main():
             hardware_validation="not performed for this binary",
             payload_sdk=pins["native_boilerplate"]["payload_sdk"],
             payload_sdk_archive_sha256=pins["native_boilerplate"]["payload_sdk_archive_sha256"])
-    elif args.targeted_version or args.hfr_profile:
-        write_json(stage / ("focused-validation.json" if args.hfr_profile else "targeted-validation.json"),
-                   focused if args.hfr_profile else sampled)
+    elif args.targeted_version or hfr:
+        write_json(stage / ("focused-validation.json" if hfr else "targeted-validation.json"),
+                   focused if hfr else sampled)
         write_json(stage / "consumer-validation.json", dict(
             scope="installed-SDK compile/link checks, not GPU execution", status="PASS",
             manifest=consumers["manifest"], gl33=dict(commands=344, exported=344),
             consumers={name: "PASS" for name in consumers["consumers"]},
-            outputs=consumers["outputs"], raw_report_sha256=digest(args.consumer_report)))
+            outputs=consumers["outputs"], raw_report_sha256=digest(consumer_report if hfr else args.consumer_report)))
         provenance.update(status="local targeted-native-validated candidate; not published",
                           validation="targeted-validation.json and consumer-validation.json; no inherited CTS results")
-        if args.hfr_profile:
+        if hfr:
             provenance["build_flags"].update(PS5_SCANOUT_HEIGHT=profile["display"]["height"], PS5_SCANOUT_FPS=120)
             provenance.update(status="local frozen HFR focused-validation candidate; not published",
                               display_profile=profile["display"], packaging_source_commit=args.source_commit,
-                              sdl_source_companion=HFR_SDL_SOURCE,
+                              sdl_source_companion=profile.get("sdl_source", HFR_SDL_SOURCE),
                               validation="focused-validation.json and consumer-validation.json; no sampled/full CTS or extended soak")
             sdl_provenance["focused_hardware_validation"] = "focused-validation.json: SDL functional check; not measured FPS"
+        if args.g47_profile:
+            for name, (source, checksum) in derivative_copies.items():
+                destination = stage / "verification" / name
+                shutil.copyfile(source, destination)
+                require(digest(destination) == checksum, "G47 evidence copy changed: " + name)
+            provenance.update(derivative_provenance="verification/g47-derivative-provenance.json",
+                              derivative_provenance_sha256=G47_PROVENANCE, inherited_acceptance=False)
     else:
         write_json(stage / "sample-validation.json", sampled)
     if args.sdl_build is not None:
         provenance["sdl2"] = sdl_provenance
     write_json(stage / "provenance.json", provenance)
-    if args.hfr_profile:
+    if hfr:
         require_distributable_tree(stage, private)
     archive_path, count = archive_bundle(stage, epoch)
     print(f"BUNDLE={archive_path}\nFILES={count}\nSHA256={digest(archive_path)}")
