@@ -67,7 +67,7 @@ static unsigned drains, flushes;
 static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { assert(r); ++drains; }
 static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); ++flushes; }
 ''' + section("static bool\nps5_linear_sampled_layout(", "static bool\nps5_color_render_target(") + section(
-    "static size_t\nps5_tiled_surface_size(", "static bool\nps5_integer_texture_format(") + section(
+    "static size_t\nps5_tiled_depth_layer_xor(", "static bool\nps5_integer_texture_format(") + section(
     "static size_t\nps5_tiled_color_surface_size(", "static uint32_t\nps5_color_target_info(") + section(
     "static bool\nps5_map_bounds(", "static size_t\nps5_tiled_color_msaa4_offset(") + section(
     "static unsigned\nps5_tiled_rgba8_width(", "static unsigned\nps5_surface_width(") + section(
