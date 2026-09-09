@@ -47,3 +47,4 @@ offline. No graphics ELF injection, settings changes or routine screenshots.
 - 2026-09-09 | G62 SDL | dccc5af | 4K | pass: matched SDL2, 180 frames/two probes, HDMI/restoration, clean/healthy/unlocked | results/g62-sdl-2160-20260909-v1.
 - 2026-09-09 | G62 integrations | daa29c5 | 4K | pass: ImGui window 119.882 FPS, offscreen 119.900 completed FPS; 128 cubes ordinary/instanced 57.36/116.28 FPS, 30 seconds per mode; clean/healthy/unlocked.
 - 2026-09-09 | G62 stability | daa29c5 | 4K | 120 seconds: no steady tracked heap/GPU growth, GPU allocations/mappings balanced, five pixel probes, clean/healthy/unlocked. Cadence remains partial: first window 113.53 FPS, later windows 119.83–119.87 FPS.
+- 2026-09-09 | G62 lifecycle-0 v1 | daa29c5 | not accepted: three EGL sessions/18 pixel checks and memory/close passed, but a logged HDMI disconnect/reconnect added an extra mode event. Receipt preserved; unchanged app awaits one replacement cycle. No graphics fault recorded.
