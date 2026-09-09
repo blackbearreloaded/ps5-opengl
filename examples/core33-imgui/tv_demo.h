@@ -65,6 +65,75 @@ static void demo_buttons(uint32_t buttons)
         ImGui::GetIO().AddKeyEvent(key.key, (buttons & key.mask) != 0);
 }
 
+#ifdef PS5_IMGUI_PROFILE
+// Additive CPU-wall diagnostics; never used for pacing or acceptance.
+struct DemoStartupTiming {
+    double stages[3][5] = {}; // Frame 0, frames 0..29, first elapsed-time window.
+    unsigned frames[3] = {};
+    double frame30_seconds = -1, window_seconds = 0, snapshot_log_seconds = 0;
+    bool window_complete = false, clock_valid = true;
+
+    void boundary(unsigned frame, double elapsed)
+    {
+        clock_valid = clock_valid && std::isfinite(elapsed) && elapsed >= window_seconds;
+        if (frame == 30) frame30_seconds = elapsed;
+        if (!window_complete) {
+            window_seconds = elapsed;
+            // Freeze before rendering the boundary frame, including final-frame overshoot.
+            window_complete = elapsed >= 30.0;
+        }
+    }
+
+    void record(unsigned frame, const double ticks[6])
+    {
+        if (frame >= 30 && window_complete) return;
+        clock_valid = clock_valid && ticks[0] >= 0;
+        for (unsigned i = 0; i < 5; ++i) {
+            const double seconds = ticks[i + 1] - ticks[i];
+            clock_valid = clock_valid && std::isfinite(seconds) && seconds >= 0;
+            if (frame == 0) stages[0][i] = seconds;
+            if (frame < 30) stages[1][i] += seconds;
+            if (!window_complete) stages[2][i] += seconds;
+        }
+        if (frame == 0) ++frames[0];
+        if (frame < 30) ++frames[1];
+        if (!window_complete) ++frames[2];
+    }
+
+    void record_log(double begin, double end)
+    {
+        clock_valid = clock_valid && begin >= 0 && end >= begin && std::isfinite(end);
+        snapshot_log_seconds += end - begin;
+    }
+
+    void report(double elapsed)
+    {
+        if (!window_complete) {
+            clock_valid = clock_valid && std::isfinite(elapsed) && elapsed >= window_seconds;
+            window_seconds = elapsed;
+        }
+        double stage_seconds = 0;
+        for (double seconds : stages[2]) stage_seconds += seconds;
+        // Outside stages includes loop/instrumentation overhead, optional benchmark pacing
+        // and any unfinished frame on failure. Snapshot/log time is a subset, not additive.
+        printf("[ps5-imgui-startup] frame30_seconds=%.9f window_seconds=%.9f "
+               "window_complete=%d clock_valid=%d window_stage_ms=%.6f "
+               "window_outside_stages_ms=%.6f window_snapshot_log_ms=%.6f",
+               frame30_seconds, window_seconds, window_complete, clock_valid,
+               stage_seconds * 1000, (window_seconds - stage_seconds) * 1000,
+               snapshot_log_seconds * 1000);
+        const char* groups[] = {"frame0", "first30", "window"};
+        const char* names[] = {"ui", "clear", "draw", "readback", "swap"};
+        for (unsigned group = 0; group < 3; ++group) {
+            printf(" %s_frames=%u", groups[group], frames[group]);
+            for (unsigned i = 0; i < 5; ++i)
+                printf(" %s_%s_ms=%.6f", groups[group], names[i], stages[group][i] * 1000);
+        }
+        printf("\n");
+    }
+};
+#endif
+
 static bool render_frames(EGLDisplay display, EGLSurface surface)
 {
     EGLint width = 0, height = 0;
@@ -120,6 +189,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
 #endif
     double totals[5] = {};
     unsigned measured = 0;
+    DemoStartupTiming startup;
 #ifdef PS5_IMGUI_HOST_REFERENCE
     const unsigned warmup = 2;
 #else
@@ -130,10 +200,16 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
 #endif
     double start = demo_seconds(), previous = start, next_log = 0;
     ok = check(start >= 0, "monotonic clock");
+#ifdef PS5_IMGUI_PROFILE
+    startup.clock_valid = ok;
+#endif
     // ponytail: bounded demo, not a permanent shell/input platform backend.
     // Reuse a real application's event loop for long-lived application ports.
     while (ok) {
         double now = demo_seconds();
+#ifdef PS5_IMGUI_PROFILE
+        startup.boundary(frame, now - start);
+#endif
         if (!check(now >= previous, "monotonic frame clock")) { ok = false; break; }
 #ifdef PS5_IMGUI_WINDOW_BENCHMARK
         if (frame == warmup) sample_start = sample_end = now;
@@ -264,6 +340,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
             ok = check(stages[i + 1] >= stages[i], "profile monotonic clock") && ok;
             if (frame >= warmup) totals[i] += stages[i + 1] - stages[i];
         }
+        startup.record(frame, stages);
 #ifdef PS5_IMGUI_WINDOW_BENCHMARK
         if (frame >= warmup && ok) {
             // Swap retains the same GPU-completion/flip checks as the control.
@@ -289,10 +366,16 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
         if (frame >= warmup) ++measured;
 #endif
         if (elapsed >= next_log) {
+#ifdef PS5_IMGUI_PROFILE
+            const double log_start = startup.window_complete ? -1.0 : demo_seconds();
+#endif
             if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("steady", frame);
             printf("[ps5-imgui-tv] visible frame=%u elapsed=%.1f pad=%d changes=%d vertices=%d\n",
                    frame, elapsed, connected, changes, ImGui::GetDrawData()->TotalVtxCount);
             next_log += 30.0;
+#ifdef PS5_IMGUI_PROFILE
+            if (!startup.window_complete) startup.record_log(log_start, demo_seconds());
+#endif
         }
         ++frame;
 #if !defined(PS5_IMGUI_HOST_REFERENCE) && !defined(PS5_IMGUI_PROFILE)
@@ -305,6 +388,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
     ok = check(changes == 0, "window benchmark unchanged controls") && ok;
 #endif
 #ifdef PS5_IMGUI_PROFILE
+    startup.report(demo_seconds() - start);
     ok = check(measured >= 2 * warmup, "profile post-warm-up frames") && ok;
     if (measured) {
         const double scale = 1000.0 / measured;
