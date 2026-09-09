@@ -146,6 +146,10 @@ def verify_native_build(native, prefix):
     # Pre-profile 1080p60 receipts retain their original integration file set.
     required = INTEGRATION_REQUIRED if "display_profile" in receipt else \
         INTEGRATION_REQUIRED - {"ps5g19_display.h"}
+    if receipt.get("example", "smoke") not in ("smoke", "input-validation"):
+        raise ValueError("Unknown SDL example selector")
+    if "example" in receipt:
+        required = required | {"input_validation.c", "test_input.c", "ps5-joystick.patch"}
     verify_files(native / "integration", receipt.get("integration_inputs"), required,
                  complete=True)
     if receipt.get("receipt_tool_sha256") != receipt["integration_inputs"]["build.py"]:
@@ -180,7 +184,7 @@ def verify_native_build(native, prefix):
     return receipt
 
 
-def record_receipt(out, mode, prefix, sdk_identity):
+def record_receipt(out, mode, prefix, sdk_identity, example="smoke"):
     if verify_sdk(prefix) != sdk_identity:
         raise ValueError("SDK changed during SDL build")
     lane = out / "integration"
@@ -190,6 +194,7 @@ def record_receipt(out, mode, prefix, sdk_identity):
         artifacts = [out / "cmake/sdl/libSDL2.a", out / "cmake/g19-contract"]
     receipt = {
         "schema_version": 1, "mode": mode, "hardware_run": False, "sdl_commit": SDL_REV,
+        "example": example,
         "sdl_source_tar_sha256": digest(out / "sdl-source.tar"),
         **sdk_identity,
         "display_profile": SDK_CHECKER.display_profile(prefix),
@@ -229,6 +234,8 @@ def main():
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--payload-sdk", type=Path)
     parser.add_argument("--compiler-wrapper", type=Path)
+    parser.add_argument("--input-validation", action="store_true",
+                        help="select the 120-second physical input/reconnect consumer (default: 180-frame smoke)")
     args = parser.parse_args()
     source, prefix, out = (p.resolve() for p in (args.sdl_source, args.sdk_prefix, args.out))
     # Never write into the source cache, SDK, another checkout or an existing stage.
@@ -260,11 +267,15 @@ def main():
     run("git", "init", "--quiet", snapshot)
     run("git", "apply", "--check", lane / "static-ps5.patch", cwd=snapshot)
     run("git", "apply", lane / "static-ps5.patch", cwd=snapshot)
+    run("git", "apply", "--check", lane / "ps5-joystick.patch", cwd=snapshot)
+    run("git", "apply", lane / "ps5-joystick.patch", cwd=snapshot)
     if "Altered for this statically linked PS5 SDL2 build" not in (snapshot / "src/dynapi/SDL_dynapi.h").read_text():
         raise SystemExit("SDL static patch was not applied")
     configure = ["cmake", "-S", lane, "-B", out / "cmake", "-G", "Ninja",
                  f"-DSDL_SOURCE={snapshot}", f"-DPS5_OPENGL_PREFIX={prefix}",
                  "-DCMAKE_BUILD_TYPE=Release"]
+    if args.input_validation:
+        configure += ["-DG42_INPUT_VALIDATION=ON"]
     env = os.environ.copy()
     if args.mode == "host":
         configure += ["-DG19_HOST_TEST=ON"]
@@ -285,7 +296,8 @@ def main():
                  "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"})
     else:
         run("cmake", "--install", out / "cmake", env=env)
-    record_receipt(out, args.mode, prefix, sdk_identity)
+    record_receipt(out, args.mode, prefix, sdk_identity,
+                   "input-validation" if args.input_validation else "smoke")
 
 
 if __name__ == "__main__":

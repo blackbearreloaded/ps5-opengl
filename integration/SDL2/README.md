@@ -34,8 +34,10 @@ Yamagi's `src/ps5/ps5_gl3.c` delegates to its `ps5_egl.c` for this same public
 EGL sequence, but its `ps5_video.c` hands the renderer a game-specific sentinel.
 Its `ps5_input.c` separately calls `SDL_JoystickUpdate` on a polling thread.
 Here SDL owns the window/context handles, and `SDL_PollEvent` invokes SDL's
-existing joystick update path. The original PS5 joystick implementation and
-SDL's event queue are retained, with no game-specific polling thread.
+existing joystick update path. SDL's event queue is retained, with no
+game-specific polling thread. `ps5-joystick.patch` corrects connected-device
+enumeration and native-handle ownership in the pinned PS5 backend; the source
+archive itself stays unmodified. See the bounded input case below.
 
 The cached Yamagi package `ps5-payload-dev-v0.40.2.tar.gz` has SHA-256
 `a85f65de418a8e6a898c6c3e3c870d50fff7618a200e4dd59ea9692af6ecec4d`.
@@ -136,6 +138,11 @@ the integration's `ps5g19_display.h`. Existing schema-1 G25 receipts without
 those additions still verify against their matching legacy SDK; the SDK
 identity remains its original three fields. Profile-bearing SDKs require a
 matching profile in the SDL receipt.
+G42 receipts add `example` (`smoke` or `input-validation`) and hash the input
+consumer, host contracts and marked joystick patch in `integration_inputs`.
+Missing `example` means the original smoke consumer, preserving older schema-1
+receipts. The native object path remains unchanged; folder `selected-test.txt`
+distinguishes the input candidate as `egl_public_core33_sdl2_input.o`.
 The outer receipt identifies the build archive and example object, and adds
 `payload_receipt_sha256` and `payload_manifest_sha256`. Installed `artifacts`
 cover every payload file except the installed receipt and manifest, avoiding
@@ -224,10 +231,47 @@ Keyboard/IME hooks exist upstream but are omitted here (their dialog, service
 and presentation contract has not been qualified with G19). No mouse, audio,
 software window surface, SDL_Renderer, dynamic GL loading, resize, multiple
 windows/contexts, context sharing, high DPI, HDMI-mode change or suspend/resume
-coverage is claimed. Upstream PS5 joystick hotplug/multi-user edge cases are
-unchanged and unqualified. No new device-loss recovery is supplied; failed EGL
+coverage is claimed. PS5 joystick hotplug/multi-user edge cases remain
+hardware-unqualified. No new graphics device-loss recovery is supplied; failed EGL
 cleanup retains resources rather than freeing anything still current. Hardware
 qualification and any bounded native-folder launch belong to the parent.
+
+## Opt-in physical input and reconnect (G42; hardware no-run)
+
+Add `--input-validation` to the existing native build command to select
+`input_validation.c`; omit it to keep the original `example.c` 180-frame smoke.
+Use the same `folder.py` assembler, verified fixed-profile SDK and native logs.
+The input app runs for at most 120 seconds after SDL initialization. It requires
+Cross press/release and left-stick X travel (absolute value >=16000) followed
+by return (<=8000), removal, then a new attached instance with the same GUID and
+fresh button/stick evidence. Keep the controller neutral at each connection.
+`START`, `connected`, `button`, `axis`, `phase-ready`, `disconnected` and `END`
+records identify phases and SDL instance IDs. Buttons never terminate this app.
+Exit 0 means sequence complete awaiting parent; 2 means incomplete (including
+timeout/quit/early disconnect); 1 means a functional or cleanup failure.
+All exits release the joystick, detach/delete context, destroy the window and
+quit SDL. A cleanup API error fails the case; native title closure remains the
+parent's responsibility because the existing main-return hold is preserved.
+
+The pinned PS5 backend only watched login-list changes and ignored the
+`connected` sample field. It also treated sparse user slots as dense SDL indices
+and assigned instance IDs independently of SDL. The marked shared-source patch
+maps connected devices densely, matches users across list reorder, uses SDL's
+instance allocator, and owns native handles in detection until logout/quit.
+Retaining a disconnected user's handle permits reconnect detection after an
+SDL object is closed; closing an old SDL object cannot close a new instance.
+Read errors produce an error, never disconnection evidence. No extra polling
+thread, virtual reconnect device, new video driver or runtime change is added.
+
+Host contracts compile that same PS5 driver into real SDL with ASan/UBSan and
+explicit doubles only for the platform APIs (and the existing EGL/GL double).
+Virtual devices and inconsistent synthetic events are rejection cases only.
+The app's `native-driver-candidate` label means nonvirtual SDL state matched the
+event, **not authenticated physical provenance**: SDL events contain no origin
+tag and a matching injected event or Remote Play input cannot be distinguished
+by this public API. Every end marker retains `hardware_accepted=0`. Parent must
+corroborate actual controller actions, collect fresh app logs, and verify native
+teardown/health. See [the parent recipe](../../docs/sdl-input-validation.md).
 
 ## Historical G19 acceptance (September 8; not these new binaries)
 

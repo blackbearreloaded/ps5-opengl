@@ -58,7 +58,7 @@ def profile_header(root, width, height, fps):
     manifest(root)
 
 
-def fixture(root, profile=None):
+def fixture(root, profile=None, example="smoke"):
     """Small format fixtures, never executable SDL/GL or claimed native evidence."""
     gl, native = root / "gl", root / "native"
     for name in ("ps5_opengl_core33", "glapi_bridge", "psbc.ps5", "mesa", "mesa_sse41",
@@ -89,7 +89,7 @@ def fixture(root, profile=None):
     write(native / "sdk/bin/sdl2-config", "unused\n")
     write(native / "sdk/share/aclocal/sdl2.m4", "unused\n")
     with patch.object(BUILD, "SDL_SOURCE_SHA256", BUILD.digest(native / "sdl-source.tar")):
-        BUILD.record_receipt(native, "native", gl, BUILD.verify_sdk(gl))
+        BUILD.record_receipt(native, "native", gl, BUILD.verify_sdk(gl), example)
     return gl, native
 
 
@@ -129,6 +129,10 @@ def negative_checks():
         "missing receipt artifacts": lambda g, n: edit_receipt(n, lambda r: r.update(artifacts={})),
         "legacy receipt": lambda g, n: edit_receipt(n, lambda r: r.pop("sdk_manifest_sha256")),
         "wrong schema": lambda g, n: edit_receipt(n, lambda r: r.update(schema_version=2)),
+        "unknown example": lambda g, n: edit_receipt(n, lambda r: r.update(example="virtual-reconnect")),
+        "example payload mismatch": lambda g, n: edit_receipt(n, lambda r: r.update(example="input-validation")),
+        "missing input source": lambda g, n: (n / "integration/input_validation.c").unlink(),
+        "changed joystick patch": lambda g, n: append(n / "integration/ps5-joystick.patch", "bad\n"),
         "claimed hardware": lambda g, n: edit_receipt(n, lambda r: r.update(hardware_run=True)),
         "host receipt": lambda g, n: edit_receipt(n, lambda r: r.update(mode="host")),
         "payload archive": lambda g, n: write(n / "sdk/lib/libSDL2.a", "bad"),
@@ -219,7 +223,8 @@ def profile_checks():
                 ((1920, 1080), (2560, 1440), (3840, 2160)) for f in (60, 120)]):
             root = temporary / str(index)
             root.mkdir()
-            gl, native = fixture(root, profile)
+            example = "input-validation" if index % 2 else "smoke"
+            gl, native = fixture(root, profile, example)
             width, height, fps = profile or (1920, 1080, 60)
             selected = dict(width=width, height=height, fps=fps)
             identity = BUILD.verify_sdk(gl)
@@ -227,6 +232,7 @@ def profile_checks():
             assert BUILD.SDK_CHECKER.display_profile(gl) == selected
             receipt = json.loads((native / "receipt.json").read_text())
             assert receipt["display_profile"] == selected
+            assert receipt["example"] == example
             assert "ps5g19_display.h" in receipt["integration_inputs"]
             param = FOLDER.folder_parameters(selected)
             baseline = json.loads((ROOT / "native-app/param.json").read_text())
@@ -245,8 +251,13 @@ def profile_checks():
                 # Exercise the exact old schema/file-set without rewriting frozen builds.
                 def old_receipt(r):
                     r.pop("display_profile")
+                    r.pop("example")
                     r["integration_inputs"].pop("ps5g19_display.h")
+                    for name in ("input_validation.c", "test_input.c", "ps5-joystick.patch"):
+                        r["integration_inputs"].pop(name)
                 (native / "integration/ps5g19_display.h").unlink()
+                for name in ("input_validation.c", "test_input.c", "ps5-joystick.patch"):
+                    (native / "integration" / name).unlink()
                 edit_receipt(native, old_receipt)
                 reseal_payload(native, lambda s, r: old_receipt(r))
                 if profile is None:
@@ -301,6 +312,8 @@ def host_matrix(source, sdk, out):
         contract = (stage / "cmake/Testing/Temporary/LastTest.log").read_text()
         assert f"drawable={width}x{height} nominal_refresh={fps}Hz (not negotiated HDMI)" in contract
         assert "frames=180 probes=2 status=0" in contract
+        assert "G42 PS5 driver ownership/reconnect: PASS (platform doubles)" in contract
+        assert "G42 input app contracts: PASS (no GPU or physical input acceptance)" in contract
         receipt = json.loads((stage / "receipt.json").read_text())
         assert receipt["mode"] == "host" and receipt["hardware_run"] is False
         assert receipt["display_profile"] == dict(width=width, height=height, fps=fps)

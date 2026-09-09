@@ -95,12 +95,15 @@ def main():
                 "PACBREW_STATIC_ARCHIVES", "APP_RUNTIME_MODULES"):
         env[key] = ""
     run("bash", script, "Folder", env=env, cwd=out)
-    (out / "selected-test.txt").write_text("egl_public_core33_sdl2.o\n")
+    example = receipt.get("example", "smoke")
+    selected = "egl_public_core33_sdl2_input.o" if example == "input-validation" else "egl_public_core33_sdl2.o"
+    (out / "selected-test.txt").write_text(selected + "\n")
     run("bash", ROOT / "tools/verify-native-test-app.sh", out)
     if verify_native_build(native, prefix) != receipt:
         raise ValueError("Native build receipt changed during folder assembly")
     candidate = out / "dist" / param["titleId"]
     result = {"hardware_run": False, "template_commit": template_commit,
+              "example": example,
               "display_profile": profile,
               "sdk_manifest_sha256": receipt["sdk_manifest_sha256"],
               "sdk_runtime_sha256": receipt["sdk_runtime_sha256"],

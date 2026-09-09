@@ -19,6 +19,9 @@ static unsigned reads, clears;
 static GLfloat color[4];
 static const char *failure;
 static EGLint error_code;
+void (*g42_frame)(void);
+void g42_fail(const char *name) { failure = name; }
+extern void g42_contract(void);
 static int fail(const char *name)
 {
     if (!failure || strcmp(name, failure)) return 0;
@@ -94,7 +97,7 @@ EGLBoolean eglDestroySurface(EGLDisplay d, EGLSurface s)
 EGLBoolean eglSwapInterval(EGLDisplay d, EGLint i)
 { assert(d == DISPLAY && current && (i == 0 || i == 1)); return !fail("interval"); }
 EGLBoolean eglSwapBuffers(EGLDisplay d, EGLSurface s)
-{ assert(d == DISPLAY && s == SURFACE && current); if (fail("swap")) return EGL_FALSE; ++swaps; return EGL_TRUE; }
+{ assert(d == DISPLAY && s == SURFACE && current); if (fail("swap")) return EGL_FALSE; ++swaps; if (g42_frame) g42_frame(); return EGL_TRUE; }
 
 static void APIENTRY mock_integer(GLenum name, GLint *v)
 { assert(current); *v = name == GL_MAJOR_VERSION ? 3 : name == GL_MINOR_VERSION ? 3 : 0; }
@@ -248,6 +251,7 @@ int main(void)
     assert(swaps == 540 && reads == 8);
     failure = "quit"; assert(g19_example_main(0, NULL) == 0); clean();
     assert(swaps == 540 && reads == 8); /* Early exit is valid but not full acceptance. */
+    g42_contract(); clean();
     printf("G26 real-SDL host contract: PASS %dx%d nominal=%dHz (no GPU or physical input)\n",
            PS5_OPENGL_NATIVE_WIDTH, PS5_OPENGL_NATIVE_HEIGHT, PS5_OPENGL_NATIVE_FPS);
     return 0;
