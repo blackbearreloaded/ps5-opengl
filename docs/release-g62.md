@@ -20,7 +20,7 @@ evidence; a different binary requires its own acceptance. No full CTS rerun.
   Run ImGui window/offscreen and 3D checks on the same frozen 4K runtime.
   Require all selected results and pixel/state oracles.
 - Run one 120-second normal ImGui session and three launch/exit cycles, each
-  with three EGL sessions. Require balanced tracked GPU allocations/mappings,
+  with three EGL sessions and five-second inter-session settling. Require balanced tracked GPU allocations/mappings,
   no steady tracked memory growth, clean close and healthy services.
 - Run the matching SDL2 native smoke (180 frames/two pixel checks). No new
   physical-input or independent TV qualification is inferred.
@@ -31,6 +31,15 @@ The owner requires only 4K hardware qualification; 1440p remains explicitly
 host-checked. Full-profile/GLFW portability, multi-hour sessions, suspend/resume,
 device-loss recovery, exhaustive allocation pressure and other firmware are
 outside this release claim. CPU fallbacks are not missing API functionality.
+
+The two immediate-recreation lifecycle attempts passed rendering, memory and
+close but recorded HDMI disconnect/reconnect events. They are preserved and
+not accepted for display qualification. With only a five-second gap between
+sessions, all three replacement cycles passed the unchanged display check.
+This supports a rapid mode-switch timing explanation, not a proven minimum
+settling time or device-loss recovery. The delay belongs to the lifecycle
+example, not to the GL runtime or steady rendering. Rapid HFR mode churn remains
+outside the release claim.
 
 ## Console protocol
 
@@ -49,3 +58,4 @@ offline. No graphics ELF injection, settings changes or routine screenshots.
 - 2026-09-09 | G62 stability | daa29c5 | 4K | 120 seconds: no steady tracked heap/GPU growth, GPU allocations/mappings balanced, five pixel probes, clean/healthy/unlocked. Cadence remains partial: first window 113.53 FPS, later windows 119.83–119.87 FPS.
 - 2026-09-09 | G62 lifecycle-0 v1 | daa29c5 | not accepted: three EGL sessions/18 pixel checks and memory/close passed, but a logged HDMI disconnect/reconnect added an extra mode event. Receipt preserved; unchanged app awaits one replacement cycle. No graphics fault recorded.
 - 2026-09-09 | G62 lifecycle-0 v2 | b362848 | same HDMI reconnects; functional/memory/teardown pass, display gate not accepted. Owner confirms direct HDMI4 TV; test a five-second inter-session gap, unchanged SDK.
+- 2026-09-09 | G62 paced lifecycle | d0a1ff7 | pass: 3 launches/9 EGL sessions/54 pixel checks, balanced GPU memory, no heap growth, six expected HDMI modes per run; clean/healthy/unlocked.
