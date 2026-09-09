@@ -726,9 +726,10 @@ def main():
             for kind, row in g55_evidence["runs"].items():
                 if kind == "cts":
                     continue  # CTS revision and exact executable are checked by its receipt audit.
+                app_paths = G62_EVIDENCE.app_source_paths(kind) if args.g62_profile else [
+                    "native-app", "tests/ps5", "examples", "integration/SDL2", "tools/build-native-test-app.sh"]
                 subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", row["source_companion"],
-                                args.source_commit, "--", "native-app", "tests/ps5", "examples",
-                                "integration/SDL2", "tools/build-native-test-app.sh"], check=True)
+                                args.source_commit, "--", *app_paths], check=True)
         else:
             focused = hfr_report(args.results.resolve(), profile, sdl, private_hosts, args.candidate)
         private = private_markers([repo, sdk, native, third_party, args.results.resolve()], private_hosts)

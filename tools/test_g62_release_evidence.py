@@ -3,9 +3,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import copy
 import json
+import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest import mock
 import g62_release_evidence as E
 
 
@@ -76,6 +78,47 @@ class G62EvidenceTests(unittest.TestCase):
         accepted["workload"]["cases"].pop()
         with self.assertRaises(ValueError):
             E.workload("gpu-mipmap", text, self.profile["display"], accepted, {})
+
+    def test_only_uncompiled_lifecycle_source_is_excluded(self):
+        root = self.path.parent
+        def git(*args):
+            return subprocess.run(["git", "-C", str(root), *args], capture_output=True, check=False)
+        self.assertEqual(git("init", "-q").returncode, 0)
+        example = root / "examples/core33-imgui"
+        example.mkdir(parents=True)
+        for name in ("main.cpp", "lifecycle.cpp"):
+            (example / name).write_text("// original\n")
+        self.assertEqual(git("add", "examples").returncode, 0)
+        self.assertEqual(git("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                             "commit", "-qm", "initial").returncode, 0)
+        (example / "lifecycle.cpp").write_text("// paced lifecycle\n")
+        for kind in E.GATES:
+            self.assertEqual(git("diff", "--quiet", "HEAD", "--", *E.app_source_paths(kind)).returncode,
+                             int(kind.startswith("lifecycle-")))
+        (example / "main.cpp").write_text("// changed shared renderer\n")
+        for kind in E.GATES:
+            self.assertEqual(git("diff", "--quiet", "HEAD", "--", *E.app_source_paths(kind)).returncode, 1)
+        with self.assertRaises(ValueError):
+            E.app_source_paths("unknown")
+
+    def test_paced_lifecycle_requires_both_intervals(self):
+        heap = dict(post_session_growth_bytes=0)
+        row = dict(begin_bytes=0, end_bytes=0, end_blocks=0)
+        gpu = dict(direct=[row] * 3, mapped=[row] * 3)
+        text = "[pss-opengl-native] gate completed status=0\n"
+        for n in range(3):
+            text += f"[ps5-imgui-lifecycle] session={n} begin\n"
+            text += "".join(f"[ps5-imgui] frame={f} pixel PASS\n" for f in range(6))
+            text += f"[ps5-imgui] finished status=0\n[ps5-imgui-lifecycle] session={n} PASS\n"
+            if n < 2:
+                text += f"[ps5-imgui-lifecycle] settle_after={n} seconds=5\n"
+        text += "[ps5-imgui-lifecycle] finished sessions=3 status=0\n"
+        with mock.patch.object(E.MEMORY, "summarize", return_value=heap), \
+             mock.patch.object(E.MEMORY, "summarize_gpu", return_value=gpu):
+            self.assertEqual(E.workload("lifecycle-0", text, {}, {}, {})["inter_session_settle_seconds"], 5)
+            for bad in (text.replace("settle_after=1", "settle_after=0"), text.replace("seconds=5", "seconds=0")):
+                with self.assertRaises(ValueError):
+                    E.workload("lifecycle-0", bad, {}, {}, {})
 
 
 if __name__ == "__main__":

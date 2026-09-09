@@ -27,6 +27,16 @@ GPU_CASES = {"gpu-blit-extended": 22, "gpu-clear-extended": 46, "native-color-fo
 DEFERRED = "KHR-GL33.framebuffer_blit.multisampled_to_singlesampled_blit_color_config_test"
 
 
+def app_source_paths(kind):
+    require(kind in GATES, "unknown G62 app gate")
+    paths = ["native-app", "tests/ps5", "examples", "integration/SDL2", "tools/build-native-test-app.sh"]
+    if not kind.startswith("lifecycle-"):
+        # Only the lifecycle target compiles this standalone translation unit.
+        # Its paced successor does not change the other frozen applications.
+        paths.append(":(exclude)examples/core33-imgui/lifecycle.cpp")
+    return paths
+
+
 def load_evidence(path, profile):
     for key in ("runtime", "sdk", "archive", "sdl_receipt", "sdl_source", "evidence"):
         require(BASE.is_hash(profile.get(key), 40 if key in ("runtime", "sdl_source") else 64),
@@ -84,6 +94,9 @@ def workload(kind, text, display, accepted, flags):
                 re.findall(r"^\[ps5-imgui\] finished status=(\d+)$", text, re.M) == ["0"] * 3 and
                 len(re.findall(r"^\[ps5-imgui\] frame=\d+ .* PASS$", text, re.M)) == 18,
                 "G62 lifecycle sessions/pixels/heap failed")
+        require(re.findall(r"^\[ps5-imgui-lifecycle\] settle_after=(\d+) seconds=(\d+)$", text, re.M) ==
+                [("0", "5"), ("1", "5")], "G62 paced lifecycle intervals differ")
+        measured["inter_session_settle_seconds"] = 5
     return measured
 
 
