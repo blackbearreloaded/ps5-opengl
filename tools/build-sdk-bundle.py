@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import tarfile
 import g55_release_evidence as G55_EVIDENCE
+import g62_release_evidence as G62_EVIDENCE
 
 CHECK = importlib.import_module("check-sdk-consumers")
 AUDIT = importlib.import_module("verify-cts-candidate")
@@ -161,6 +162,13 @@ G55["2160p120"].update(
     sdl_receipt="c806cad89d5fb725fbaa8abee67ad9b84b31488e0555544bd88571805dbc4fd9",
     sdl_source="9f3b6dda933727dad61175b69438005e6f8abf7b",
     evidence="f9dc5cd0682a8f54980799938eede117e5dab307f6b31d21df2d64aca9a8ddca")
+
+# Filled only after exact-binary release qualification; no inherited acceptance.
+G62 = {name: dict(runtime=None, sdk=None, archive=None, sdl_receipt=None,
+                 sdl_source=None, evidence=None, display=DISPLAY_PROFILES[name],
+                 guide="release-g62.md", version=f"0.2.0-{name}-sdl2",
+                 qualification="host-only" if name == "1440p120" else "native-sampled")
+       for name in ("1440p120", "2160p120")}
 
 
 def verify_g47_derivative(path, sdk, name):
@@ -616,6 +624,8 @@ def main():
                         help="pinned G47 derivative + new SDL payload and focused hardware receipts")
     parser.add_argument("--g55-profile", choices=G55,
                         help="frozen G55 pair (4K native-focused, 1440p host-only); --candidate is its pinned index")
+    parser.add_argument("--g62-profile", choices=G62,
+                        help="frozen optimized release pair; --candidate is its pinned qualification index")
     parser.add_argument("--derivative-provenance", type=Path, help="reviewed G47 provenance.json; G47 only")
     parser.add_argument("--consumer-report", type=Path, help="CI/targeted/HFR SDK consumer summary.json")
     parser.add_argument("--runtime-config", type=Path, help="CI runtime-config.txt")
@@ -626,17 +636,19 @@ def main():
     parser.add_argument("--destination", type=Path, required=True, help="new output directory")
     args = parser.parse_args()
     require(sum(value is not None for value in
-                (args.ci_version, args.sample_version, args.targeted_version, args.hfr_profile, args.g47_profile, args.g55_profile)) <= 1,
-            "CI, sampled, targeted, HFR, G47 and G55 release modes are mutually exclusive")
+                (args.ci_version, args.sample_version, args.targeted_version, args.hfr_profile, args.g47_profile, args.g55_profile, args.g62_profile)) <= 1,
+            "CI, sampled, targeted, HFR, G47, G55 and G62 release modes are mutually exclusive")
     require(args.ci_profile is None or args.ci_version is not None, "--ci-profile requires CI mode")
     require(bool(args.derivative_provenance) == bool(args.g47_profile), "--g47-profile requires --derivative-provenance, exclusively")
-    hfr = args.hfr_profile or args.g47_profile or args.g55_profile
-    profile = G55[args.g55_profile] if args.g55_profile else G47[args.g47_profile] if args.g47_profile else HFR[args.hfr_profile] if args.hfr_profile else TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
-    host_only = bool(args.g55_profile and profile.get("qualification") == "host-only")
-    if args.g55_profile:
+    frozen_profile = args.g62_profile or args.g55_profile
+    evidence_checker = G62_EVIDENCE if args.g62_profile else G55_EVIDENCE
+    hfr = args.hfr_profile or args.g47_profile or frozen_profile
+    profile = G62[args.g62_profile] if args.g62_profile else G55[args.g55_profile] if args.g55_profile else G47[args.g47_profile] if args.g47_profile else HFR[args.hfr_profile] if args.hfr_profile else TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
+    host_only = bool(frozen_profile and profile.get("qualification") == "host-only")
+    if frozen_profile:
         require(args.candidate and args.results and args.consumer_report and args.sdl_build and not args.runtime_config,
                 "G55 requires evidence index, local evidence root, consumer report and SDL build; no runtime override")
-        g55_evidence = G55_EVIDENCE.load_evidence(args.candidate, profile)
+        g55_evidence = evidence_checker.load_evidence(args.candidate, profile)
     if not args.ci_version and profile.get("sdl_receipt"):
         require(args.sdl_build is not None, "this frozen release requires its accepted SDL build")
     repo = Path(__file__).resolve().parents[1]
@@ -677,7 +689,7 @@ def main():
         display_profile = require_ci_profile(sdk, args.runtime_config.read_text(), args.ci_profile or "1080p60")
         version = args.ci_version
     elif hfr:
-        require(args.g55_profile or args.results and not args.runtime_config and
+        require(frozen_profile or args.results and not args.runtime_config and
                 (args.candidate and not args.consumer_report if args.g47_profile else args.consumer_report and not args.candidate),
                 "HFR requires results and consumer report; G47 instead requires its window candidate and derivative provenance")
         require_frozen_sdk(profile, sdk_hash, runtime_hash)
@@ -696,22 +708,24 @@ def main():
             consumers = json.loads(consumer_report.read_text())
             require_consumers(consumers, sdk_hash)
         private_hosts = set()
-        if args.g55_profile:
+        if frozen_profile:
             evidence_root = args.results.resolve()
             require(digest(consumer_report) == g55_evidence["consumer_report_sha256"], "G55 consumer report changed")
             require(not subprocess.check_output(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=normal"],
                                                 text=True).strip(), "G55 packaging checkout must be clean, including new files")
             prior_path = G55_EVIDENCE.evidence_path(evidence_root, g55_evidence["g47_provenance"])
             prior_sdk = G55_EVIDENCE.evidence_path(evidence_root, g55_evidence["g47_sdk"], directory=True)
-            derivative_copies, _ = verify_g47_derivative(prior_path, prior_sdk, args.g55_profile)
-            g55_build = G55_EVIDENCE.verify_build(g55_evidence, evidence_root, repo, sdk, profile,
+            derivative_copies, _ = verify_g47_derivative(prior_path, prior_sdk, frozen_profile)
+            g55_build = evidence_checker.verify_build(g55_evidence, evidence_root, repo, sdk, profile,
                                                  json.loads(prior_path.read_text()))
-            focused = G55_EVIDENCE.report(evidence_root, profile, sdl, g55_evidence, private_hosts)
+            focused = evidence_checker.report(evidence_root, profile, sdl, g55_evidence, private_hosts)
             subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", profile["sdl_source"],
                             args.source_commit, "--", "integration/SDL2"], check=True)
             # App builds may precede runner/documentation commits; their actual
             # sources must still be present in the distributed source companion.
-            for row in g55_evidence["runs"].values():
+            for kind, row in g55_evidence["runs"].items():
+                if kind == "cts":
+                    continue  # CTS revision and exact executable are checked by its receipt audit.
                 subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", row["source_companion"],
                                 args.source_commit, "--", "native-app", "tests/ps5", "examples",
                                 "integration/SDL2", "tools/build-native-test-app.sh"], check=True)
@@ -769,6 +783,7 @@ def main():
     (stage / "README.md").write_text(
         f"# PS5 OpenGL SDK {version}\n\n"
         + ("Host-checked only; NOT console-validated.\n\n" if args.ci_version is not None or host_only
+           else f"Frozen G62 {hfr} GL + SDL2; 202 sampled CTS executions, 82 focused GPU cases and bounded application/lifecycle checks. Two-minute stability only; not full CTS or universal stability.\n\n" if args.g62_profile
            else f"Frozen G55 {hfr} GL + SDL2; six focused depth/ImGui/SDL checks. Startup diagnostics are not cadence acceptance. No sampled or full CTS acceptance.\n\n" if args.g55_profile
            else f"Frozen {hfr} GL + SDL2; focused timing/pixels/HDMI checks only. No sampled or full CTS acceptance.\n\n" if hfr
            else "Targeted native checks: 24 mip cycles + 18 format checks; NOT a full CTS campaign or certification.\n\n" if args.targeted_version
@@ -840,23 +855,26 @@ def main():
                               sdl_source_companion=profile.get("sdl_source", HFR_SDL_SOURCE),
                               validation="focused-validation.json and consumer-validation.json; no sampled/full CTS or extended soak")
             sdl_provenance["focused_hardware_validation"] = "focused-validation.json: SDL functional check; not measured FPS"
-        if args.g47_profile or args.g55_profile:
+        if args.g47_profile or frozen_profile:
             for name, (source, checksum) in derivative_copies.items():
                 destination = stage / "verification" / name
                 shutil.copyfile(source, destination)
                 require(digest(destination) == checksum, "G47 evidence copy changed: " + name)
             provenance.update(derivative_provenance="verification/g47-derivative-provenance.json",
                               derivative_provenance_sha256=G47_PROVENANCE, inherited_acceptance=False)
-        if args.g55_profile:
-            write_json(stage / "verification/g55-build-validation.json", g55_build)
-            provenance.update(status="local frozen G55 focused-validation candidate; not published",
+        if frozen_profile:
+            gate = "g62" if args.g62_profile else "g55"
+            write_json(stage / f"verification/{gate}-build-validation.json", g55_build)
+            provenance.update(status=f"local frozen {gate.upper()} qualified candidate; not published",
                               evidence_index_sha256=profile["evidence"],
-                              build_validation="verification/g55-build-validation.json",
-                              derivative_provenance_scope="historical G47 dependency lineage; G55 replaces runtime and G51 replaces Mesa")
+                              build_validation=f"verification/{gate}-build-validation.json",
+                              derivative_provenance_scope=f"historical G47 dependency lineage; {gate.upper()} replaces runtime and G51 replaces Mesa")
+            if args.g62_profile:
+                provenance["validation"] = "focused-validation.json and consumer-validation.json; 202 sampled CTS executions, not full CTS; bounded 120-second stability"
             if host_only:
-                provenance.update(status="local frozen G55 host-checked candidate; not published",
+                provenance.update(status=f"local frozen {gate.upper()} host-checked candidate; not published",
                                   hardware_validation="not performed for this binary; owner selected 4K-only hardware gate",
-                                  validation="consumer-validation.json and verification/g55-build-validation.json; no native acceptance")
+                                  validation=f"consumer-validation.json and verification/{gate}-build-validation.json; no native acceptance")
                 sdl_provenance["focused_hardware_validation"] = "not performed for this binary"
     else:
         write_json(stage / "sample-validation.json", sampled)
