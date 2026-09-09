@@ -43,7 +43,7 @@ enum pipe_format { DEPTH, PACKED, COLOR };
 struct pipe_resource { unsigned target,width0,height0,depth0,last_level,array_size; enum pipe_format format; };
 struct pipe_context { int unused; };
 struct ps5_context { struct pipe_context base; int last_draw_status; };
-struct pipe_box { int x,y,z,width,height,depth; };
+/* ACTUAL_PIPE_BOX_DECLARATION */
 struct pipe_blit_info {
     struct { struct pipe_resource *resource; enum pipe_format format; unsigned level;
         struct pipe_box box; } src,dst;
@@ -262,9 +262,18 @@ int main(void) {
 old = code.replace('depth = util_format_has_depth(util_format_description(format));',
                    'depth = false;')
 assert old != code
+box_header = (mesa.parent / 'box.h').read_text()
+box_start = box_header.index('struct pipe_box\n')
+box_declaration = box_header[box_start:box_header.index('\n};', box_start) + 3]
+code = code.replace('/* ACTUAL_PIPE_BOX_DECLARATION */', box_declaration)
+old = old.replace('/* ACTUAL_PIPE_BOX_DECLARATION */', box_declaration)
+old_boxes = code.replace(
+    '(struct pipe_box){.x = 0, .y = 0, .z = layer,\n               .width = src_width, .height = src_height, .depth = 1}',
+    '(struct pipe_box){0, 0, layer, src_width, src_height, 1}')
+assert old_boxes != code
 with tempfile.TemporaryDirectory() as directory:
     executable = str(Path(directory) / 'mipmap')
-    for name, text in (('fixed', code), ('old-rgba-dispatch', old)):
+    for name, text in (('fixed', code), ('old-rgba-dispatch', old), ('old-box-order', old_boxes)):
         subprocess.run(['cc', '-std=c11', '-O1', '-g', '-Wall', '-Wextra',
                         '-Werror', '-Wno-unused-function', '-fsanitize=address,undefined',
                         '-fno-omit-frame-pointer', '-fno-sanitize-recover=all', '-no-pie', '-x', 'c', '-', '-lm',
@@ -272,8 +281,10 @@ with tempfile.TemporaryDirectory() as directory:
         run = subprocess.run([executable], cwd=directory, capture_output=True, text=True, timeout=60)
         if name == 'fixed':
             assert run.returncode == 0, run.stderr
-        else:
+        elif name == 'old-rgba-dispatch':
             assert run.returncode != 0 and 'f==COLOR' in run.stderr, run.stderr
+        else:
+            assert run.returncode != 0 and 'src.box.z==' in run.stderr, run.stderr
 print('PASS: real mip filter/Mesa depth converters; D32/D32S8/color, odd/1D extents, '
       'layers 1-2, mip bases 0-1, stencil/padding/bounds; GPU exact-halves/NPOT/floor/tail, '
       'per-level/layer dispatch, partial-attempt no-replay; old RGBA dispatch rejected (ASan/UBSan)')

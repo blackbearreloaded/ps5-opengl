@@ -129,3 +129,10 @@ generation. Small mip tails, odd reductions, depth/integer formats, layered
 draws and MRT retain existing fallbacks. Allocation and sampling layouts are
 unchanged. Full fast host/staging checks pass; paired native qualification is
 pending. Mixed-layout backend register checks are host evidence only.
+
+- 2026-09-09 | G60 | a619262 | 4K | partial-pass: all 8 pixel cases, GPU layer blit; mip generation incorrectly fell back to CPU | results/g60-mipmap-candidate-2160-20260909-v1.
+
+The strict counter audit caught positional `pipe_box` initialization using an
+obsolete field order. The successor uses designated fields; its host regression
+extracts the pinned Mesa declaration and rejects the old initializer. Both G60
+v1 cycles closed cleanly with healthy services and exact-token release.

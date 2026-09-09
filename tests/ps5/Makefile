@@ -1740,6 +1740,22 @@ egl_public_core33_native_color_formats.o: egl_public_core33_native_color_formats
 egl_public_core33_gpu_mipmap.o: egl_public_core33_gpu_mipmap.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+# Reuse the three complete oracles; local symbols stay separate in a relocatable object.
+egl_public_core33_gpu_transfer_regression.o: gpu_transfer_regression_main.o gpu_transfer_regression_blit.o gpu_transfer_regression_clear.o gpu_transfer_regression_formats.o
+	$(LD) -r -o $@ $^
+
+gpu_transfer_regression_main.o: egl_public_core33_gpu_transfer_regression.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+gpu_transfer_regression_blit.o: egl_public_core33_gpu_blit_extended.c
+	$(CC) $(CFLAGS) -Dmain=ps5_transfer_blit_main -c -o $@ $<
+
+gpu_transfer_regression_clear.o: egl_public_core33_gpu_clear_extended.c
+	$(CC) $(CFLAGS) -Dmain=ps5_transfer_clear_main -c -o $@ $<
+
+gpu_transfer_regression_formats.o: egl_public_core33_native_color_formats.c
+	$(CC) $(CFLAGS) -Dmain=ps5_transfer_formats_main -c -o $@ $<
+
 egl_public_core33_depth_stencil_blit.o: \
 	egl_public_core33_depth_stencil_blit.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<

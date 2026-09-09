@@ -6110,8 +6110,10 @@ ps5_generate_mipmap(struct pipe_context *context,
             blit.src.format = blit.dst.format = format;
             blit.src.level = level - 1;
             blit.dst.level = level;
-            blit.src.box = (struct pipe_box){0, 0, layer, src_width, src_height, 1};
-            blit.dst.box = (struct pipe_box){0, 0, layer, dst_width, dst_height, 1};
+            blit.src.box = (struct pipe_box){.x = 0, .y = 0, .z = layer,
+               .width = src_width, .height = src_height, .depth = 1};
+            blit.dst.box = (struct pipe_box){.x = 0, .y = 0, .z = layer,
+               .width = dst_width, .height = dst_height, .depth = 1};
             blit.mask = PIPE_MASK_RGBA;
             blit.filter = PIPE_TEX_FILTER_LINEAR;
             if (ps5_blit_gpu_color((struct ps5_context *)context, &blit)) {
