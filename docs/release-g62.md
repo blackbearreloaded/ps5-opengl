@@ -6,10 +6,10 @@ evidence; a different binary requires its own acceptance. No full CTS rerun.
 
 ## Frozen inputs and acceptance
 
-- 4K runtime source: `b42f77102fce612cfcdd46a233a79aaaed02320b`.
-- 4K runtime SHA-256: `f80b80b05ba7e82f763c7a08c78976b0e63fc03b0284c63393db90a84fd70714`.
-- Reuse the [82 focused GPU cases](gpu-blit-performance.md#final-focused-qualification--september-9-2026)
-  only for those unchanged bytes.
+- Corrected 4K runtime source: `eb4b1b705fcdcc59d68c8275b1c4a02ec8781c91`.
+- Corrected runtime SHA-256: `c3310041e2fdb71f9d5ed0c5a4c07c1d8d778af1492937c8f7cc4ee5ee55752b`.
+- Rerun the same [82 focused GPU cases](gpu-blit-performance.md#final-focused-qualification--september-9-2026)
+  on these new bytes; the earlier runtime's acceptance is not inherited.
 - Build the matching 1440p profile and SDL2 pairs; verify complete manifests,
   source provenance, all Core exports and relocated GL/SDL consumer links.
 - Run 202 compact CTS executions: all 51 smoke cases on the two ordinary-sized
@@ -60,3 +60,4 @@ offline. No graphics ELF injection, settings changes or routine screenshots.
 - 2026-09-09 | G62 lifecycle-0 v2 | b362848 | same HDMI reconnects; functional/memory/teardown pass, display gate not accepted. Owner confirms direct HDMI4 TV; test a five-second inter-session gap, unchanged SDK.
 - 2026-09-09 | G62 paced lifecycle | d0a1ff7 | pass: 3 launches/9 EGL sessions/54 pixel checks, balanced GPU memory, no heap growth, six expected HDMI modes per run; clean/healthy/unlocked.
 - 2026-09-09 | G62 CTS v1 | 7a9e9ec | stopped: 49/51 pass on config0; packed depth/stencil blits failed for both formats, with eight MSAA draws rejected before submission. Clean/healthy/unlocked. Offline regression reproduces a full-display-sized dummy color extent on depth-only FBOs; replacing it with one texel preserves color-write disabling and allocation checks. Fixed runtime needs new native acceptance; the old results above do not qualify new bytes.
+- 2026-09-09 | G62 CTS fix | eb4b1b7 | pass: 2/2 isolated regressions, then 202/202 sampled executions (51/51/50/50); no failures/warnings/unsupported results, all clean/healthy/unlocked | results/g62-cts-20260909-v2.
