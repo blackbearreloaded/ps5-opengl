@@ -52,6 +52,16 @@ The [September 8 display audit](docs/performance.md#display-negotiation-audit-se
 reproduces 4K rendering at 119.884 FPS but records **1080p120 HDMI negotiation**;
 independent TV/capture-device verification remains separate.
 
+**Later local high-resolution qualification (September 8):** on the tested
+Hisense HDMI4 connection, the unchanged frozen apps now verify **native 1440p120
+and 4K120 HDMI output**. The 30-second ImGui runs measured **119.882 FPS at
+2560x1440** and **119.884 FPS at 3840x2160**, with matching 119.88 Hz HDMI logs.
+Both SDL2 profiles passed 180 frames/two exact pixels; all four cycles restored
+normal output and closed cleanly. Native 1440p required the owner's 1440p output
+selection. See [qualification and limits](docs/high-resolution-120-plan.md).
+These are local frozen profiles, not new downloads, full-game FPS guarantees,
+an SDL FPS measurement or an extended high-resolution soak.
+
 **Current G25 acceptance (September 8):** this successor retains the nonzero-mip
 copy and color-blit fixes, and adds sRGB storage eligibility. It passes a fresh
 **204/204 execution sample**, a ten-minute zero-growth tracked-memory soak,
@@ -155,8 +165,10 @@ ELF loader. Each TV-demo launch runs for five minutes.
 Existing projects still need PS5 entry-point, build, window/input and lifecycle
 integration. An experimental [SDL2 bridge](integration/SDL2/README.md) now supports standard
 SDL window/context/swap/event calls over a supplied verified SDK; its distributed
-G25 pair passed 180 native frames and two pixel checks. It is limited to one fixed 1080p Core 3.3 window,
-not a complete SDL platform port. GLX, WGL and GLFW integration remain absent.
+G25 pair passed 180 native frames and two pixel checks at fixed 1080p. Local
+profile-bearing SDKs additionally qualify fixed 1440p120 and 2160p120; one window
+and one Core 3.3 context remain the boundary, not a complete SDL platform port.
+GLX, WGL and GLFW integration remain absent.
 
 ## Documentation
 

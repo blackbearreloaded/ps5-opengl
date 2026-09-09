@@ -34,6 +34,7 @@ separate from console logs. Keep changes local unless publication is requested.
 - 2026-09-08 | G37 | f8f5949 | pass: unchanged 4K ImGui 119.884 FPS, HDMI 2160p119.88, pixels/restore/teardown/health/unlock | results/g37-hdmi4-opengl-2160-20260908/comparison.json | native 1440p next.
 - 2026-09-08 | G38 | 31f77fa | pass: unchanged 4K SDL2 app, 180 frames/two exact pixels, HDMI 2160p119.88, restore/teardown/health/unlock | results/g38-hdmi4-sdl2-2160-20260908/acceptance.json | native 1440p awaits owner output selection.
 - 2026-09-08 | G39 | e64574f | pass: 1440p 119.882 FPS, native HDMI/pixels/cleanup | results/g39-hdmi4-opengl-1440-20260908/display-report.json | SDL next.
+- 2026-09-08 | G40 | b303873 | pass: SDL 1440p120, 180 frames/two pixels, native HDMI/cleanup | results/g40-hdmi4-sdl2-1440-20260908/acceptance.json | short display qualification complete.
 
 ## Current boundary and next check
 
@@ -67,8 +68,13 @@ teardown/health/unlock. This is native 1440p, not a 1440p render scaled to 4K.
 The owner's pre-run resolution observation is separate from the captured HFR
 timing; no independent TV observation during this benchmark is assumed.
 
-Next: the short frozen SDL2 1440p120 check, then focused lifecycle validation.
-No renderer rebuild or full CTS rerun is indicated. Keep the original profile
+G40 completes the same short SDL check at native 1440p119.88: 180 frames, two
+exact pixels, correct drawable, 1440p59.94 restoration and clean teardown,
+health and exact-token release. Both resolutions now have an ImGui timing run
+and an SDL functional run with matching console HDMI evidence. These four
+bounded native cycles passed; extended high-resolution lifecycle/soak and
+independent per-run TV refresh observations remain outside this qualification.
+No renderer rebuild or full CTS rerun was needed. Keep the original profile
 and request 15; do not force unsupported modes or change the owner's settings.
 
 ## G33: title-profile negotiation diagnostic
