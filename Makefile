@@ -58,7 +58,10 @@ test-staging:
 	python3 tests/ps5/test_depth_subresources.py
 	python3 tests/ps5/test_generate_mipmap.py
 	python3 tests/ps5/test_depth_staging_alignment.py
+	python3 tests/ps5/test_depth_blit_layers.py
+	python3 tests/ps5/test_depth_msaa_array.py
 	bash tools/test-depth-array-samples-host.sh
+	bash tools/test-msaa-depth-array-host.sh
 	bash tools/test-staging-host.sh
 test:
 	python3 -m unittest discover -s tools -p 'test_*.py'

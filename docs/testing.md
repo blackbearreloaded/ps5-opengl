@@ -51,6 +51,16 @@ at 1x/4x. Its 24,576 pixel comparisons use uniform per-sample values; individual
 sample isolation and native execution are separate qualifications. An empty
 draw must fail even when the host-issued draw count matches.
 
+The depth staging-alignment, blit-layer and MSAA-array predicate/descriptor
+regressions also run in `test-staging`. They execute extracted production CPU
+code under sanitizers and reject deliberate regressions. Native depth/stencil
+copies, resolves and sampler-array reads still require their separate oracles;
+passing CPU tests does not qualify GPU execution.
+`tools/test-msaa-depth-array-host.sh` checks the standard-GL D32/D32S8 sampling
+oracle on software Mesa and rejects deliberately wrong shader expectations.
+It fetches all four samples in layers two and three, but initializes samples
+uniformly: this is not independent sample-isolation coverage.
+
 `test-compiler` runs existing real NIR/ACO regressions for framebuffer exports,
 vertex inputs and geometry descriptors, including invalid-input rejection.
 Compiler checks also cover implicit PrimitiveID export liveness,

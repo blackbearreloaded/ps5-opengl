@@ -386,7 +386,7 @@ main(void)
    glEnable(GL_MULTISAMPLE);
    glPixelStorei(GL_PACK_ALIGNMENT, 1);
    passed = test_samples(1);
-   passed &= test_samples(4);
+   passed = passed && test_samples(4);
    status = ps5_egl_current_draw_status(&calls);
    passed &= status == 0 && check_errors("final");
    printf(TAG " final_draw=%d/%u result=%d\n", status, calls, passed ? 0 : 1);

@@ -265,3 +265,13 @@ unchanged. Extracted allocation/validator regression passes under sanitizers,
 covers rounding/overflow and packed depth/stencil, and rejects the old alignment.
 Host suites pass; native qualification is pending. This can add up to roughly
 2 MiB of padding per affected resource; no memory-use improvement is claimed.
+
+- 2026-09-09 | G53 depth-mip | a236962 | pass: all five targets depth=0.5, draw=0/5, cleanup/health/unlock | results/g53-depth-mip-2160-20260909-v1/.
+- 2026-09-09 | G53 array/MSAA | failed: 1x array depth/stencil blit rejected, then 4x depth-array format selection asserted; user abort, not recorded kernel panic; healthy/unlocked, owner confirmed recovery | results/g53-depth-array-samples-2160-20260909-v1/.
+
+G54 addresses those two admission/copy gaps and the depth-MS-array descriptor
+type found in the offline review. Existing depth/stencil copy paths now select
+one checked tiled layer and retain its slice XOR; no GPU submission/lifetime
+change. Mip-chain blits remain outside this path. Host regressions cover masks,
+bounds, copy/resolve/replicate and capability prerequisites; native qualification
+remains pending. The array oracle stops on its first failed variant.

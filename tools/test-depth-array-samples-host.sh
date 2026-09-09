@@ -20,8 +20,9 @@ ulimit -c 0
 grep -qF 'draw_counter=host-issued renderer=llvmpipe' "$out/reference.log"
 # Compile the native macro branch too, without linking or executing it.
 "${CC:-cc}" "${flags[@]}" -UPS5_DEPTH_ARRAY_SAMPLES_HOST_REFERENCE -fsyntax-only "$source"
-# An empty draw is legal GL. Keep the issued counter intact: pixels must reject it.
-sed 's/glDrawArrays(GL_TRIANGLES, 0, 3)/glDrawArrays(GL_TRIANGLES, 0, 0)/' "$source" |
+# An empty draw is legal GL. Check each variant separately with fail-fast enabled.
+for broken_samples in 1 4; do
+sed "s/glDrawArrays(GL_TRIANGLES, 0, 3)/glDrawArrays(GL_TRIANGLES, 0, samples == $broken_samples ? 0 : 3)/" "$source" |
     "${CC:-cc}" "${flags[@]}" -x c - -l:libEGL.so.1 -l:libGL.so.1 -o "$out/wrong"
 if "$out/wrong" > "$out/wrong.log" 2>&1; then
     cat "$out/wrong.log"
@@ -33,8 +34,14 @@ fi
 cat "$out/wrong.log"
 [[ "$result" == 1 ]]
 grep -qF 'draw_counter=host-issued renderer=llvmpipe' "$out/wrong.log"
-grep -qxF '[host-egl-core33-depth-array-samples] samples=1 explicit_draws=2 cleanup=1 result=1' "$out/wrong.log"
-grep -qxF '[host-egl-core33-depth-array-samples] samples=4 explicit_draws=2 cleanup=1 result=1' "$out/wrong.log"
-grep -qxF '[host-egl-core33-depth-array-samples] final_draw=0/4 result=1' "$out/wrong.log"
+grep -qxF "[host-egl-core33-depth-array-samples] samples=$broken_samples explicit_draws=2 cleanup=1 result=1" "$out/wrong.log"
+if [[ "$broken_samples" == 1 ]]; then
+    ! grep -qF 'samples=4' "$out/wrong.log"
+    grep -qxF '[host-egl-core33-depth-array-samples] final_draw=0/2 result=1' "$out/wrong.log"
+else
+    grep -qxF '[host-egl-core33-depth-array-samples] samples=1 explicit_draws=2 cleanup=1 result=0' "$out/wrong.log"
+    grep -qxF '[host-egl-core33-depth-array-samples] final_draw=0/4 result=1' "$out/wrong.log"
+fi
 grep -qxF '[host-egl-core33-depth-array-samples] cleanup=1 result=1' "$out/wrong.log"
+done
 echo 'PASS: 1x/4x reference; native-branch syntax; legal empty-draw fault rejected in both variants (exit 1)'
