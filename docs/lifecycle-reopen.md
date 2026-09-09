@@ -33,3 +33,4 @@ runtime bytes. No stable-release promotion is part of this gate.
 
 - 2026-09-09 | G63 | planned | offline | shared HFR reopen guard; preserve 0.2.0 and existing close ownership.
 - 2026-09-09 | G63 | host-pass | unguarded reopen reproduced; checked runtime wait and zero-delay ImGui oracle pass; native qualification pending.
+- 2026-09-09 | G63 | a62bd48 | 4K | pass: immediate app recreation, runtime waits, 18 pixels, balanced GPU memory, no HDMI reconnect | results/g63-lifecycle-0-2160-20260909-v1.
