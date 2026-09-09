@@ -1,7 +1,7 @@
 # G62 release consolidation
 
 Complete a scoped stable 0.x release using the G57–G61 optimized runtime.
-Do not change graphics behavior while qualifying it. Reuse exact-binary
+Freeze graphics behavior before qualifying it. Reuse exact-binary
 evidence; a different binary requires its own acceptance. No full CTS rerun.
 
 ## Frozen inputs and acceptance
@@ -59,3 +59,4 @@ offline. No graphics ELF injection, settings changes or routine screenshots.
 - 2026-09-09 | G62 lifecycle-0 v1 | daa29c5 | not accepted: three EGL sessions/18 pixel checks and memory/close passed, but a logged HDMI disconnect/reconnect added an extra mode event. Receipt preserved; unchanged app awaits one replacement cycle. No graphics fault recorded.
 - 2026-09-09 | G62 lifecycle-0 v2 | b362848 | same HDMI reconnects; functional/memory/teardown pass, display gate not accepted. Owner confirms direct HDMI4 TV; test a five-second inter-session gap, unchanged SDK.
 - 2026-09-09 | G62 paced lifecycle | d0a1ff7 | pass: 3 launches/9 EGL sessions/54 pixel checks, balanced GPU memory, no heap growth, six expected HDMI modes per run; clean/healthy/unlocked.
+- 2026-09-09 | G62 CTS v1 | 7a9e9ec | stopped: 49/51 pass on config0; packed depth/stencil blits failed for both formats, with eight MSAA draws rejected before submission. Clean/healthy/unlocked. Offline regression reproduces a full-display-sized dummy color extent on depth-only FBOs; replacing it with one texel preserves color-write disabling and allocation checks. Fixed runtime needs new native acceptance; the old results above do not qualify new bytes.

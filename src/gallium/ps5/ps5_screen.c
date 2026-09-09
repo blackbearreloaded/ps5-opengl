@@ -7505,10 +7505,11 @@ ps5_draw_vbo_locked(struct pipe_context *base,
                           surface->texture && target->render_staging_size
                               ? target->render_staging_size
                               : target->allocation_size - layer_offset;
-         target_widths[i] = surface->texture ? ps5_surface_width(surface)
-                                             : target->base.width0;
-         target_heights[i] = surface->texture ? ps5_surface_height(surface)
-                                              : target->base.height0;
+         /* Missing color slots have writes disabled. Describe only one texel:
+          * the single-sample display pool is not a full-size MSAA allocation.
+          * Raster bounds and depth dimensions still use the real framebuffer. */
+         target_widths[i] = surface->texture ? ps5_surface_width(surface) : 1;
+         target_heights[i] = surface->texture ? ps5_surface_height(surface) : 1;
          target_views[i] = surface->texture &&
                            surface->last_layer > surface->first_layer
                               ? (surface->last_layer -
