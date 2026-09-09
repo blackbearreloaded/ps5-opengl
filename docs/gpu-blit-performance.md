@@ -102,3 +102,11 @@ The GPU candidate completed scaling, nearest/linear filtering, both-axis flips,
 scissoring, image-edge filtering, state reuse and distinct-sample 4x RGBA8 resolves.
 Every admitted operation recorded one GPU draw; the tiny fallback recorded none.
 This is focused local qualification, not a new whole-CTS or display certification.
+
+- 2026-09-09 | G61 | 9a43127 | 4K | control pass; candidate rejected unused trailing vertex attribute before submission; clean/healthy/unlocked | results/g61-clear-{control,candidate}-2160-20260909-v1.
+
+The control's partial-mask clears already use Mesa's GPU quad; the audit now
+accounts for those draws separately from the new clear helper. The successor
+validates/fetches only shader-consumed vertex elements, allowing Mesa's shared
+two-element blit layout with its position-only depth-clear shader. Host tests pass;
+the original failed candidate remains preserved and is not accepted.

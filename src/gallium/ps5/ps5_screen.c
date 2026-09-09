@@ -7076,7 +7076,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          return;
       }
       for (element_index = 0;
-           element_index < context->vertex_elements->count;
+           element_index < vertex_layout.count;
            ++element_index) {
          const struct pipe_vertex_element *element =
             &context->vertex_elements->elements[element_index];
@@ -7149,7 +7149,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          if (!(binding_mask & BITFIELD_BIT(binding)))
             continue;
          for (element_index = 0;
-              element_index < context->vertex_elements->count;
+              element_index < vertex_layout.count;
               ++element_index) {
             if (context->vertex_elements->elements[element_index]
                    .vertex_buffer_index == binding) {
@@ -9266,7 +9266,10 @@ ps5_vertex_layout_from_state(const struct ps5_shader *shader,
       attribute->alignment = 4;
       attribute->instance_divisor = element->instance_divisor;
    }
-   return element_index == (elements ? elements->count : 0);
+   /* A shared vertex-element state may contain unused trailing attributes
+    * (Mesa's position-only depth-clear VS uses its two-element blit state).
+    * Every consumed element was validated above; unused elements need no fetch. */
+   return true;
 }
 
 static bool
