@@ -1834,6 +1834,9 @@ egl_public_core33_depth_targets.o: egl_public_core33_depth_targets.c
 egl_public_core33_depth_mip_target.o: egl_public_core33_depth_mip_target.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_depth_mip_blit.o: egl_public_core33_depth_mip_blit.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
 egl_public_core33_scissored_clear.o: egl_public_core33_scissored_clear.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
