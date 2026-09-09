@@ -33,6 +33,7 @@ separate from console logs. Keep changes local unless publication is requested.
 - 2026-09-08 | G36 resolved | 7e0c339 | partial-pass: TV now confirms 1080p; its game bar showed refresh, app HUD showed render size | results/g36-prosperolight-live-20260908/photo-review.json | check HDMI path.
 - 2026-09-08 | G37 | f8f5949 | pass: unchanged 4K ImGui 119.884 FPS, HDMI 2160p119.88, pixels/restore/teardown/health/unlock | results/g37-hdmi4-opengl-2160-20260908/comparison.json | native 1440p next.
 - 2026-09-08 | G38 | 31f77fa | pass: unchanged 4K SDL2 app, 180 frames/two exact pixels, HDMI 2160p119.88, restore/teardown/health/unlock | results/g38-hdmi4-sdl2-2160-20260908/acceptance.json | native 1440p awaits owner output selection.
+- 2026-09-08 | G39 | e64574f | pass: 1440p 119.882 FPS, native HDMI/pixels/cleanup | results/g39-hdmi4-opengl-1440-20260908/display-report.json | SDL next.
 
 ## Current boundary and next check
 
@@ -59,12 +60,16 @@ service health and exact-token release passed. This is a short SDL functional
 check, not an SDL FPS measurement or a separate TV observation. The local
 reused SDL auditor also rejects the earlier 1080p fallback as a 4K HDMI pass.
 
-Next: verify **native 2560x1440 HDMI at 120 Hz**, distinct from rendering 1440p
-and upscaling to 4K. Sony's documented PS5 1440p test/selection is owner-operated;
-the agent never enters Settings. Once the owner selects a supported 1440p output,
-reuse the frozen G31 1440p120 app for one 30-second check, followed by the short
-SDL adapter check if needed. No renderer rebuild or full CTS rerun is indicated.
-Keep the original profile and request 15; do not force unsupported modes.
+The owner selected 1440p and confirmed that resolution on the TV. G39 then
+qualified the unchanged G31 ImGui app: **119.881660 FPS** for 30.004589 seconds,
+native HDMI **1440P_11988**, restoration to 1440p59.94, passing pixels and clean
+teardown/health/unlock. This is native 1440p, not a 1440p render scaled to 4K.
+The owner's pre-run resolution observation is separate from the captured HFR
+timing; no independent TV observation during this benchmark is assumed.
+
+Next: the short frozen SDL2 1440p120 check, then focused lifecycle validation.
+No renderer rebuild or full CTS rerun is indicated. Keep the original profile
+and request 15; do not force unsupported modes or change the owner's settings.
 
 ## G33: title-profile negotiation diagnostic
 
