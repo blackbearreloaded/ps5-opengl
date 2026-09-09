@@ -12,8 +12,13 @@ evidence; a different binary requires its own acceptance. No full CTS rerun.
   only for those unchanged bytes.
 - Build the matching 1440p profile and SDL2 pairs; verify complete manifests,
   source provenance, all Core exports and relocated GL/SDL consumer links.
-- Run the existing compact CTS selection, ImGui window/offscreen and 3D checks
-  on the frozen 4K runtime. Require all selected results and pixel/state oracles.
+- Run 202 compact CTS executions: all 51 smoke cases on the two ordinary-sized
+  targets, and 50 each on the two extreme-axis targets. Defer only the latter
+  two `multisampled_to_singlesampled_blit_color_config_test` executions because
+  their previous single-case times exceeded the owner's 120-second bound.
+  This is a new explicitly scoped sample, not the historical 204-case gate.
+  Run ImGui window/offscreen and 3D checks on the same frozen 4K runtime.
+  Require all selected results and pixel/state oracles.
 - Run one 120-second normal ImGui session and three launch/exit cycles, each
   with three EGL sessions. Require balanced tracked GPU allocations/mappings,
   no steady tracked memory growth, clean close and healthy services.
