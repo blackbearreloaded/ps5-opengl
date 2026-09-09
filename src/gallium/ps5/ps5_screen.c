@@ -8460,16 +8460,33 @@ ps5_clear_depth_stencil(struct ps5_context *context, unsigned buffers,
    if (resource && resource->depth_staging_size &&
        (buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL))) {
       const struct pipe_surface *surface = &context->framebuffer.zsbuf;
-      unsigned width = ps5_surface_width(surface);
-      unsigned height = ps5_surface_height(surface);
+      const bool packed = resource->base.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT;
+      const unsigned pixel_size = packed ? 8 : 4;
+      unsigned width, height;
       unsigned min_x, min_y, max_x, max_y;
+      size_t stride, span;
 
       if (!context->framebuffer_valid ||
-          buffers != PIPE_CLEAR_DEPTH ||
-          resource->base.format != PIPE_FORMAT_Z32_FLOAT ||
+          (buffers & ~(PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
+          (resource->base.format != PIPE_FORMAT_Z32_FLOAT && !packed) ||
+          ((buffers & PIPE_CLEAR_STENCIL) && !packed) ||
+          resource->base.nr_samples > 1 || !resource->data ||
+          surface->level > resource->base.last_level ||
+          surface->level >= ARRAY_SIZE(resource->level_stride) || surface->level >= 32 ||
           first_depth_layer > last_depth_layer ||
           last_depth_layer >= ps5_surface_layer_count(surface) ||
-          !(depth >= 0.0 && depth <= 1.0))
+          !resource->layer_stride || resource->size > resource->allocation_size ||
+          last_depth_layer >= resource->size / resource->layer_stride ||
+          ((buffers & PIPE_CLEAR_DEPTH) && !(depth >= 0.0 && depth <= 1.0)))
+         goto reject;
+      width = ps5_surface_width(surface);
+      height = ps5_surface_height(surface);
+      stride = resource->level_stride[surface->level];
+      if (stride < (uint64_t)width * pixel_size || stride > SIZE_MAX / height)
+         goto reject;
+      span = (height - 1u) * stride + (size_t)width * pixel_size;
+      if (resource->level_offset[surface->level] > resource->layer_stride ||
+          span > resource->layer_stride - resource->level_offset[surface->level])
          goto reject;
 
       ps5_clear_bounds(scissor_state, width, height,
@@ -8484,13 +8501,18 @@ ps5_clear_depth_stencil(struct ps5_context *context, unsigned buffers,
             for (unsigned x = min_x; x < max_x; ++x) {
                size_t offset = layer_base +
                   (size_t)y * resource->level_stride[surface->level] +
-                  (size_t)x * sizeof(clear_bits);
+                  (size_t)x * pixel_size;
 
                if (offset > resource->size ||
-                   resource->size - offset < sizeof(clear_bits))
+                   resource->size - offset < pixel_size)
                   goto reject;
-               memcpy(resource->data + offset, &clear_bits,
-                      sizeof(clear_bits));
+               if (buffers & PIPE_CLEAR_DEPTH)
+                  memcpy(resource->data + offset, &clear_bits, sizeof(clear_bits));
+               if (buffers & PIPE_CLEAR_STENCIL) {
+                  uint8_t *value = resource->data + offset + sizeof(clear_bits);
+                  *value = (*value & ~stencil_clear_mask) |
+                           ((uint8_t)stencil & stencil_clear_mask);
+               }
             }
          }
       }

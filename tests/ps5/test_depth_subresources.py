@@ -325,14 +325,21 @@ static void check_mip(unsigned format,unsigned level,unsigned first) {
     p=ps5_transfer_map(NULL,&r.base,level,PIPE_MAP_READ,&box,&t);
     assert(p==d.p+offset && t); ps5_transfer_unmap(NULL,t);
     assert(drains==4 && !flush_count); same(&d); same(&s);
-    if (!packed) {
+    for (unsigned mask=1;mask<=(packed?3u:1u);++mask) {
         struct ps5_context c={.framebuffer={.zsbuf=surface},.framebuffer_valid=true};
         struct pipe_scissor_state sc={3,5,13,15}; flush_count=0;
-        assert(ps5_clear_depth_stencil(&c,PIPE_CLEAR_DEPTH,0,&sc,.5,0));
+        unsigned buffers=((mask&1)?PIPE_CLEAR_DEPTH:0)|((mask&2)?PIPE_CLEAR_STENCIL:0);
+        assert(ps5_clear_depth_stencil(&c,buffers,0x39,&sc,.5,0x63));
         assert(flush_count==1 && flushes[0].p==d.p && flushes[0].n==r.size);
-        for (unsigned z=first;z<first+2;++z) for (unsigned y=5;y<15;++y) for (unsigned x=3;x<13;++x)
-            put32(d.expected+64+z*r.layer_stride+r.level_offset[level]+y*r.level_stride[level]+x*4,0x3f000000u);
-        same(&d);
+        for (unsigned z=first;z<first+2;++z) for (unsigned y=5;y<15;++y) for (unsigned x=3;x<13;++x) {
+            uint8_t *p=d.expected+64+z*r.layer_stride+r.level_offset[level]+y*r.level_stride[level]+x*bpe;
+            if (mask&1) put32(p,0x3f000000u);
+            if (mask&2) p[4]=(p[4]&~0x39)|(0x63&0x39);
+        }
+        same(&d); same(&s);
+        size_t saved=r.size; r.size=1; flush_count=0;
+        assert(!ps5_clear_depth_stencil(&c,buffers,0xff,&sc,.25,0));
+        assert(!flush_count); same(&d); same(&s); r.size=saved;
     }
     /* Upfront malformed-capacity rejection must not partially stage any bytes. */
     for (unsigned bad=0;bad<(packed ? 4u : 3u);++bad) {

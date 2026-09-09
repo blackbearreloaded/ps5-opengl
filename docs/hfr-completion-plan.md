@@ -300,3 +300,13 @@ are uniform across samples: fetching every sample index does not prove sample
 isolation. Mip-chain depth blits, suspend/resume, device loss and hardware OOM
 remain unqualified. The G53 startup window is diagnostic, not soak acceptance
 or a G54 performance measurement. No publication or release replacement made.
+
+## G55 release preparation
+
+- 2026-09-09 | G55 v1 | 89c2602 | failed native: 28 D32 mip-blit cases passed; packed-mip initialization clears rejected, clean/healthy/unlocked | results/g55-depth-mip-blit-2160-20260909-v1/.
+
+The shared blit paths now address canonical linear mip subresources, including
+masked copies, resolve and replication. The native batch exposed a separate
+D32S8 clear admission/stride gap; its fix preserves stencil write masks and
+unselected channels. Sanitizer and software-GL regressions pass. Final packaged
+qualification remains pending; the earlier G47 downloads are unchanged.
