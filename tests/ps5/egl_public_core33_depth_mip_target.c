@@ -15,9 +15,23 @@
 #define LEVEL 2
 #define LEVEL_SIZE (BASE_SIZE >> LEVEL)
 #define LAYERS 4
-#define TARGET_COUNT 6
+#define TARGET_COUNT 5
 
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+#define TAG "[host-egl-core33-depth-mip-target]"
+#define SURFACE_TYPE EGL_PBUFFER_BIT
+/* Host counts issued calls only; native still checks driver draw status. */
+static unsigned host_draw_calls;
+static int ps5_egl_current_draw_status(unsigned *draw_calls)
+{
+   *draw_calls = host_draw_calls;
+   return 0;
+}
+#else
+#define TAG "[ps5-egl-core33-depth-mip-target]"
+#define SURFACE_TYPE EGL_WINDOW_BIT
 int ps5_egl_current_draw_status(unsigned *draw_calls);
+#endif
 
 static GLuint
 compile_shader(GLenum type, const char *source)
@@ -33,7 +47,7 @@ compile_shader(GLenum type, const char *source)
       GLsizei length = 0;
 
       glGetShaderInfoLog(shader, sizeof(log), &length, log);
-      printf("[ps5-egl-core33-depth-mip-target] shader=0x%x log=%.*s\n",
+      printf(TAG " shader=0x%x log=%.*s\n",
              type, length, log);
       glDeleteShader(shader);
       return 0;
@@ -71,11 +85,6 @@ allocate_levels(GLenum target)
                       size, size, LAYERS, 0,
                       GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
          break;
-      case GL_TEXTURE_3D:
-         glTexImage3D(target, level, GL_DEPTH_COMPONENT32F,
-                      size, size, BASE_SIZE >> level, 0,
-                      GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-         break;
       default:
          return 0;
       }
@@ -103,10 +112,6 @@ test_target(GLenum target, unsigned layer, float *depth)
       sample_index += (LEVEL_SIZE / 2) * LEVEL_SIZE;
    } else if (target == GL_TEXTURE_2D_ARRAY) {
       pixel_count *= LEVEL_SIZE * LAYERS;
-      sample_index += ((size_t)layer * LEVEL_SIZE + LEVEL_SIZE / 2) *
-                      LEVEL_SIZE;
-   } else if (target == GL_TEXTURE_3D) {
-      pixel_count *= LEVEL_SIZE * (BASE_SIZE >> LEVEL);
       sample_index += ((size_t)layer * LEVEL_SIZE + LEVEL_SIZE / 2) *
                       LEVEL_SIZE;
    }
@@ -146,6 +151,9 @@ test_target(GLenum target, unsigned layer, float *depth)
    glClearDepth(0.75);
    glClear(GL_DEPTH_BUFFER_BIT);
    glDrawArrays(GL_TRIANGLES, 0, 3);
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   ++host_draw_calls;
+#endif
    glFinish();
    glBindTexture(target, texture);
    glGetTexImage(target == GL_TEXTURE_CUBE_MAP ? face : target, LEVEL,
@@ -164,6 +172,33 @@ cleanup:
    return result;
 }
 
+static int
+test_invalid_3d_depth(void)
+{
+   GLuint texture = 0;
+   GLenum error = GL_NO_ERROR;
+   int rejected = 0;
+
+   glGenTextures(1, &texture);
+   glBindTexture(GL_TEXTURE_3D, texture);
+   if (glGetError() != GL_NO_ERROR)
+      goto cleanup;
+   /* GL 3.3 core section 3.8.3; pinned Mesa teximage.c enforces this with
+    * _mesa_legal_texture_base_format_for_target. This is not a sixth draw. */
+   glTexImage3D(GL_TEXTURE_3D, 0, GL_DEPTH_COMPONENT32F,
+                BASE_SIZE, BASE_SIZE, BASE_SIZE, 0,
+                GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+   error = glGetError();
+   rejected = error == GL_INVALID_OPERATION;
+
+cleanup:
+   if (texture)
+      glDeleteTextures(1, &texture);
+   printf(TAG " invalid_3d_error=0x%x expected=0x%x result=%d\n",
+          error, GL_INVALID_OPERATION, rejected ? 0 : 1);
+   return rejected;
+}
+
 int
 main(void)
 {
@@ -176,11 +211,11 @@ main(void)
       "void main(){}\n";
    static const GLenum targets[TARGET_COUNT] = {
       GL_TEXTURE_1D, GL_TEXTURE_1D_ARRAY, GL_TEXTURE_2D,
-      GL_TEXTURE_CUBE_MAP, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_3D,
+      GL_TEXTURE_CUBE_MAP, GL_TEXTURE_2D_ARRAY,
    };
-   static const unsigned layers[TARGET_COUNT] = {0, 2, 0, 0, 2, 2};
+   static const unsigned layers[TARGET_COUNT] = {0, 2, 0, 0, 2};
    static const EGLint config_attributes[] = {
-      EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+      EGL_SURFACE_TYPE, SURFACE_TYPE,
       EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
       EGL_NONE,
    };
@@ -200,6 +235,8 @@ main(void)
    GLint linked = GL_FALSE;
    float depths[TARGET_COUNT] = {0};
    unsigned matching = 0, draw_calls = 0;
+   GLenum error = GL_NO_ERROR;
+   int rejected_3d = 0;
    int draw_status = -1, current = 0, passed = 0;
    EGLBoolean cleanup_ok = EGL_TRUE;
 
@@ -209,14 +246,25 @@ main(void)
        !eglChooseConfig(display, config_attributes, &config, 1, &count) ||
        count != 1)
       goto cleanup;
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   const EGLint surface_attributes[] = {
+      EGL_WIDTH, LEVEL_SIZE, EGL_HEIGHT, LEVEL_SIZE, EGL_NONE,
+   };
+   surface = eglCreatePbufferSurface(display, config, surface_attributes);
+#else
    surface = eglCreateWindowSurface(display, config,
                                     (EGLNativeWindowType)0, NULL);
+#endif
    context = eglCreateContext(display, config, EGL_NO_CONTEXT,
                               context_attributes);
    if (surface == EGL_NO_SURFACE || context == EGL_NO_CONTEXT ||
        !eglMakeCurrent(display, surface, surface, context))
       goto cleanup;
    current = 1;
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   printf(TAG " draw_counter=host-issued renderer=%s version=%s\n",
+          glGetString(GL_RENDERER), glGetString(GL_VERSION));
+#endif
 
    shaders[0] = compile_shader(GL_VERTEX_SHADER, vertex_source);
    shaders[1] = compile_shader(GL_FRAGMENT_SHADER, fragment_source);
@@ -238,12 +286,16 @@ main(void)
    for (unsigned index = 0; index < TARGET_COUNT; ++index)
       matching += test_target(targets[index], layers[index], &depths[index]);
    draw_status = ps5_egl_current_draw_status(&draw_calls);
+   rejected_3d = test_invalid_3d_depth();
+   error = glGetError();
    passed = matching == TARGET_COUNT && draw_status == 0 &&
-            draw_calls == TARGET_COUNT && glGetError() == GL_NO_ERROR;
-   printf("[ps5-egl-core33-depth-mip-target] matching=%u depths="
-          "%.6f/%.6f/%.6f/%.6f/%.6f/%.6f draw=%d/%u result=%d\n",
+            draw_calls == TARGET_COUNT && rejected_3d && error == GL_NO_ERROR;
+   printf(TAG " matching=%u depths="
+          "%.6f/%.6f/%.6f/%.6f/%.6f draw=%d/%u rejected_3d=%d "
+          "error=0x%x result=%d\n",
           matching, depths[0], depths[1], depths[2], depths[3],
-          depths[4], depths[5], draw_status, draw_calls, passed ? 0 : 1);
+          depths[4], draw_status, draw_calls, rejected_3d, error,
+          passed ? 0 : 1);
 
 cleanup:
    if (current) {
@@ -266,7 +318,7 @@ cleanup:
       cleanup_ok &= eglTerminate(display);
    cleanup_ok &= eglGetError() == EGL_SUCCESS;
    passed &= cleanup_ok;
-   printf("[ps5-egl-core33-depth-mip-target] cleanup=%u result=%d\n",
+   printf(TAG " cleanup=%u result=%d\n",
           cleanup_ok, passed ? 0 : 1);
    return passed ? 0 : 1;
 }

@@ -10,6 +10,8 @@ Documentation/example edits do not justify repeating all CTS cases.
 ```sh
 make test
 make test-imgui             # requires dependencies, installed SDK and host EGL/GL
+make test-staging           # actual CPU depth callers + software-GL staging oracles
+make test-depth-targets     # array/mip depth oracles + invalid 3D-depth rejection
 make test-compiler          # requires the built host PSBC library
 bash tools/verify-installed-sdk.sh  # rebuilds a fresh SDK; never use on frozen bytes
 ```
@@ -22,6 +24,18 @@ For a frozen SDK, use `tools/check-sdk-consumers.py` instead; the
 [bundle guide](sdk-bundle.md#verify-and-link-a-consumer) gives the non-rebuilding
 recipe. Verify an archive after extracting it to a new directory outside the
 source checkout, not only its staging directory.
+
+`test-staging` also compiles the actual depth map/unmap, mip staging and clear
+helpers under ASan/UBSan. Expected addresses come independently from pinned AMD
+tables; checks cover nonzero layers, 1x/4x samples, masked/scissored clears and
+untouched allocation guards. Queue/cache operations are mocked, so this is not
+GPU execution or cache-coherency acceptance. Run
+`python3 tests/ps5/test_depth_subresources.py --fault-checks` to additionally
+reject broken tile sizes, clear bits, flush lengths, mip offsets and staging
+bounds. `test-depth-targets` runs the same
+GLSL/pixel/API oracles on llvmpipe, with explicitly host-issued draw counters:
+five legal depth-mip targets must pass and 3D depth storage must be rejected.
+Four deliberate faults must fail. Native builds retain their driver counters.
 
 `test-compiler` runs existing real NIR/ACO regressions for framebuffer exports,
 vertex inputs and geometry descriptors, including invalid-input rejection.

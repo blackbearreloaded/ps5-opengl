@@ -25,13 +25,8 @@ def table(name):
     return [(row.split(','), comment.strip()) for row, comment in
             re.findall(r'\{([^{}]+)\}\s*,\s*//([^\n]+)', body[1])]
 
-code = '#include <assert.h>\n#include <stdint.h>\n#include <stddef.h>\n'
-code += '#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))\n#define BITFIELD_BIT(i) (1u<<(i))\n'
-code += section('static size_t\nps5_tiled_depth_layer_xor(', 'static size_t\nps5_tiled_surface_size(')
-code += section('static size_t\nps5_tiled_affine_offset(', 'static size_t\nps5_tiled_color_offset(')
-checks = []
-for samples, bpe, name, width in ((1, 4, 'depth', 128), (1, 1, 'stencil', 256),
-                                  (4, 4, 'depth_msaa4', 64), (4, 1, 'stencil_msaa4', 128)):
+def reference_function(samples, bpe, name, tile):
+    """Shared independent oracle for address and actual-caller host tests."""
     comment = f'16 pipes {bpe} bpe @ SW_64K_Z_X {samples}xaa @ Navi1x'
     rows = [row for row, label in table(f'GFX10_SW_64K_Z_X_{samples}xaa_PATINFO') if label == comment]
     assert len(rows) == 1
@@ -51,23 +46,42 @@ for samples, bpe, name, width in ((1, 4, 'depth', 128), (1, 1, 'stencil', 256),
             variable = dict(X='x', Y='y', Z='layer', S='sample')[match[1]]
             terms.append(f'(({variable} >> {int(match[2])}) & 1u)')
         expression.append(f'((size_t)({" ^ ".join(terms)}) << {bit})')
-    actual = f'ps5_tiled_{name}_offset(x, y, ' + ('sample, ' if samples == 4 else '') + f'{width * 3}, layer)'
-    code += f'''\nstatic void check_{name}(void) {{
+    return f'''\nstatic size_t reference_{name}(unsigned x, unsigned y,
+            unsigned sample, unsigned width, unsigned layer) {{
+        (void)sample;
+        size_t local = {' | '.join(expression)};
+        return ((size_t)(y / {tile}) * ((width + {tile - 1}) / {tile}) + x / {tile}) * 65536 + local;
+    }}\n'''
+
+
+def main():
+    code = '#include <assert.h>\n#include <stdint.h>\n#include <stddef.h>\n'
+    code += '#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))\n#define BITFIELD_BIT(i) (1u<<(i))\n'
+    code += section('static size_t\nps5_tiled_depth_layer_xor(', 'static size_t\nps5_tiled_surface_size(')
+    code += section('static size_t\nps5_tiled_affine_offset(', 'static size_t\nps5_tiled_color_offset(')
+    checks = []
+    for samples, bpe, name, width in ((1, 4, 'depth', 128), (1, 1, 'stencil', 256),
+                                    (4, 4, 'depth_msaa4', 64), (4, 1, 'stencil_msaa4', 128)):
+        code += reference_function(samples, bpe, name, width)
+        actual = f'ps5_tiled_{name}_offset(x, y, ' + ('sample, ' if samples == 4 else '') + f'{width * 3}, layer)'
+        code += f'''\nstatic void check_{name}(void) {{
         for (unsigned layer = 0; layer < 32; ++layer)
             for (unsigned sample = 0; sample < {samples}; ++sample)
                 for (unsigned y = 0; y < {width * 2}; ++y)
                     for (unsigned x = 0; x < {width * 2}; ++x) {{
-                        (void)sample;
-                        size_t local = {' | '.join(expression)};
-                        size_t expected = ((size_t)(y / {width}) * 3 + x / {width}) * 65536 + local;
+                        size_t expected = reference_{name}(x, y, sample, {width * 3}, layer);
                         assert({actual} == expected);
                     }}
     }}\n'''
-    checks.append(f'check_{name}();')
-code += 'int main(void) { ' + ' '.join(checks) + ' }\n'
-with tempfile.TemporaryDirectory() as directory:
-    executable = str(Path(directory) / 'depth-layer-layout')
-    subprocess.run(['cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', '-x', 'c',
-                    '-o', executable, '-'], input=code, text=True, check=True)
-    subprocess.run([executable], check=True)
-print('PASS: AMD table equivalence, depth/stencil 1x/4x, 32 layers, tile boundaries')
+        checks.append(f'check_{name}();')
+    code += 'int main(void) { ' + ' '.join(checks) + ' }\n'
+    with tempfile.TemporaryDirectory() as directory:
+        executable = str(Path(directory) / 'depth-layer-layout')
+        subprocess.run(['cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', '-x', 'c',
+                        '-o', executable, '-'], input=code, text=True, check=True)
+        subprocess.run([executable], check=True)
+    print('PASS: AMD table equivalence, depth/stencil 1x/4x, 32 layers, tile boundaries')
+
+
+if __name__ == '__main__':
+    main()

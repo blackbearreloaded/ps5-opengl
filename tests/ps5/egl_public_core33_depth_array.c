@@ -15,7 +15,21 @@
 #define TEX_SIZE 4
 #define LAYERS 2
 
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+#define TAG "[host-egl-core33-depth-array]"
+#define SURFACE_TYPE EGL_PBUFFER_BIT
+/* Host counts issued calls only; native still checks driver draw status. */
+static unsigned host_draw_calls;
+static int ps5_egl_current_draw_status(unsigned *draw_calls)
+{
+   *draw_calls = host_draw_calls;
+   return 0;
+}
+#else
+#define TAG "[ps5-egl-core33-depth-array]"
+#define SURFACE_TYPE EGL_WINDOW_BIT
 int ps5_egl_current_draw_status(unsigned *draw_calls);
+#endif
 
 static int
 compile_shader(GLenum type, const char *source, GLuint *result)
@@ -33,7 +47,7 @@ compile_shader(GLenum type, const char *source, GLuint *result)
       GLsizei length = 0;
 
       glGetShaderInfoLog(shader, sizeof(log), &length, log);
-      printf("[ps5-egl-core33-depth-array] shader=0x%x log=%.*s\n",
+      printf(TAG " shader=0x%x log=%.*s\n",
              type, length, log);
       glDeleteShader(shader);
       return 0;
@@ -55,8 +69,8 @@ main(void)
       "uniform sampler2DArrayShadow compared_depth;\n"
       "layout(location=0) out vec4 color;\n"
       "void main(){\n"
-      " float a=texture(raw_depth,vec3(.5,.5,0));\n"
-      " float b=texture(raw_depth,vec3(.5,.5,1));\n"
+      " float a=texture(raw_depth,vec3(.5,.5,0)).r;\n"
+      " float b=texture(raw_depth,vec3(.5,.5,1)).r;\n"
       " float c=texture(compared_depth,vec4(.5,.5,0,.5));\n"
       " float d=texture(compared_depth,vec4(.5,.5,1,.5));\n"
       " bool ok=abs(a-.25)<.001&&abs(b-.75)<.001&&c<.01&&d>.99;\n"
@@ -69,7 +83,7 @@ main(void)
    static float mip[2 * 2 * LAYERS];
    uint8_t pixel[4] = {0};
    const EGLint config_attributes[] = {
-      EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+      EGL_SURFACE_TYPE, SURFACE_TYPE,
       EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
       EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8,
       EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
@@ -106,8 +120,15 @@ main(void)
        !eglChooseConfig(display, config_attributes, &config, 1, &count) ||
        count != 1)
       goto cleanup;
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   const EGLint surface_attributes[] = {
+      EGL_WIDTH, WIDTH, EGL_HEIGHT, HEIGHT, EGL_NONE,
+   };
+   surface = eglCreatePbufferSurface(display, config, surface_attributes);
+#else
    surface = eglCreateWindowSurface(display, config,
                                     (EGLNativeWindowType)0, NULL);
+#endif
    context = eglCreateContext(display, config, EGL_NO_CONTEXT,
                               context_attributes);
    if (surface == EGL_NO_SURFACE || context == EGL_NO_CONTEXT ||
@@ -115,6 +136,10 @@ main(void)
        !eglSwapInterval(display, 0))
       goto cleanup;
    made_current = 1;
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   printf(TAG " draw_counter=host-issued renderer=%s version=%s\n",
+          glGetString(GL_RENDERER), glGetString(GL_VERSION));
+#endif
 
    if (!compile_shader(GL_VERTEX_SHADER, vertex_source, &shaders[0]) ||
        !compile_shader(GL_FRAGMENT_SHADER, fragment_source, &shaders[1]))
@@ -169,16 +194,24 @@ main(void)
    glUniform1i(glGetUniformLocation(program, "compared_depth"), 1);
    glViewport(0, 0, WIDTH, HEIGHT);
    glDrawArrays(GL_TRIANGLES, 0, 3);
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   ++host_draw_calls;
+#endif
    draw_status = ps5_egl_current_draw_status(&draw_calls);
    glFinish();
    glReadPixels(WIDTH / 2, HEIGHT / 2, 1, 1,
                 GL_RGBA, GL_UNSIGNED_BYTE, pixel);
    error = glGetError();
-   passed = major == 1 && minor == 4 && mip_ok &&
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   passed = major == 1 && minor >= 4;
+#else
+   passed = major == 1 && minor == 4;
+#endif
+   passed &= mip_ok &&
             pixel[0] == 0 && pixel[1] == 255 &&
             pixel[2] == 255 && pixel[3] == 255 &&
             draw_status == 0 && draw_calls == 1 && error == GL_NO_ERROR;
-   printf("[ps5-egl-core33-depth-array] mip=%d pixel=%u/%u/%u/%u "
+   printf(TAG " mip=%d pixel=%u/%u/%u/%u "
           "draw=%d/%u error=0x%x result=%d\n",
           mip_ok, pixel[0], pixel[1], pixel[2], pixel[3],
           draw_status, draw_calls, error, passed ? 0 : 1);
@@ -208,7 +241,7 @@ cleanup:
       cleanup_ok &= eglTerminate(display);
    cleanup_ok &= eglGetError() == EGL_SUCCESS;
    passed &= cleanup_ok;
-   printf("[ps5-egl-core33-depth-array] cleanup=%u result=%d\n",
+   printf(TAG " cleanup=%u result=%d\n",
           cleanup_ok, passed ? 0 : 1);
    return passed ? 0 : 1;
 }
