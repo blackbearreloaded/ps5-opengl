@@ -235,3 +235,14 @@ performance and native nonzero-layer stencil/4x gates above remain pending.
   the six preserved G50 controls; zero uploads/launches/publication.
 
 - 2026-09-09 | G51 4K native | pass: layer-2 query/routing, four depth targets, clean/healthy/unlocked; 2160p119.88/restoration logged | results/g51-depth-targets-2160-20260909-v1/.
+
+- 2026-09-09 | G50 depth-array | failed: user SIGSEGV during mip generation; app exited/services healthy/unlocked, owner confirmed home | results/g50-depth-array-2160-20260909-v1/.
+
+The byte-identical local rebuild resolves the failed app's stack to
+`st_generate_mipmap` / `glGenerateMipmap`. The CPU mip filter dispatched depth
+formats through Mesa's absent RGBA converter. G52 uses the existing depth
+unpack/pack helpers, preserving stencil bytes; the runnable sanitizer regression
+covers both depth formats, color controls, odd/1D extents, selected layers and
+base levels, and rejects the old dispatch. Native qualification is pending.
+The console recorded an app-level segmentation fault, not a kernel panic; the
+failed receipt is retained and was not retried unchanged.

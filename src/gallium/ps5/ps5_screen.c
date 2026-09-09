@@ -5719,6 +5719,8 @@ ps5_generate_mipmap(struct pipe_context *context,
 {
    struct ps5_resource *resource = (struct ps5_resource *)base;
    unsigned format_size;
+   bool depth;
+   unsigned components;
 
    (void)context;
    ps5_draw_batch_drain();
@@ -5731,6 +5733,11 @@ ps5_generate_mipmap(struct pipe_context *context,
        util_format_is_compressed(format) ||
        util_format_is_pure_integer(format))
       return false;
+
+   /* Depth formats have no RGBA conversion callbacks. Preserve the stencil
+    * plane when filtering packed depth/stencil mip levels. */
+   depth = util_format_has_depth(util_format_description(format));
+   components = depth ? 1 : 4;
 
    if (resource->base.target == PIPE_TEXTURE_3D) {
       unsigned base_depth = MAX2(resource->base.depth0 >> base_level, 1u);
@@ -5801,24 +5808,29 @@ ps5_generate_mipmap(struct pipe_context *context,
                            (size_t)sx * format_size;
                         float sample[4];
 
-                        util_format_unpack_rgba(format, sample, source, 1);
-                        for (unsigned component = 0; component < 4;
+                        if (depth)
+                           util_format_unpack_z_float(format, sample, source, 1);
+                        else
+                           util_format_unpack_rgba(format, sample, source, 1);
+                        for (unsigned component = 0; component < components;
                              ++component)
                            sum[component] += sample[component];
                         samples++;
                      }
                   }
                }
-               for (unsigned component = 0; component < 4; ++component)
+               for (unsigned component = 0; component < components; ++component)
                   sum[component] /= samples;
-               util_format_pack_rgba(
-                  format,
+               uint8_t *destination =
                   resource->data +
                      (size_t)layer * resource->layer_stride +
                      resource->level_offset[level] +
                      (size_t)y * resource->level_stride[level] +
-                     (size_t)x * format_size,
-                  sum, 1);
+                     (size_t)x * format_size;
+               if (depth)
+                  util_format_pack_z_float(format, destination, sum, 1);
+               else
+                  util_format_pack_rgba(format, destination, sum, 1);
             }
          }
       }

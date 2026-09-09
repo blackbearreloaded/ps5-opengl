@@ -1819,6 +1819,9 @@ egl_public_core33_depth_transfer.o: egl_public_core33_depth_transfer.c
 egl_public_core33_depth_array.o: egl_public_core33_depth_array.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_depth_array_samples.o: egl_public_core33_depth_array_samples.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
 egl_public_core33_layered_depth.o: egl_public_core33_layered_depth.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
@@ -2120,6 +2123,7 @@ clean:
 		egl_public_core33_pixel_buffer.o \
 		egl_public_core33_depth_transfer.o \
 		egl_public_core33_depth_array.o \
+		egl_public_core33_depth_array_samples.o \
 		egl_public_core33_layered_depth.o \
 		egl_public_core33_depth_targets.o \
 		egl_public_core33_depth_mip_target.o \

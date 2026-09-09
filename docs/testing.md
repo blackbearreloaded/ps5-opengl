@@ -43,6 +43,14 @@ runner reports that exact known query discrepancy and **exits 1**, not PASS;
 routing, pixels and the query expectation stay strict. See the
 [G51 scope and successors](hfr-completion-plan.md#g51-offline-mesa-query-fix).
 
+`test-staging` also runs the real CPU mip filter with Mesa's depth converters
+under ASan/UBSan, including packed-stencil preservation and rejection of the old
+depth-as-RGBA dispatch. `tools/test-depth-array-samples-host.sh` checks masked
+clears, depth/stencil-tested draws, resolves and untouched neighboring layers
+at 1x/4x. Its 24,576 pixel comparisons use uniform per-sample values; individual
+sample isolation and native execution are separate qualifications. An empty
+draw must fail even when the host-issued draw count matches.
+
 `test-compiler` runs existing real NIR/ACO regressions for framebuffer exports,
 vertex inputs and geometry descriptors, including invalid-input rejection.
 Compiler checks also cover implicit PrimitiveID export liveness,
