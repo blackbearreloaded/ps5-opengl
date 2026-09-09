@@ -139,12 +139,21 @@ for key, value in G47.items():
                  derivative=True, sdl_source=G47_SDL_SOURCE,
                  version=f"0.1.0-perf20260908-g47-{key}-sdl2-focused")
 
-# Main freezes these only after qualifying each final GL/SDL pair. No CLI
-# identity override and no fallback to a historical receipt or source commit.
+# Fixed qualification scopes; no CLI override or inherited native acceptance.
+# ponytail: owner uses 4K as the hardware gate; add 1440 native checks if a
+# resolution-specific regression needs them, not for every shared-code change.
 G55 = {name: dict(runtime=None, sdk=None, archive=None, sdl_receipt=None,
                  sdl_source=None, evidence=None, display=DISPLAY_PROFILES[name],
                  guide="sdk-g55-release.md", version=f"0.1.0-perf20260909-g55-{name}-sdl2-focused")
        for name in ("1440p120", "2160p120")}
+G55["1440p120"].update(qualification="host-only",
+    runtime="9f3b6dda933727dad61175b69438005e6f8abf7b",
+    sdk="b46df166e9a89e2ce9300a05eaa908dea59a7f75bd863f15bb34291cba799fde",
+    archive="06ad2be2c270a1637c2f73b93de36956d1c268bac0ea4b9816de1a317e4af2b4",
+    sdl_receipt="16820788e7268e6c3af5567276dd9936342ad0fc9f59271f202391847578cfe4",
+    sdl_source="9f3b6dda933727dad61175b69438005e6f8abf7b",
+    evidence="75ef7dc28803be61fc7f6528f15fc0ddea820d7b9d1321da830361400dd9fe46",
+    version="0.1.0-perf20260909-g55-1440p120-sdl2-host-checked")
 G55["2160p120"].update(
     runtime="9f3b6dda933727dad61175b69438005e6f8abf7b",
     sdk="f9d76590d75e46459c3b93570d794c43000fc6082605eb02d0ac3e13e90ef308",
@@ -606,7 +615,7 @@ def main():
     parser.add_argument("--g47-profile", choices=G47,
                         help="pinned G47 derivative + new SDL payload and focused hardware receipts")
     parser.add_argument("--g55-profile", choices=G55,
-                        help="new frozen G55 pair; --candidate is its pinned release evidence index")
+                        help="frozen G55 pair (4K native-focused, 1440p host-only); --candidate is its pinned index")
     parser.add_argument("--derivative-provenance", type=Path, help="reviewed G47 provenance.json; G47 only")
     parser.add_argument("--consumer-report", type=Path, help="CI/targeted/HFR SDK consumer summary.json")
     parser.add_argument("--runtime-config", type=Path, help="CI runtime-config.txt")
@@ -623,6 +632,7 @@ def main():
     require(bool(args.derivative_provenance) == bool(args.g47_profile), "--g47-profile requires --derivative-provenance, exclusively")
     hfr = args.hfr_profile or args.g47_profile or args.g55_profile
     profile = G55[args.g55_profile] if args.g55_profile else G47[args.g47_profile] if args.g47_profile else HFR[args.hfr_profile] if args.hfr_profile else TARGETED if args.targeted_version else SAMPLES[args.sample_version or VERSION]
+    host_only = bool(args.g55_profile and profile.get("qualification") == "host-only")
     if args.g55_profile:
         require(args.candidate and args.results and args.consumer_report and args.sdl_build and not args.runtime_config,
                 "G55 requires evidence index, local evidence root, consumer report and SDL build; no runtime override")
@@ -697,6 +707,8 @@ def main():
             g55_build = G55_EVIDENCE.verify_build(g55_evidence, evidence_root, repo, sdk, profile,
                                                  json.loads(prior_path.read_text()))
             focused = G55_EVIDENCE.report(evidence_root, profile, sdl, g55_evidence, private_hosts)
+            subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", profile["sdl_source"],
+                            args.source_commit, "--", "integration/SDL2"], check=True)
             # App builds may precede runner/documentation commits; their actual
             # sources must still be present in the distributed source companion.
             for row in g55_evidence["runs"].values():
@@ -756,7 +768,7 @@ def main():
     # Keep documentation in docs/: copying it to the root breaks relative links.
     (stage / "README.md").write_text(
         f"# PS5 OpenGL SDK {version}\n\n"
-        + ("Host-checked only; NOT console-validated.\n\n" if args.ci_version is not None
+        + ("Host-checked only; NOT console-validated.\n\n" if args.ci_version is not None or host_only
            else f"Frozen G55 {hfr} GL + SDL2; six focused depth/ImGui/SDL checks. Startup diagnostics are not cadence acceptance. No sampled or full CTS acceptance.\n\n" if args.g55_profile
            else f"Frozen {hfr} GL + SDL2; focused timing/pixels/HDMI checks only. No sampled or full CTS acceptance.\n\n" if hfr
            else "Targeted native checks: 24 mip cycles + 18 format checks; NOT a full CTS campaign or certification.\n\n" if args.targeted_version
@@ -767,7 +779,7 @@ def main():
         + ("\nSDL2 is in `sdl2/`; its offline build receipt remains unchanged. Separate\n"
            "`focused-validation.json` records the exact frozen pair's short hardware checks.\n"
            "SDL and integration sources are in `sources/SDL2*.tar`; licenses are in\n"
-           "`sdl2/share/licenses/`.\n" if hfr else
+           "`sdl2/share/licenses/`.\n" if hfr and not host_only else
            "\nOptional SDL2 is in `sdl2/`, with its own manifest and receipts. Its native\n"
            "compile results do not establish SDL hardware, controller or display acceptance.\n"
            "SDL and integration sources are in `sources/SDL2*.tar`; licenses are in\n"
@@ -841,6 +853,11 @@ def main():
                               evidence_index_sha256=profile["evidence"],
                               build_validation="verification/g55-build-validation.json",
                               derivative_provenance_scope="historical G47 dependency lineage; G55 replaces runtime and G51 replaces Mesa")
+            if host_only:
+                provenance.update(status="local frozen G55 host-checked candidate; not published",
+                                  hardware_validation="not performed for this binary; owner selected 4K-only hardware gate",
+                                  validation="consumer-validation.json and verification/g55-build-validation.json; no native acceptance")
+                sdl_provenance["focused_hardware_validation"] = "not performed for this binary"
     else:
         write_json(stage / "sample-validation.json", sampled)
     if args.sdl_build is not None:

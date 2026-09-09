@@ -4,8 +4,13 @@ Starting point: G37–G40 qualified the unchanged G31/G32 artifacts at native
 1440p119.88 and 2160p119.88 on one firmware-6.02 console. These are focused
 application receipts, not new CTS campaigns or universal game-performance claims.
 
-Latest local status: [G54 targeted qualification](#g54-local-qualification).
+Latest local status: [G55 release preparation](#g55-release-preparation).
 The milestones below retain earlier failures and then superseding results.
+
+**Current policy, September 9:** use 4K as the hardware release gate. After it
+passes, omit duplicate 1440p native runs; retain per-profile build, checksum and
+consumer checks. Label 1440p host-checked only. Investigate it on hardware only
+when a resolution-specific issue warrants it; historical receipts stay unchanged.
 
 | Gate | Owner | Work and acceptance |
 | --- | --- | --- |
@@ -315,6 +320,7 @@ qualification remains pending; the earlier G47 downloads are unchanged.
 
 Exact final-binary evidence is frozen in `build/g55-release-index-v2/2160p120.json`.
 Both SDK/SDL pairs and all 1440p apps are built; three GL consumer links per
-profile pass. The 1440p native window awaits the owner's matching output setting.
+profile pass. The initially planned 1440p native window was canceled by owner
+decision after the six 4K passes; its SDK remains explicitly host-checked only.
 The packager recomputes raw numerical/lifecycle/HDMI receipts before distribution;
-42 packaging regressions and SDL integrity/profile checks pass. No publication.
+43 packaging regressions and SDL integrity/profile checks pass. No publication.

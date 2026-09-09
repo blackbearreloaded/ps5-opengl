@@ -3,8 +3,10 @@
 G55 is a separate fixed-profile successor for 1440p120 and 2160p120. The final
 **4K SDK pair has passed all six native checks** below, including matching
 2160p119.88 HDMI and same-resolution 59.94 Hz restoration in ImGui and SDL.
-The 1440p pair is built and host-checked; its matching native checks are pending
-the owner's output selection. Neither pair has been published.
+The 1440p pair is built and host-checked, not separately console-validated.
+**By owner decision, 4K is the hardware release gate and duplicate 1440p native
+runs are no longer required after it passes.** No output-setting change is
+needed. Neither pair has been published.
 
 The successor fixes depth/stencil mip-subresource blits and packed mip clears,
 including masks and preservation of neighboring images. Its 112-case native
@@ -14,11 +16,12 @@ The short ImGui startup-inclusive window averages 113.63 FPS at 4K; this
 includes preparation cost and is not a sustained-cadence result. SDL checks
 180 frames and two exact pixels, not measured FPS.
 
-Only qualified profiles receive the six frozen identity pins. Missing pins
-reject packaging before reading SDK inputs or
-creating output. A built SDK, a passing host suite, or an older native receipt
-does not qualify a new binary. In particular, an incomplete mip-blit run cannot
-qualify the complete 112-case gate.
+Each profile retains six frozen identity pins, with an explicit acceptance
+scope. The 4K index binds six native runs; the 1440p index is host-only and must
+contain no native runs. Missing pins reject packaging before creating output.
+A host pass, another resolution's pass, or an older receipt is never labeled as
+native acceptance for a new binary. An incomplete mip-blit run cannot qualify
+the complete 112-case 4K gate.
 
 The packager builds nothing, launches nothing, and publishes nothing. G47
 profiles, archives and acceptance remain unchanged. G55 has no sampled/full CTS,
@@ -26,8 +29,8 @@ extended-soak, physical-controller or independently observed TV acceptance.
 
 ## Maintainer integration API
 
-After the final native runs, set these fields in
-`tools/build-sdk-bundle.py:G55["1440p120"]` and independently for `2160p120`:
+The final identities are pinned independently in
+`tools/build-sdk-bundle.py:G55["1440p120"]` and `2160p120`:
 
 | Pin | Required value |
 | --- | --- |
@@ -38,8 +41,9 @@ After the final native runs, set these fields in
 | `sdl_source` | Full source companion used for the SDL build/folder |
 | `evidence` | SHA-256 of the reviewed per-profile release index below |
 
-There is no command-line identity override. The fixed version names are
-`0.1.0-perf20260909-g55-<profile>-sdl2-focused`. Record the runtime build commit, application
+There is no command-line identity or acceptance-scope override. The fixed versions are
+`0.1.0-perf20260909-g55-2160p120-sdl2-focused` and
+`0.1.0-perf20260909-g55-1440p120-sdl2-host-checked`. Record the runtime build commit, application
 build commits, runner commits, and packaging/source-snapshot commit separately.
 Do not replace the runtime commit with a later test-only or documentation commit.
 
@@ -52,7 +56,7 @@ The index and raw records are inputs only; they are not copied into the bundle.
 ```json
 {
   "format": "ps5-opengl-g55-release-v1",
-  "display_profile": {"width": 2560, "height": 1440, "fps": 120},
+  "display_profile": {"width": 3840, "height": 2160, "fps": 120},
   "runtime_source_commit": "FULL_FINAL_RUNTIME_COMMIT",
   "sdk_manifest_sha256": "FINAL_GL_MANIFEST_SHA256",
   "runtime_archive_sha256": "FINAL_RUNTIME_SHA256",
@@ -60,7 +64,7 @@ The index and raw records are inputs only; they are not copied into the bundle.
   "sdl_build_receipt_sha256": "FINAL_SDL_RECEIPT_SHA256",
   "inherited_acceptance": false,
   "g47_provenance": "dev/ps5-opengl-g43-independent-20260908/build/g47-path-free-v1/provenance.json",
-  "g47_sdk": "dev/ps5-opengl-g43-independent-20260908/build/g47-path-free-v1/relocated/1440p120/gl",
+  "g47_sdk": "dev/ps5-opengl-g43-independent-20260908/build/g47-path-free-v1/relocated/2160p120/gl",
   "g51_candidate": "publish/ps5-opengl/build/g51-layer-query-v1/candidate.json",
   "build_provenance": "publish/ps5-opengl/build/FINAL_G55_BUILD/candidate.json",
   "build_provenance_sha256": "FINAL_BUILD_RECORD_SHA256",
@@ -77,7 +81,8 @@ The index and raw records are inputs only; they are not copied into the bundle.
 }
 ```
 
-The example intentionally cannot pass. Supply exactly these six `runs` keys:
+The example intentionally cannot pass. For native 4K acceptance, supply exactly
+these six `runs` keys:
 
 | Key | Required raw checks |
 | --- | --- |
@@ -87,6 +92,13 @@ The example intentionally cannot pass. Supply exactly these six `runs` keys:
 | `depth-mip` | Native `egl_public_core33_depth_mip_target.o`; five legal targets at depth 0.5, five successful draws, expected `GL_INVALID_OPERATION` for illegal 3D depth and cleanup |
 | `imgui` | Native `egl_public_core33_imgui_tv.o`; explicit `mode: "startup"` or `mode: "window"`, described below |
 | `sdl` | Newly linked `egl_public_core33_sdl2.o`; 180 frames and the two exact pixel probes |
+
+The 1440p index instead uses its own profile and exact SDK/SDL/build/consumer
+hashes, `"qualification": "host-only"` and `"runs": {}`. Packaging still verifies
+the same dependency lineage, source equivalence, SDL integrity and consumer
+contracts. Its generated summary reports zero native cycles and
+`hardware_validation: false`; no 4K receipt is copied or counted as a 1440p run.
+The raw native-audit contract below applies only to the 4K profile.
 
 Each entry has the five fields shown for `mip-blit`; `imgui` also requires
 `mode`. The four depth gates require empty candidate `build_flags`. Startup
@@ -176,7 +188,7 @@ remain separate prerequisites. Nothing is stripped or redacted while packaging.
 
 The privacy scan checks both prefixes before staging and the entire staged
 distribution, including nested source archives, before archiving. Hosts from all
-six receipts are forbidden markers. Only reconstructed numerical summaries and
+six native receipts are forbidden markers. Only reconstructed numerical summaries and
 hashes are published in `focused-validation.json`; raw logs, build commands,
 candidate files, hostnames and private paths are not copied.
 

@@ -50,8 +50,9 @@ retain their separate historical acceptance. Older downloads are unchanged.
 **Local G55 successor, not yet published:** depth/stencil mip blits and packed
 mip clears are fixed, with the regressions required by CI. The final 4K GL/SDL
 pair passed six focused native checks, including the 112-case mip-blit batch,
-array/MSAA checks, ImGui and SDL with matching HDMI. The 1440p pair is built and
-host-checked; its native qualification is pending. See the
+array/MSAA checks, ImGui and SDL with matching HDMI. **4K is now the hardware
+release gate; duplicate 1440p console runs are omitted by owner decision.** The
+1440p pair is built and host-checked, not separately console-validated. See the
 [G55 release guide](docs/sdk-g55-release.md). These results do not apply to the
 G47/G25 downloads or constitute a new full CTS campaign.
 

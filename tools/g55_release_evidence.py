@@ -71,8 +71,13 @@ def load_evidence(path, profile):
             record["sdl_source_companion"] == profile["sdl_source"] and
             record["sdl_build_receipt_sha256"] == profile["sdl_receipt"] and
             record["inherited_acceptance"] is False, "G55 source/SDK/index identity mismatch")
-    require(set(record["runs"]) == set(GATES), "G55 requires exactly six focused workloads")
-    require(record["runs"]["imgui"]["mode"] in ("startup", "window"), "unknown G55 ImGui mode")
+    host_only = profile.get("qualification") == "host-only"
+    require(record.get("qualification", "native-focused") == ("host-only" if host_only else "native-focused"),
+            "G55 qualification scope mismatch")
+    require(set(record["runs"]) == (set() if host_only else set(GATES)),
+            "G55 requires no native receipts for host-only or exactly six focused workloads")
+    if not host_only:
+        require(record["runs"]["imgui"]["mode"] in ("startup", "window"), "unknown G55 ImGui mode")
     require(is_hash(record["build_provenance_sha256"]), "missing G55 build provenance hash")
     require(is_hash(record["consumer_report_sha256"]), "missing G55 consumer report hash")
     return record
@@ -237,6 +242,15 @@ def report(root, profile, sdl, evidence, private_hosts):
     require(receipt_hash == profile["sdl_receipt"] and receipt["display_profile"] == profile["display"] and
             receipt["sdk_manifest_sha256"] == profile["sdk"] and receipt["sdk_runtime_sha256"] == profile["archive"],
             "G55 SDL/GL identity mismatch")
+    if profile.get("qualification") == "host-only":
+        require(evidence.get("qualification") == "host-only" and evidence["runs"] == {},
+                "G55 host-only profile cannot claim native receipts")
+        return dict(scope="host-checked only; NOT console-validated", clean_cycles=0,
+                    display_profile=profile["display"], runtime_source_commit=profile["runtime"],
+                    sdl_source_companion=profile["sdl_source"], inherited_acceptance=False,
+                    hardware_validation=False, sample_complete=False, full_matrix_complete=False,
+                    extended_soak=False, independent_per_run_tv_observation=False,
+                    evidence_index_sha256=profile["evidence"], runs={})
     require(set(evidence["runs"]) == set(GATES), "G55 requires exactly six focused workloads")
     result = dict(scope="six focused exact-binary checks; not CTS or certification", clean_cycles=6,
                   display_profile=profile["display"], runtime_source_commit=profile["runtime"],

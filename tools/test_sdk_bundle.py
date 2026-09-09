@@ -835,7 +835,7 @@ class G55BundleTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.e = BUNDLE.G55_EVIDENCE
-        self.profile = dict(BUNDLE.G55["1440p120"], runtime="a" * 40, sdk="b" * 64,
+        self.profile = dict(BUNDLE.G55["1440p120"], qualification="native-focused", runtime="a" * 40, sdk="b" * 64,
                             archive="c" * 64, sdl_receipt="d" * 64, sdl_source="e" * 40, evidence="f" * 64)
         self.sdl = (dict(display_profile=self.profile["display"], sdk_manifest_sha256=self.profile["sdk"],
                          sdk_runtime_sha256=self.profile["archive"], payload_manifest_sha256="1" * 64),
@@ -1165,6 +1165,25 @@ class G55BundleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.e.summarize_workload("imgui", self.log("imgui"), self.profile["display"], "window")
 
+    def test_host_only_scope_cannot_inherit_or_substitute_native_acceptance(self):
+        self.profile["qualification"] = "host-only"
+        self.evidence.update(qualification="host-only", runs={})
+        self.repin_index()
+        self.e.load_evidence(self.index, self.profile)
+        result = self.report()
+        self.assertFalse(result["hardware_validation"])
+        self.assertFalse(result["inherited_acceptance"])
+        self.assertEqual((result["clean_cycles"], result["runs"]), (0, {}))
+        with mock.patch.dict(self.profile, qualification="native-focused"):
+            with self.assertRaisesRegex(ValueError, "scope mismatch"):
+                self.e.load_evidence(self.index, self.profile)
+        self.evidence["runs"] = {"imgui": {}}
+        self.repin_index()
+        with self.assertRaisesRegex(ValueError, "no native receipts"):
+            self.e.load_evidence(self.index, self.profile)
+        with self.assertRaisesRegex(ValueError, "cannot claim native"):
+            self.report()
+
     def test_g55_assembly_uses_existing_archive_and_excludes_raw_evidence(self):
         sdk, native, dependencies = (self.root / name for name in ("sdk", "native", "dependencies"))
         (sdk / "lib").mkdir(parents=True)
@@ -1237,6 +1256,19 @@ class G55BundleTests(unittest.TestCase):
             BUNDLE.main()
             self.assertTrue(any("diff" in call.args[0] and self.profile["runtime"] in call.args[0]
                                 for call in command.call_args_list))
+            self.profile["qualification"] = "host-only"
+            self.evidence.update(qualification="host-only", runs={})
+            self.repin_index()
+            host_out = self.root / "host-output"
+            argv[argv.index("--destination") + 1] = str(host_out)
+            BUNDLE.main()
+            host_stage = host_out / ("ps5-opengl-sdk-" + self.profile["version"])
+            self.assertIn("NOT console-validated", (host_stage / "README.md").read_text())
+            self.assertNotIn("short hardware checks", (host_stage / "README.md").read_text())
+            host_provenance = json.loads((host_stage / "provenance.json").read_text())
+            self.assertIn("not performed", host_provenance["hardware_validation"])
+            self.assertIn("not performed", host_provenance["sdl2"]["focused_hardware_validation"])
+            self.assertFalse(json.loads((host_stage / "focused-validation.json").read_text())["hardware_validation"])
         stage = out / ("ps5-opengl-sdk-" + self.profile["version"])
         report = json.loads((stage / "focused-validation.json").read_text())
         self.assertEqual(set(report["runs"]), set(self.e.GATES))
