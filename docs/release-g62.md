@@ -1,0 +1,41 @@
+# G62 release consolidation
+
+Complete a scoped stable 0.x release using the G57–G61 optimized runtime.
+Do not change graphics behavior while qualifying it. Reuse exact-binary
+evidence; a different binary requires its own acceptance. No full CTS rerun.
+
+## Frozen inputs and acceptance
+
+- 4K runtime source: `b42f77102fce612cfcdd46a233a79aaaed02320b`.
+- 4K runtime SHA-256: `f80b80b05ba7e82f763c7a08c78976b0e63fc03b0284c63393db90a84fd70714`.
+- Reuse the [82 focused GPU cases](gpu-blit-performance.md#final-focused-qualification--september-9-2026)
+  only for those unchanged bytes.
+- Build the matching 1440p profile and SDL2 pairs; verify complete manifests,
+  source provenance, all Core exports and relocated GL/SDL consumer links.
+- Run the existing compact CTS selection, ImGui window/offscreen and 3D checks
+  on the frozen 4K runtime. Require all selected results and pixel/state oracles.
+- Run one 600-second normal ImGui session and three launch/exit cycles, each
+  with three EGL sessions. Require balanced tracked GPU allocations/mappings,
+  no steady tracked memory growth, clean close and healthy services.
+- Run the matching SDL2 native smoke (180 frames/two pixel checks). No new
+  physical-input or independent TV qualification is inferred.
+- Package verified bytes, sources, notices, checksums and scoped evidence.
+  Check a fresh extraction and its consumers before publishing new assets.
+
+The owner requires only 4K hardware qualification; 1440p remains explicitly
+host-checked. Full-profile/GLFW portability, multi-hour sessions, suspend/resume,
+device-loss recovery, exhaustive allocation pressure and other firmware are
+outside this release claim. CPU fallbacks are not missing API functionality.
+
+## Console protocol
+
+Use the existing PPSA99005 native folder and WSL on the owner-configured
+firmware-6.02 console. Acquire the exact-token lock for each bounded cycle,
+verify idle/services/files, capture numerical and lifecycle evidence, close
+the exact title, verify health and release only that token. Stop on any
+functional/lifecycle/health failure; preserve the receipt and investigate
+offline. No graphics ELF injection, settings changes or routine screenshots.
+
+## Milestones
+
+- 2026-09-09 | G62 preparation | reused b42f771 runtime and 82-case evidence; release integration/stability/package checks pending.
