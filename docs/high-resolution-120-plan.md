@@ -15,7 +15,7 @@ one bounded 180-frame/two-pixel native check per size. Check relocated consumers
 Extend focused lifecycle checks after the display path passes; no full CTS rerun.
 
 Use WSL, PPSA99005 native folders, existing title-aware runner and exact-token
-lock on 192.168.4.30. No graphics ELF injection, Settings or forced unsupported
+lock on the recorded firmware-6.02 console. No graphics ELF injection, Settings or forced unsupported
 modes. Stop on functional/lifecycle/health failure or suspected panic; preserve
 receipts. Do not retry an unsupported display path. Direct sink confirmation is
 separate from console logs. Keep changes local unless publication is requested.
@@ -43,7 +43,8 @@ matching SDL2 payloads now support the selected fixed render profile. ImGui's
 30-second runs measured about 119.88 FPS at both sizes; the SDL checks establish
 functional integration, not measured SDL frame rate or arbitrary-game performance.
 No new exhaustive CTS or extended high-resolution soak is claimed. Published
-G25 binaries remain unchanged; none of this work has been pushed or released.
+G25 binaries remain unchanged. Publishing these findings and profile-support
+sources does not release new prebuilt SDKs or transfer qualification to rebuilds.
 
 The earlier HDMI1 runs negotiated 1080p119.88. After the owner moved the Hisense
 55U78N connection to HDMI4, G37's unchanged original G31 OpenGL app rendered

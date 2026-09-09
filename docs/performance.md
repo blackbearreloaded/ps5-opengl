@@ -22,6 +22,10 @@ candidates and decisions; later acceptance does not rewrite those receipts.
 
 ## Display negotiation audit (September 8, local)
 
+The historical mismatch below is preserved. Later same-binary tests resolved
+the connection-path limitation and verified native 1440p120 and 4K120; see
+[the qualification summary](#native-1440p120-and-4k120-qualification-september-8).
+
 G24's new 2160p120 build of the G19 graphics logic rendered **3840x2160 at
 119.884 FPS** for 30 seconds (completed-frame p95 **9.178 ms**). Both VideoOut
 snapshots reported 3840x2160/119.88, but the same title's HDMI negotiation was
@@ -38,6 +42,49 @@ Neither receipt establishes the capabilities of today's connected display path.
 Source companion `3c92754`, exact app/SDK identity in `.local/g24-candidate.json`,
 hashed native evidence in `results/g24-display-20260908/display-report.json`.
 The accepted 1080p60 SDK bundles remain unchanged.
+
+## Native 1440p120 and 4K120 qualification (September 8)
+
+One firmware-6.02 console, connected to HDMI4 on a Hisense 55U78N, ran the
+unchanged frozen G31 ImGui apps. Each measured 3,597 frames after warm-up:
+
+| Native render size | Measured seconds | Completed FPS | Negotiated HDMI | Restored HDMI |
+| --- | ---: | ---: | --- | --- |
+| 2560x1440 | 30.004589 | 119.881660 | 2560x1440, 119.88 Hz | 2560x1440, 59.94 Hz |
+| 3840x2160 | 30.004094 | 119.883639 | 3840x2160, 119.88 Hz | 3840x2160, 59.94 Hz |
+
+Both ImGui pixel oracles passed. The matching frozen SDL2 apps separately
+completed 180 frames and two exact pixel probes at each size, with the same
+negotiated/restored HDMI modes. All four native cycles closed cleanly and
+passed service-health and exact-token-release checks. SDL's nominal 120 Hz
+profile is not a measured SDL frame-rate result.
+
+The same 4K app had previously negotiated 1080p120 on HDMI1. Moving the cable
+to HDMI4 enabled 4K120 without rebuilding the app or changing its metadata.
+Native 1440p then required the owner's 1440p output selection. This separates
+render dimensions, physical-link negotiation and completed-frame throughput;
+neither an app overlay nor a TV refresh-only game bar proves input resolution.
+The [qualification record](high-resolution-120-plan.md) preserves the comparison,
+official display references and evidence boundaries. Per-run TV refresh
+observations remain separate from these console HDMI logs.
+
+### Frozen identities
+
+The ImGui build source is `3cdc90bbc14def6bc3025b4460fba0892841114a`; SDL profile
+integration is `ac2a52aa7faac5e7b9bcd6660cee36263f3e5324`. Later source companions
+record the hardware runs, not rebuilt artifacts. SHA-256 identities:
+
+| Artifact | 1440p120 | 2160p120 |
+| --- | --- | --- |
+| GL SDK manifest | `d2d6169960d379f3987b8b7c3b8f81cf05f97072cdfa67eaba393fc82e327567` | `2785038b1020824a882e533b874bb7658e6f41210e689a79ccd363ffc3af1b61` |
+| GL runtime archive | `b7f3ca590d9befa516691b893617d8ae049ce187c47737aad041c5788b93fabe` | `83a8f4729bafcb0b61be6e4b96f1603c1d682b26243f47475cff2d2af7353374` |
+| ImGui executable | `1860dc15b22a064136fcf9b9de79c262f339dd1e426a9eb3363b550c09bfcb90` | `91f2d5cd08d3e7f46e85c8396c1ba5511de874d8a807e77f9c5ab5c2a8905fc0` |
+| SDL2 executable | `63baeb465b89a04f8569d04e50f122a42c253df3bd020256e905a61e58184296` | `5578cbb4b40725dfb21918ebea967209753af4ff34442d45a2e15609674f5ff5` |
+
+This publishes source support and scoped findings, not replacement SDK downloads.
+It does not establish arbitrary-game FPS, perfect pacing, HDR rendering accuracy,
+long high-resolution sessions or a new full CTS campaign. Existing G25 releases
+and historical validation retain their own identities. Raw logs remain local.
 
 ## Broader format and subresource coverage (G25, local)
 
@@ -869,8 +916,8 @@ See the [bundle guide](sdk-bundle.md); exact hashes and local receipts are in
    remain separate, unvalidated features.
 3. Use application findings from the separate Yamagi port as library bug reports;
    no game-specific changes belong in this repository's driver.
-4. Define the actual SDL/GLFW platform boundary from consumer requirements before
-   implementing an adapter. Neither framework is currently supported.
+4. Extend the [fixed-profile SDL2 bridge](../integration/SDL2/README.md) only against
+   concrete consumer requirements. GLFW and a complete SDL platform port remain absent.
 5. Repeat independent builds and fresh TV/controller checks. Keep one-console,
    one-firmware results explicitly scoped; broader compatibility needs new evidence.
 6. The [sample-validated SDK/source-example prerelease](sdk-bundle.md) packages
