@@ -11,14 +11,15 @@ application receipts, not new CTS campaigns or universal game-performance claims
 | G43 | Independent-build agent | Separate clean build trees, pinned inputs, explicit reused/rebuilt inventory, manifest and relocated consumer checks. Newly built bytes remain host-checked until hardware tested. |
 | G44 | Main | Reuse cubes ordinary/instanced profiles and selected ImGui offscreen cases. 30 seconds per measured workload, before/after pixels and exact retirement/cleanup. Report measured bottlenecks without extrapolating to games. |
 | G45 | Main | Finish the already-started ten-minute 1440p heap/GPU check; use two minutes at 4K per owner preference. Reuse three-session EGL lifecycle checks. No deliberate hardware faults or memory exhaustion. |
+| G47 | Build/packaging agents + main | Path-free release derivatives: preserve original SDKs, strip debug data from dependency copies, prefix-map rebuild only the runtime, verify new manifests/links and focused native receipts. No inherited CTS acceptance. |
 | G46 | Main | Review and integrate isolated agent changes, freeze source/artifacts, run affected checks and publish scoped release evidence. Do not transfer old conformance claims to changed bytes. |
 
 Only the main agent touches the console, through the existing native-folder
 runner and shared exact-token lock. Prepare and audit offline; release the lock
 after every bounded cycle. Use logs and numerical probes, not routine screenshots.
-Stop on uncertain foreground, lifecycle or service health. G44's first 4K-render
-cube cycle still negotiated 1440p HDMI; await an explicit owner-selected 2160p
-setting before another console cycle and qualify fresh HDMI evidence separately.
+Stop on uncertain foreground, lifecycle or service health. After G44's first
+4K-render/1440p-HDMI mismatch, the owner selected 2160p. The identical frozen
+cube app then qualified native 2160p119.88 and restoration to 2160p59.94.
 
 Physical controller actions and an independently available second console/firmware
 require owner participation. Suspend/resume, device-loss recovery and hardware
@@ -35,6 +36,9 @@ full 39,544-case rerun for example, documentation or packaging-only changes.
 - 2026-09-08 | G45 1440p lifecycle | pass: three EGL sessions/18 frame oracles, zero post-session heap growth, GPU baseline restored, three HDMI restore cycles, clean/healthy/unlocked | results/g45-lifecycle-1440-20260908/.
 - 2026-09-08 | G42 | pass: owner-confirmed physical Cross/stick sequence before/after removal and new instance; 38.336s, HDMI restoration, clean/healthy/unlocked | docs/sdl-input-validation.md.
 - 2026-09-08 | G44 4K cubes attempt 1 | render workload passed, HDMI mismatch: 2160p render / 1440p119.88 output; clean/healthy/unlocked; not native-4K acceptance | results/g44-cubes-2160-20260908/.
+- 2026-09-08 | G44 native 4K cubes | pass: 39.96 ordinary / 59.94 instanced FPS; all pixels/counts, native2160p HDMI, clean/healthy/unlocked; clear ~12ms | results/g44-cubes-2160-native-20260908/.
+- 2026-09-08 | G43 | reviewed host pass: independent1440/2160 GL builds, 38 files/344 exports each, six relocated GL links and two1440 SDL links; no hardware inheritance | docs/independent-hfr-build.md.
+- 2026-09-08 | G41/G46 | integrated24 packaging checks + SDL integrity/profile checks; full host suite passed; frozen HFR archives blocked by personal build paths, G47 preparing separate derivatives | docs/sdk-bundle-hfr.md.
 
 The 1440p soak's first 30-second window was 112.17 FPS; the remaining nineteen
 were 119.83–119.87 FPS. Its strict 120-Hz cadence target failed. Explicit
