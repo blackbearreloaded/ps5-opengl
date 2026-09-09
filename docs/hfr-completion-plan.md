@@ -233,3 +233,5 @@ performance and native nonzero-layer stencil/4x gates above remain pending.
   capability audit pass, known system-query failure preserved. Exact SDK/app/log
   inventory: `.local/g51-offline-inventory-v1.json`. Eight folders total including
   the six preserved G50 controls; zero uploads/launches/publication.
+
+- 2026-09-09 | G51 4K native | pass: layer-2 query/routing, four depth targets, clean/healthy/unlocked; 2160p119.88/restoration logged | results/g51-depth-targets-2160-20260909-v1/.
