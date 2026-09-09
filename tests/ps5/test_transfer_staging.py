@@ -70,8 +70,8 @@ static unsigned util_format_get_blockheight(unsigned f) { (void)f; return 1; }
 static unsigned ps5_texture_level_layers(const struct pipe_resource *r, unsigned l) { assert(!l); return r->array_size; }
 static size_t ps5_tiled_depth_surface_size(unsigned w, unsigned h, unsigned s) { assert(s == 1); return (size_t)w*h*4; }
 static size_t ps5_tiled_stencil_surface_size(unsigned w, unsigned h) { return (size_t)w*h; }
-static size_t ps5_tiled_depth_offset(unsigned x, unsigned y, unsigned w) { return ((size_t)y*w+x)*4; }
-static size_t ps5_tiled_stencil_offset(unsigned x, unsigned y, unsigned w) { return (size_t)y*w+x; }
+static size_t ps5_tiled_depth_offset(unsigned x, unsigned y, unsigned w, unsigned layer) { (void)layer; return ((size_t)y*w+x)*4; }
+static size_t ps5_tiled_stencil_offset(unsigned x, unsigned y, unsigned w, unsigned layer) { (void)layer; return (size_t)y*w+x; }
 static size_t ps5_tiled_color_offset(unsigned f, unsigned x, unsigned y, unsigned w) { assert(f == COLOR || f == COLOR_UINT); return ((size_t)y*w+x)*4; }
 static unsigned ps5_tiled_rgba8_width(const struct ps5_resource *r) { return r->base.width0; }
 static bool force_tiled;

@@ -103,3 +103,10 @@ contents were zero. Define every emitted layer and initialize the attachment;
 keep the same per-layer pixel expectations. Compare this corrected test on the
 unchanged release and the clear candidate before resuming performance tests.
 The two original failed receipts remain unchanged; no driver fix is claimed.
+
+The corrected oracle still failed on G47 (`g48-layered-fixed-control-1440-20260909`).
+The next candidate adds the missing layer XOR to CPU depth/stencil addressing,
+including transfers, mip staging and scissored clears. Pinned AMD 16-pipe
+`64KB_Z_X` tables exactly match the existing X/Y/sample masks, but include
+Z3..Z0 at address bits 8..11. Host checks cover both formats, 1x/4x samples,
+32 layers and tile boundaries; device qualification is still pending.
