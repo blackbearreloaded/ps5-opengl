@@ -1,5 +1,14 @@
 # Known limitations
 
+## Local G55 successor — not yet published
+
+The [G55 candidate](sdk-g55-release.md) fixes mip-chain depth/stencil blits and
+packed mip clears. Its final 4K GL/SDL pair passed six focused native checks;
+the 1440p pair is host-checked and awaits its native window. These CPU paths
+are functional fixes, not GPU-copy optimizations. Uniform MSAA test samples do
+not establish sample isolation. Startup-inclusive ImGui timing is diagnostic,
+not a sustained 120-FPS result; broader recovery/stability limits below remain.
+
 ## Current release scope — September 9, 2026
 
 The [G47 HFR downloads](sdk-bundle-hfr.md) provide separate fixed 1440p120 and

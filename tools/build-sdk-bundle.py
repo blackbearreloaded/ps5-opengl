@@ -145,6 +145,13 @@ G55 = {name: dict(runtime=None, sdk=None, archive=None, sdl_receipt=None,
                  sdl_source=None, evidence=None, display=DISPLAY_PROFILES[name],
                  guide="sdk-g55-release.md", version=f"0.1.0-perf20260909-g55-{name}-sdl2-focused")
        for name in ("1440p120", "2160p120")}
+G55["2160p120"].update(
+    runtime="9f3b6dda933727dad61175b69438005e6f8abf7b",
+    sdk="f9d76590d75e46459c3b93570d794c43000fc6082605eb02d0ac3e13e90ef308",
+    archive="7eba855a6cc5d94956c81ea11e3635158de265a772ebf0ac3421a8114121d457",
+    sdl_receipt="c806cad89d5fb725fbaa8abee67ad9b84b31488e0555544bd88571805dbc4fd9",
+    sdl_source="9f3b6dda933727dad61175b69438005e6f8abf7b",
+    evidence="f9dc5cd0682a8f54980799938eede117e5dab307f6b31d21df2d64aca9a8ddca")
 
 
 def verify_g47_derivative(path, sdk, name):

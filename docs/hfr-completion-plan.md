@@ -310,3 +310,11 @@ masked copies, resolve and replication. The native batch exposed a separate
 D32S8 clear admission/stride gap; its fix preserves stencil write masks and
 unselected channels. Sanitizer and software-GL regressions pass. Final packaged
 qualification remains pending; the earlier G47 downloads are unchanged.
+
+- 2026-09-09 | G55 v2 4K | 9f3b6dd | pass: 112 mip-blit cases, array/MSAA, fetch, five depth targets, ImGui/SDL HDMI, six clean/healthy/unlocked cycles | results/g55-*-2160-20260909-v2/.
+
+Exact final-binary evidence is frozen in `build/g55-release-index-v2/2160p120.json`.
+Both SDK/SDL pairs and all 1440p apps are built; three GL consumer links per
+profile pass. The 1440p native window awaits the owner's matching output setting.
+The packager recomputes raw numerical/lifecycle/HDMI receipts before distribution;
+42 packaging regressions and SDL integrity/profile checks pass. No publication.

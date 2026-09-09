@@ -1,8 +1,21 @@
 # G55 frozen GL/SDL2 release packaging
 
-G55 is a separate fixed-profile successor for 1440p120 and 2160p120. Its
-packaging path is implemented, but all six identity pins in each `G55` profile
-start as `None`. Missing pins reject packaging before reading SDK inputs or
+G55 is a separate fixed-profile successor for 1440p120 and 2160p120. The final
+**4K SDK pair has passed all six native checks** below, including matching
+2160p119.88 HDMI and same-resolution 59.94 Hz restoration in ImGui and SDL.
+The 1440p pair is built and host-checked; its matching native checks are pending
+the owner's output selection. Neither pair has been published.
+
+The successor fixes depth/stencil mip-subresource blits and packed mip clears,
+including masks and preservation of neighboring images. Its 112-case native
+batch checks 1,373,440 depth and 1,018,240 stencil pixels. The first candidate's
+packed-clear failure is retained separately and excluded from acceptance.
+The short ImGui startup-inclusive window averages 113.63 FPS at 4K; this
+includes preparation cost and is not a sustained-cadence result. SDL checks
+180 frames and two exact pixels, not measured FPS.
+
+Only qualified profiles receive the six frozen identity pins. Missing pins
+reject packaging before reading SDK inputs or
 creating output. A built SDK, a passing host suite, or an older native receipt
 does not qualify a new binary. In particular, an incomplete mip-blit run cannot
 qualify the complete 112-case gate.
