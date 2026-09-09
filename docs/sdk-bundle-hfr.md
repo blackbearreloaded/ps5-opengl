@@ -1,4 +1,19 @@
-# Frozen high-resolution SDK bundles
+# High-resolution SDK bundles
+
+## G47 release downloads — September 9
+
+The [G47 HFR prerelease](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g47-hfr-sdl2-focused)
+contains the exact qualified **1440p120** and **2160p120 (4K)** archives and
+their checksum sidecars. Each passed new focused ImGui/SDL/HDMI checks and
+five consumer links after extraction. This is not a sampled/full CTS successor.
+
+The release tag identifies the publication source. The archives retain their
+original source snapshots, hashes and then-local status text; no binaries or
+bundled documents were rewritten to publish them. Read the release notes and
+the G47 section below for current qualification and exact identities.
+The older [G25 1080p60 download](sdk-bundle-g25.md) remains unchanged.
+
+## Original G31/G32 packaging mode (historical blocker, not G47)
 
 The `--hfr-profile 1440p120` and `--hfr-profile 2160p120` modes of
 `tools/build-sdk-bundle.py` assemble the original G31 GL SDK and matching G32
@@ -129,7 +144,7 @@ The local 2160p archive was subsequently assembled from source snapshot
 (174,370,158 bytes). Its checksum sidecar, 242 checksummed files, both installed
 manifests, and five GL/SDL consumer links passed after extraction into a new
 directory. The integrated host suite, including 31 packaging checks, passed.
-The archive remains local and unpublished; earlier downloads are unchanged.
+The archive was local and unpublished at this verification milestone.
 Local output: `build/bundle-g47-2160p120-v1/`; extraction checks:
 `build/g47-extracted-2160-v1/`. This later documentation does not change that
 archive's source snapshot or frozen library identities.
@@ -140,7 +155,8 @@ The matching 1440p archive was assembled on September 9 from source snapshot
 (174,370,464 bytes). The sidecar, all 242 checksummed files, GL/SDL manifests
 and five extracted consumer links passed; the full host suite also passed.
 Local output: `build/bundle-g47-1440p120-v1/`; extracted verification:
-`build/g47-extracted-1440-v1/`. Both archives remain local and unpublished.
+`build/g47-extracted-1440-v1/`. Both were local and unpublished at assembly;
+the release above distributes those exact bytes.
 The original 4K archive checksum was reverified unchanged; no library rebuild
 or new CTS campaign was needed for this qualification and packaging milestone.
 

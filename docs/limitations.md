@@ -1,5 +1,47 @@
 # Known limitations
 
+## Current release scope — September 9, 2026
+
+The [G47 HFR downloads](sdk-bundle-hfr.md) provide separate fixed 1440p120 and
+4K120 GL/SDL2 SDKs. Both have fresh timing/pixel/SDL/HDMI qualification for
+their exact bytes and verified extracted consumer builds. The older
+[G25 1080p60 download](sdk-bundle-g25.md) retains its own sampled acceptance.
+Neither is a new full CTS campaign or a guarantee of arbitrary application compatibility.
+
+- **Display and throughput:** native 1440p119.88 and 2160p119.88 HDMI modes
+  match the tested profiles. ImGui averages about 119.88 FPS over 30 seconds;
+  SDL's 180-frame checks do not measure FPS. No independent per-run TV
+  measurement or perfect frame-pacing claim is made. The selected G47 4K
+  offscreen case reaches 119.90 completed frames/s, not necessarily displayed FPS.
+- **Heavier workloads:** the separate G44 128-cube benchmark reaches about
+  57/113 FPS at 1440p and 40/60 FPS at 4K (ordinary/instanced). Its 4K clear
+  takes about 12 ms. Those older exact-binary receipts are not G47 game results.
+  Some formats, mip levels and layers retain CPU staging; optimize measured
+  workloads rather than generalizing the fast paths.
+- **Stability:** bounded memory/lifecycle checks found no steady growth in
+  tracked owned heap/GPU memory and returned tracked GPU allocations to zero.
+  The G45 1440p and G47 4K soaks missed their first-window cadence targets;
+  their memory checks pass, but overall cadence remains a partial pass.
+  Foreign/module heaps, process RSS, multi-hour sessions, suspend/resume,
+  device-loss recovery and exhaustive OOM remain unqualified.
+- **Integration and input:** SDL2 supports one fixed window and one unshared
+  Core 3.3 context, not a complete SDL platform. G42 separately passed
+  owner-confirmed Cross/stick/disconnect/reconnect at 1440p on one controller/user.
+  This is not all-button, multi-controller, 4K input or automatic G47 input
+  acceptance. GLFW, GLX/WGL and compatibility-profile guarantees remain absent.
+- **Hardware and rebuilds:** hardware qualification covers one firmware-6.02
+  console and the recorded HDMI4 connection. Independent clean source builds
+  passed host/consumer checks, not hardware acceptance. Fresh CI binaries do
+  not inherit the frozen SDKs' results. G47's documented linker-metadata
+  exception remains part of its [build identity](sdk-path-free-derivative.md).
+
+## Historical baseline and successor evidence
+
+The records below preserve earlier identities; figures such as the baseline's
+20-FPS demo, old offscreen copies and busy-unregister warning are not a statement
+that the current G47 paths still have those measured limitations. Current
+qualification is summarized above; detailed comparisons are in [Performance](performance.md).
+
 The September 7 Core 3.3 campaign and final SDK consumer checks are complete
 within their [documented scope](validation.md). This is not proof of universal
 compatibility or production-grade stability. That frozen runtime includes the

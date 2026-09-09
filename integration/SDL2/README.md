@@ -1,10 +1,13 @@
 # SDL2 / public PS5 OpenGL SDK
 
-New builds have **no inherited hardware qualification**. The exact G25/SDL2 pair
-in the [September 8 SDK guide](../../docs/sdk-bundle-g25.md) passed a fresh native
-180-frame/two-pixel check, teardown and service-health verification. Physical
-controller/reconnect behavior remains unverified. G19 acceptance below belongs
-only to its historical binary. The adapter's `ps5-g19` driver/log names are unchanged.
+New builds have **no inherited hardware qualification**. The exact pairs in the
+[G47 HFR downloads](../../docs/sdk-bundle-hfr.md) separately passed 180 native
+frames/two pixels at 1440p and 4K, matching HDMI negotiation, restoration and
+clean teardown. These checks do not measure SDL FPS or physical input.
+The older [G25 1080p60 pair](../../docs/sdk-bundle-g25.md) retains its own acceptance.
+G42's separate owner-confirmed controller/reconnect result is described below;
+it is not blanket acceptance for new SDK/device combinations. The adapter's
+`ps5-g19` driver/log names are unchanged.
 
 This is an SDL2 video-device implementation, compiled into **real SDL2**. The
 consumer calls `SDL_CreateWindow(SDL_WINDOW_OPENGL)`, `SDL_GL_CreateContext`,
@@ -236,7 +239,14 @@ hardware-unqualified. No new graphics device-loss recovery is supplied; failed E
 cleanup retains resources rather than freeing anything still current. Hardware
 qualification and any bounded native-folder launch belong to the parent.
 
-## Opt-in physical input and reconnect (G42; hardware no-run)
+## Opt-in physical input and reconnect (G42; bounded hardware pass)
+
+On September 8, the owner confirmed the physical Cross/stick sequence,
+disconnect and reconnect on one controller/user. Fresh activity on a new
+instance completed in 38.336 seconds at native 1440p119.88, with restoration,
+cleanup and healthy teardown. See the [exact candidate and receipt](../../docs/sdl-input-validation.md).
+This does not qualify all buttons, multi-user behavior, 4K input or another
+runtime. The reproducible opt-in procedure below retains that boundary.
 
 Add `--input-validation` to the existing native build command to select
 `input_validation.c`; omit it to keep the original `example.c` 180-frame smoke.

@@ -1,7 +1,9 @@
 # CI-built SDK archives
 
-The **Build SDK release** GitHub Actions workflow builds a fresh **1080p60**
-developer SDK on Ubuntu 24.04. Its binaries are **host-checked, not console-validated**.
+The **Build SDK release** GitHub Actions workflow builds a fresh developer SDK
+on Ubuntu 24.04. Manual runs offer **1080p60** (default), **1440p120** or
+**2160p120**; `v*` tag builds retain 1080p60. Its binaries are
+**host-checked, not console-validated**.
 Historical full CTS, sampled CTS, performance and stability results apply only to
 their recorded binary identities, not automatically to these downloads.
 
@@ -35,7 +37,8 @@ The sources include upstream archives plus this project's build files and patche
 Debug information is retained and can contain build-runner paths. Source and
 dependency identities are recorded; byte-identical rebuilds across runner/tool
 updates are not promised. Compiler versions and SDK hashes are in the consumer
-report. This fixed scanout profile is not the separate 120 Hz benchmark build.
+report. Selecting an HFR profile does not confer the frozen G47 binaries'
+console qualification.
 
 ## Maintainer release process
 
@@ -63,3 +66,7 @@ artifact, documented in `docs/sdk-bundle.md`.
 The separately tested [G25 + SDL2 prerelease](sdk-bundle-g25.md) uses an `sdk-*`
 tag and exact preverified assets; it does not invoke this fresh-build workflow.
 Its compiled SDL2 payload and native acceptance are not inherited by CI builds.
+The [G47 native 1440p120/4K120 release](sdk-bundle-hfr.md) follows the same
+frozen-asset `sdk-*` process, with two separately qualified GL/SDL2 archives.
+Its release tag identifies the publication source; each archive's provenance
+retains its original packaging and runtime-build commits.
