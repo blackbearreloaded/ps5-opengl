@@ -119,3 +119,12 @@ the relevant layer-zero siblings, not every array/mip combination. The old
 depth-array shader lacks scalar selection; depth-mip-target also requires an
 invalid 3D depth texture. Do not use those unchanged as acceptance or relax their
 oracles. Mip staging and nonzero-layer stencil/4x checks remain separate gaps.
+
+- 2026-09-09 | G49 startup diagnostic | frame-0 clear 1,884.944ms versus steady 0.816ms; first window 112.22 FPS, pixels/cleanup/HDMI/health/unlock pass; not a cadence pass | results/g49-startup-1440-20260909/.
+
+Reuse the native preparation timestamps on video acquisition in one additional
+startup receipt. Separate setup, scanout flush, video acquisition/preparation,
+and command construction/flush, preserving the existing warmup exclusion only
+for steady averages. No new per-frame clocks, changed retries, initialization
+order, or acceptance. A separate G47-derived diagnostic changes only the runtime
+backend object; do not mix it into the clear-performance comparison.

@@ -901,6 +901,25 @@ static unsigned runtime_batch_profile_calls, runtime_batch_profile_failures;
 static uint64_t runtime_prepare_profile_ns[5];
 static unsigned runtime_prepare_profile_calls, runtime_prepare_profile_failures;
 
+/* Reuse existing timestamps: startup stays outside the steady-state averages,
+ * but inside the application's unchanged startup-inclusive timing window. */
+static void runtime_prepare_startup_report(const int64_t ticks[6],
+                                           unsigned attempts, int result)
+{
+    int valid = 1;
+    double ms[5] = {0};
+    for (unsigned i = 0; i < 6; ++i)
+        valid &= ticks[i] > 0 && (!i || ticks[i] >= ticks[i - 1]);
+    if (valid)
+        for (unsigned i = 0; i < 5; ++i)
+            ms[i] = (ticks[i + 1] - ticks[i]) * 1e-6;
+    printf("[ps5-prepare-startup] attempts=%u result=%d clock_valid=%d "
+           "setup_ms=%.6f scanout_flush_ms=%.6f video_ms=%.6f "
+           "command_ms=%.6f command_flush_ms=%.6f total_ms=%.6f\n",
+           attempts, result, valid, ms[0], ms[1], ms[2], ms[3], ms[4],
+           ms[0] + ms[1] + ms[2] + ms[3] + ms[4]);
+}
+
 static void runtime_prepare_profile_record(const int64_t ticks[6], int result)
 {
     for (unsigned i = 0; i < 6; ++i) {
@@ -3901,6 +3920,9 @@ cleanup:
 #endif
 #ifdef PS5_DRAW_PROFILE
     PS5_PROFILE_MARK(9);
+    if (video_open_attempts > 0)
+        runtime_prepare_startup_report(profile_ticks, video_open_attempts,
+                                       result || work_unmap_rc || work_release_rc);
     if (profile_preparation)
         runtime_prepare_profile_record(profile_ticks,
                                        result || work_unmap_rc || work_release_rc);

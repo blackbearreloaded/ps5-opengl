@@ -124,6 +124,12 @@ int main(void) {
     assert(!runtime_prepare_profile_calls && !runtime_prepare_profile_failures);
     for (unsigned i = 0; i < 5; ++i) assert(!runtime_prepare_profile_ns[i]);
     runtime_profile_report();
+    prepare_ticks[5] = 5000001;
+    runtime_prepare_startup_report(prepare_ticks, 1, 0);
+    runtime_prepare_startup_report(prepare_ticks, 3, -1);
+    prepare_ticks[5] = 0;
+    runtime_prepare_startup_report(prepare_ticks, 1, 0);
+    assert(!runtime_prepare_profile_calls && !runtime_prepare_profile_failures);
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:
@@ -132,7 +138,10 @@ with tempfile.TemporaryDirectory() as tmp:
     c.write_text(code)
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(c), "-o", str(exe)], check=True)
     output = subprocess.check_output([str(exe)], text=True)
-    assert len(output.splitlines()) == 4
+    assert len(output.splitlines()) == 7
+    assert "[ps5-prepare-startup] attempts=1 result=0 clock_valid=1 setup_ms=1.000000 scanout_flush_ms=2.000000 video_ms=0.000000 command_ms=1.000000 command_flush_ms=1.000000 total_ms=5.000000" in output
+    assert "[ps5-prepare-startup] attempts=3 result=-1 clock_valid=1" in output
+    assert "[ps5-prepare-startup] attempts=1 result=0 clock_valid=0 setup_ms=0.000000 scanout_flush_ms=0.000000 video_ms=0.000000 command_ms=0.000000 command_flush_ms=0.000000 total_ms=0.000000" in output
     assert "[ps5-prepare-perf] calls=2 failures=3 warmup_frames=30 setup_ms=1.000000 scanout_flush_ms=2.000000 video_ms=0.000000 command_ms=1.000000 command_flush_ms=1.000000 total_ms=5.000000" in output
     assert "[ps5-batch-perf] calls=2 failures=3 warmup_frames=30 sleeps=3 submit_ms=1.000000 suspend_ms=2.000000 poll_ms=3.000000 cleanup_ms=4.000000 total_ms=10.000000" in output
     assert "calls=2 failures=3 warmup_frames=30" in output
