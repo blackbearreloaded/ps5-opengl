@@ -50,6 +50,7 @@ test-multidraw:
 test-layered-mip:
 	bash tools/test-layered-mip-host.sh
 test-depth-targets:
+	python3 tests/ps5/test_framebuffer_layer_query.py
 	bash tools/test-depth-targets-host.sh
 test-staging:
 	python3 tests/ps5/test_depth_clear_fill.py

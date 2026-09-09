@@ -3,6 +3,18 @@ PS5 modifications by BlackBearReloaded, 2026.
 Upstream copyrights and per-file licenses remain unchanged.
 See THIRD_PARTY_NOTICES.md for source and license references.
 
+diff --git a/src/mesa/main/fbobject.c b/src/mesa/main/fbobject.c
+--- a/src/mesa/main/fbobject.c
++++ b/src/mesa/main/fbobject.c
+@@ -5036,7 +5036,7 @@ get_framebuffer_attachment_parameter(struct gl_context *ctx,
+                      _mesa_enum_to_string(pname));
+       } else if (att->Type == GL_TEXTURE) {
+          if (att->Texture && (att->Texture->Target == GL_TEXTURE_3D ||
+-             att->Texture->Target == GL_TEXTURE_2D_ARRAY)) {
++             _mesa_is_array_texture(att->Texture->Target))) {
+             *params = att->Zoffset;
+          }
+          else {
 diff --git a/src/gallium/include/pipe/p_state.h b/src/gallium/include/pipe/p_state.h
 --- a/src/gallium/include/pipe/p_state.h
 +++ b/src/gallium/include/pipe/p_state.h
