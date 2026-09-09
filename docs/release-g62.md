@@ -14,7 +14,7 @@ evidence; a different binary requires its own acceptance. No full CTS rerun.
   source provenance, all Core exports and relocated GL/SDL consumer links.
 - Run the existing compact CTS selection, ImGui window/offscreen and 3D checks
   on the frozen 4K runtime. Require all selected results and pixel/state oracles.
-- Run one 600-second normal ImGui session and three launch/exit cycles, each
+- Run one 120-second normal ImGui session and three launch/exit cycles, each
   with three EGL sessions. Require balanced tracked GPU allocations/mappings,
   no steady tracked memory growth, clean close and healthy services.
 - Run the matching SDL2 native smoke (180 frames/two pixel checks). No new
@@ -38,4 +38,4 @@ offline. No graphics ELF injection, settings changes or routine screenshots.
 
 ## Milestones
 
-- 2026-09-09 | G62 preparation | reused b42f771 runtime and 82-case evidence; release integration/stability/package checks pending.
+- 2026-09-09 | G62 preparation | reused b42f771 runtime and 82-case evidence; owner capped stability session at 120 seconds; remaining gates pending.
