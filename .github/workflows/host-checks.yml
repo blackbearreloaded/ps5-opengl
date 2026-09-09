@@ -13,3 +13,34 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Unit tests and published evidence integrity (no console)
         run: make test
+
+  staging:
+    name: CPU and software-OpenGL staging regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install host C, sanitizer and software EGL/GL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential clang-18 libasan8 libubsan1 libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri libglx-mesa0
+      - name: Fetch pinned graphics sources
+        run: python3 tools/fetch-sources.py
+      - name: CPU and software-OpenGL staging regressions (no console)
+        timeout-minutes: 10
+        env:
+          PS5_OPENGL_PREFIX: ${{ github.workspace }}/third_party/mesa-26.2.0
+          EGL_PLATFORM: surfaceless
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          LP_NUM_THREADS: '2'
+          MESA_GL_VERSION_OVERRIDE: '3.3'
+          MESA_GLSL_VERSION_OVERRIDE: '330'
+          MESA_SHADER_CACHE_DISABLE: 'true'
+          UBSAN_OPTIONS: halt_on_error=1
+        run: |
+          unset LD_LIBRARY_PATH LD_PRELOAD LIBGL_DRIVERS_PATH
+          unset MESA_LOADER_DRIVER_OVERRIDE __EGL_VENDOR_LIBRARY_FILENAMES __EGL_VENDOR_LIBRARY_DIRS
+          make test-staging

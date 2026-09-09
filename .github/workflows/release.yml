@@ -36,7 +36,7 @@ jobs:
           sudo install -m 0644 "$RUNNER_TEMP/llvm.asc" /usr/share/keyrings/llvm.asc
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-21 main' | sudo tee /etc/apt/sources.list.d/llvm21.list
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y build-essential clang-18 lld-18 clang-21 lld-21 llvm-21-dev cmake ninja-build pkg-config python3-venv glslang-tools spirv-tools bison flex unzip
+          sudo apt-get install --no-install-recommends -y build-essential clang-18 lld-18 clang-21 lld-21 llvm-21-dev cmake ninja-build pkg-config python3-venv glslang-tools spirv-tools bison flex unzip libasan8 libubsan1 libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri libglx-mesa0
           python3 -m venv "$RUNNER_TEMP/build-tools"
           "$RUNNER_TEMP/build-tools/bin/pip" install meson==1.10.1 Mako==1.3.10 PyYAML==6.0.2 packaging==25.0
           echo "$RUNNER_TEMP/build-tools/bin" >> "$GITHUB_PATH"
@@ -53,6 +53,22 @@ jobs:
         run: make test
       - name: Fetch pinned graphics and example sources
         run: python3 tools/fetch-sources.py --sokol-samples
+      - name: CPU and software-OpenGL staging regressions (no console)
+        timeout-minutes: 10
+        env:
+          PS5_OPENGL_PREFIX: ${{ github.workspace }}/third_party/mesa-26.2.0
+          EGL_PLATFORM: surfaceless
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          LP_NUM_THREADS: '2'
+          MESA_GL_VERSION_OVERRIDE: '3.3'
+          MESA_GLSL_VERSION_OVERRIDE: '330'
+          MESA_SHADER_CACHE_DISABLE: 'true'
+          UBSAN_OPTIONS: halt_on_error=1
+        run: |
+          unset LD_LIBRARY_PATH LD_PRELOAD LIBGL_DRIVERS_PATH
+          unset MESA_LOADER_DRIVER_OVERRIDE __EGL_VENDOR_LIBRARY_FILENAMES __EGL_VENDOR_LIBRARY_DIRS
+          make test-staging
       - name: Select fresh build profile
         env:
           SDK_PROFILE: ${{ inputs.profile || '1080p60' }}

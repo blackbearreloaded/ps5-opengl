@@ -4993,8 +4993,10 @@ ps5_resolve_color_msaa4(struct pipe_context *context,
           info->dst.box.width, info->dst.box.height);
 }
 
-/* Restrict a local resource copy to one tiled layer; retain the original layer
- * index at the offset callers for the depth/stencil slice XOR. */
+/* Restrict a local resource copy to one subresource. Mip-chain depth images
+ * keep canonical linear pixels: completed draws copy tiled scratch back there.
+ * Do not reuse scratch here: two levels of the same texture share that storage.
+ * Tiled offsets still need the original layer index for the slice XOR. */
 static bool
 ps5_depth_blit_layer(struct ps5_resource *resource, unsigned level, int layer,
                      unsigned mask)
@@ -5002,13 +5004,52 @@ ps5_depth_blit_layer(struct ps5_resource *resource, unsigned level, int layer,
    const unsigned samples = resource->base.nr_samples;
    size_t depth_size, stencil_size;
 
-   if (level || resource->base.last_level || layer < 0 ||
+   if (level > resource->base.last_level ||
+       level >= ARRAY_SIZE(resource->level_offset) || level >= 32 || layer < 0 ||
        !resource->base.width0 || !resource->base.height0 ||
-       (resource->base.target != PIPE_TEXTURE_2D &&
-        resource->base.target != PIPE_TEXTURE_2D_ARRAY) ||
+       !ps5_depth_render_target(resource->base.target) ||
+       resource->base.target == PIPE_TEXTURE_3D ||
        (unsigned)layer >= resource->base.array_size ||
-       (resource->base.target == PIPE_TEXTURE_2D && layer) ||
+       ((resource->base.target == PIPE_TEXTURE_1D ||
+         resource->base.target == PIPE_TEXTURE_2D) && layer) ||
        (samples > 1 && samples != 4))
+      return false;
+   if (resource->depth_staging_size) {
+      const bool packed = resource->base.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT;
+      const unsigned pixel_size = packed ? 8 : 4;
+      const unsigned width = MAX2(resource->base.width0 >> level, 1u);
+      const unsigned height = MAX2(resource->base.height0 >> level, 1u);
+      const size_t stride = resource->level_stride[level];
+      size_t offset, span;
+
+      if (samples > 1 || !resource->data ||
+          (resource->base.format != PIPE_FORMAT_Z32_FLOAT && !packed) ||
+          ((mask & PIPE_MASK_S) && !packed) ||
+          !resource->layer_stride || resource->layer_stride > resource->size ||
+          stride < (uint64_t)width * pixel_size ||
+          stride > SIZE_MAX / height ||
+          (size_t)(unsigned)layer > resource->size / resource->layer_stride)
+         return false;
+      offset = (size_t)(unsigned)layer * resource->layer_stride;
+      span = (height - 1u) * stride + (size_t)width * pixel_size;
+      if (resource->level_offset[level] > resource->layer_stride ||
+          span > resource->layer_stride - resource->level_offset[level] ||
+          resource->level_offset[level] > resource->size - offset)
+         return false;
+      offset += resource->level_offset[level];
+      if (span > resource->size - offset || offset > resource->allocation_size ||
+          span > resource->allocation_size - offset)
+         return false;
+      resource->data += offset;
+      resource->allocation_size = span;
+      resource->stencil_data = packed ? resource->data + sizeof(float) : NULL;
+      resource->stencil_allocation_size = packed ? span - sizeof(float) : 0;
+      resource->base.width0 = width;
+      resource->base.height0 = height;
+      resource->level_stride[0] = stride;
+      return true;
+   }
+   if (level || resource->base.last_level)
       return false;
    depth_size = ps5_tiled_depth_surface_size(
       resource->base.width0, resource->base.height0, samples);
@@ -5032,6 +5073,20 @@ ps5_depth_blit_layer(struct ps5_resource *resource, unsigned level, int layer,
       resource->stencil_allocation_size = stencil_size;
    }
    return true;
+}
+
+static size_t
+ps5_depth_blit_offset(const struct ps5_resource *resource, unsigned x, unsigned y,
+                       unsigned sample, unsigned layer, bool stencil)
+{
+   if (resource->depth_staging_size)
+      return (size_t)y * resource->level_stride[0] + (size_t)x *
+         (resource->base.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ? 8u : 4u);
+   if (resource->base.nr_samples == 4)
+      return stencil ? ps5_tiled_stencil_msaa4_offset(x, y, sample, resource->base.width0, layer)
+                     : ps5_tiled_depth_msaa4_offset(x, y, sample, resource->base.width0, layer);
+   return stencil ? ps5_tiled_stencil_offset(x, y, resource->base.width0, layer)
+                  : ps5_tiled_depth_offset(x, y, resource->base.width0, layer);
 }
 
 static void
@@ -5109,24 +5164,10 @@ ps5_resolve_depth_stencil_msaa4(struct pipe_context *context,
    if (info->render_condition_enable && !ps5_render_condition_passes(ps5))
       return;
 
-   source_depth_size = ps5_tiled_depth_surface_size(
-      source->base.width0, source->base.height0, 4);
-   destination_depth_size = ps5_tiled_depth_surface_size(
-      destination->base.width0, destination->base.height0, 1);
-   source_stencil_size = ps5_tiled_stencil_surface_size_samples(
-      source->base.width0, source->base.height0, 4);
-   destination_stencil_size = ps5_tiled_stencil_surface_size_samples(
-      destination->base.width0, destination->base.height0, 1);
-   if (((info->mask & PIPE_MASK_Z) &&
-        (source->allocation_size < source_depth_size ||
-         destination->allocation_size < destination_depth_size)) ||
-       ((info->mask & PIPE_MASK_S) &&
-        (!source->stencil_data || !destination->stencil_data ||
-         source->stencil_allocation_size < source_stencil_size ||
-         destination->stencil_allocation_size < destination_stencil_size))) {
-      printf("[ps5-gallium] msaa4-resolve depth-stencil rejected\n");
-      return;
-   }
+   source_depth_size = source->allocation_size;
+   destination_depth_size = destination->allocation_size;
+   source_stencil_size = source->stencil_allocation_size;
+   destination_stencil_size = destination->stencil_allocation_size;
 
    ps5_blit_scissor_bounds(info, &min_x, &min_y, &max_x, &max_y);
    if (info->mask & PIPE_MASK_Z)
@@ -5146,10 +5187,10 @@ ps5_resolve_depth_stencil_msaa4(struct pipe_context *context,
              dst_y < min_y || dst_y >= max_y)
             continue;
          if (info->mask & PIPE_MASK_Z) {
-            size_t src_offset = ps5_tiled_depth_msaa4_offset(
-               source_x, source_y, 0, source->base.width0, info->src.box.z);
-            size_t dst_offset = ps5_tiled_depth_offset(
-               dst_x, dst_y, destination->base.width0, info->dst.box.z);
+            size_t src_offset = ps5_depth_blit_offset(
+               source, source_x, source_y, 0, info->src.box.z, false);
+            size_t dst_offset = ps5_depth_blit_offset(
+               destination, dst_x, dst_y, 0, info->dst.box.z, false);
 
             if (src_offset > source_depth_size ||
                 source_depth_size - src_offset < sizeof(float) ||
@@ -5160,10 +5201,10 @@ ps5_resolve_depth_stencil_msaa4(struct pipe_context *context,
                    source->data + src_offset, sizeof(float));
          }
          if (info->mask & PIPE_MASK_S) {
-            size_t src_offset = ps5_tiled_stencil_msaa4_offset(
-               source_x, source_y, 0, source->base.width0, info->src.box.z);
-            size_t dst_offset = ps5_tiled_stencil_offset(
-               dst_x, dst_y, destination->base.width0, info->dst.box.z);
+            size_t src_offset = ps5_depth_blit_offset(
+               source, source_x, source_y, 0, info->src.box.z, true);
+            size_t dst_offset = ps5_depth_blit_offset(
+               destination, dst_x, dst_y, 0, info->dst.box.z, true);
 
             if (src_offset >= source_stencil_size ||
                 dst_offset >= destination_stencil_size)
@@ -5240,24 +5281,10 @@ ps5_replicate_depth_stencil_msaa4(struct pipe_context *context,
    if (info->render_condition_enable && !ps5_render_condition_passes(ps5))
       return;
 
-   source_depth_size = ps5_tiled_depth_surface_size(
-      source->base.width0, source->base.height0, 1);
-   destination_depth_size = ps5_tiled_depth_surface_size(
-      destination->base.width0, destination->base.height0, 4);
-   source_stencil_size = ps5_tiled_stencil_surface_size_samples(
-      source->base.width0, source->base.height0, 1);
-   destination_stencil_size = ps5_tiled_stencil_surface_size_samples(
-      destination->base.width0, destination->base.height0, 4);
-   if (((info->mask & PIPE_MASK_Z) &&
-        (source->allocation_size < source_depth_size ||
-         destination->allocation_size < destination_depth_size)) ||
-       ((info->mask & PIPE_MASK_S) &&
-        (!source->stencil_data || !destination->stencil_data ||
-         source->stencil_allocation_size < source_stencil_size ||
-         destination->stencil_allocation_size < destination_stencil_size))) {
-      printf("[ps5-gallium] msaa4-replicate depth-stencil rejected\n");
-      return;
-   }
+   source_depth_size = source->allocation_size;
+   destination_depth_size = destination->allocation_size;
+   source_stencil_size = source->stencil_allocation_size;
+   destination_stencil_size = destination->stencil_allocation_size;
 
    ps5_blit_scissor_bounds(info, &min_x, &min_y, &max_x, &max_y);
    if (info->mask & PIPE_MASK_Z)
@@ -5277,22 +5304,22 @@ ps5_replicate_depth_stencil_msaa4(struct pipe_context *context,
              dst_y < min_y || dst_y >= max_y)
             continue;
          if (info->mask & PIPE_MASK_Z) {
-            src_depth_offset = ps5_tiled_depth_offset(
-               src_x, src_y, source->base.width0, info->src.box.z);
+            src_depth_offset = ps5_depth_blit_offset(
+               source, src_x, src_y, 0, info->src.box.z, false);
             if (src_depth_offset > source_depth_size ||
                 source_depth_size - src_depth_offset < sizeof(float))
                return;
          }
          if (info->mask & PIPE_MASK_S) {
-            src_stencil_offset = ps5_tiled_stencil_offset(
-               src_x, src_y, source->base.width0, info->src.box.z);
+            src_stencil_offset = ps5_depth_blit_offset(
+               source, src_x, src_y, 0, info->src.box.z, true);
             if (src_stencil_offset >= source_stencil_size)
                return;
          }
          for (unsigned sample = 0; sample < 4; ++sample) {
             if (info->mask & PIPE_MASK_Z) {
-               size_t dst_offset = ps5_tiled_depth_msaa4_offset(
-                  dst_x, dst_y, sample, destination->base.width0, info->dst.box.z);
+               size_t dst_offset = ps5_depth_blit_offset(
+                  destination, dst_x, dst_y, sample, info->dst.box.z, false);
 
                if (dst_offset > destination_depth_size ||
                    destination_depth_size - dst_offset < sizeof(float))
@@ -5301,8 +5328,8 @@ ps5_replicate_depth_stencil_msaa4(struct pipe_context *context,
                       source->data + src_depth_offset, sizeof(float));
             }
             if (info->mask & PIPE_MASK_S) {
-               size_t dst_offset = ps5_tiled_stencil_msaa4_offset(
-                  dst_x, dst_y, sample, destination->base.width0, info->dst.box.z);
+               size_t dst_offset = ps5_depth_blit_offset(
+                  destination, dst_x, dst_y, sample, info->dst.box.z, true);
 
                if (dst_offset >= destination_stencil_size)
                   return;
@@ -5361,21 +5388,9 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
          (struct ps5_resource *)info->src.resource;
       struct ps5_resource *destination =
          (struct ps5_resource *)info->dst.resource;
-      const unsigned source_width = source ? source->base.width0 : 0;
-      const unsigned source_height = source ? source->base.height0 : 0;
-      const unsigned destination_width =
-         destination ? destination->base.width0 : 0;
-      const unsigned destination_height =
-         destination ? destination->base.height0 : 0;
-      const size_t source_depth_size =
-         ps5_tiled_surface_size(source_width, source_height);
-      const size_t destination_depth_size =
-         ps5_tiled_surface_size(destination_width, destination_height);
-      const size_t source_stencil_size =
-         ps5_tiled_stencil_surface_size(source_width, source_height);
-      const size_t destination_stencil_size =
-         ps5_tiled_stencil_surface_size(destination_width,
-                                        destination_height);
+      unsigned source_width, source_height, destination_width, destination_height;
+      size_t source_depth_size, destination_depth_size;
+      size_t source_stencil_size, destination_stencil_size;
       const bool packed = source &&
          source->base.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT;
       unsigned source_box_width = 0;
@@ -5409,18 +5424,18 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
           destination->base.nr_samples > 1 || info->dst_sample ||
           info->sample0_only ||
           info->swizzle_enable || info->num_window_rectangles ||
-          info->alpha_blend || info->filter != PIPE_TEX_FILTER_NEAREST ||
-          ((info->mask & PIPE_MASK_Z) &&
-           (source->allocation_size < source_depth_size ||
-            destination->allocation_size < destination_depth_size)) ||
-          ((info->mask & PIPE_MASK_S) &&
-           (!source->stencil_data || !destination->stencil_data ||
-            source->stencil_allocation_size < source_stencil_size ||
-            destination->stencil_allocation_size <
-               destination_stencil_size))) {
+          info->alpha_blend || info->filter != PIPE_TEX_FILTER_NEAREST) {
          printf("[ps5-gallium] software-blit depth-stencil rejected\n");
          return;
       }
+      source_width = source->base.width0;
+      source_height = source->base.height0;
+      destination_width = destination->base.width0;
+      destination_height = destination->base.height0;
+      source_depth_size = source->allocation_size;
+      destination_depth_size = destination->allocation_size;
+      source_stencil_size = source->stencil_allocation_size;
+      destination_stencil_size = destination->stencil_allocation_size;
       source_box_width = info->src.box.width < 0
                             ? (unsigned)-info->src.box.width
                             : (unsigned)info->src.box.width;
@@ -5477,10 +5492,10 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
                sx = source_box_width - 1u - sx;
             src_px = (unsigned)source_x + sx;
             if (info->mask & PIPE_MASK_Z) {
-               size_t src_offset = ps5_tiled_depth_offset(
-                  src_px, src_py, source_width, info->src.box.z);
-               size_t dst_offset = ps5_tiled_depth_offset(
-                  dst_px, dst_py, destination_width, info->dst.box.z);
+               size_t src_offset = ps5_depth_blit_offset(
+                  source, src_px, src_py, 0, info->src.box.z, false);
+               size_t dst_offset = ps5_depth_blit_offset(
+                  destination, dst_px, dst_py, 0, info->dst.box.z, false);
 
                if (src_offset > source_depth_size ||
                    source_depth_size - src_offset < sizeof(float) ||
@@ -5493,10 +5508,10 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
                        source->data + src_offset, sizeof(float));
             }
             if (info->mask & PIPE_MASK_S) {
-               size_t src_offset = ps5_tiled_stencil_offset(
-                  src_px, src_py, source_width, info->src.box.z);
-               size_t dst_offset = ps5_tiled_stencil_offset(
-                  dst_px, dst_py, destination_width, info->dst.box.z);
+               size_t src_offset = ps5_depth_blit_offset(
+                  source, src_px, src_py, 0, info->src.box.z, true);
+               size_t dst_offset = ps5_depth_blit_offset(
+                  destination, dst_px, dst_py, 0, info->dst.box.z, true);
 
                if (src_offset >= source_stencil_size ||
                    dst_offset >= destination_stencil_size) {
