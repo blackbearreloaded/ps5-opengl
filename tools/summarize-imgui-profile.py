@@ -13,7 +13,8 @@ import re
 
 def summarize(text, host=False, submit_profile=False, deferred_batches=False, present_profile=False,
               clear_batches=False, soak=False, window_target=None, window_height=1080,
-              output_status=False, prepare_profile=False, soak_seconds=300, soak_target=60):
+              output_status=False, prepare_profile=False, soak_seconds=300, soak_target=60,
+              strict_soak_fps=True):
     def require(ok, message):
         if not ok:
             raise ValueError(message)
@@ -68,10 +69,11 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
         points.append((frames + warmup, float(soak_seconds)))
         fps = [(n1 - n0) / (t1 - t0) for (n0, t0), (n1, t1) in zip(points, points[1:])]
         low, high = 59.0 * soak_target / 60, 60.5 * soak_target / 60
-        require(all(low <= rate <= high for rate in fps) and values["cpu_wall_ms"] <= 1000 / low,
+        target_met = all(low <= rate <= high for rate in fps) and values["cpu_wall_ms"] <= 1000 / low
+        require(target_met or not strict_soak_fps,
                 f"sustained {soak_target} Hz performance target not met")
         report["soak"] = dict(seconds=soak_seconds, target_fps=soak_target,
-                              window_fps=fps, pixel_probes=len(probes))
+                              target_met=target_met, window_fps=fps, pixel_probes=len(probes))
     if deferred_batches or clear_batches:
         chunks = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)
         native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
@@ -355,6 +357,8 @@ def self_test():
                                                "swap_ms=2.342 cpu_wall_ms=8.342")
     hfr = re.sub(r"frame=(\d+)", lambda m: f"frame={int(m[1]) * (2 if int(m[1]) > 10 else 1)}", hfr)
     assert summarize(hfr, soak=True, soak_seconds=600, soak_target=120)["soak"]["window_fps"] == [120.0] * 20
+    missed = summarize(longer, soak=True, soak_seconds=600, soak_target=120, strict_soak_fps=False)
+    assert missed["soak"]["target_met"] is False and missed["soak"]["window_fps"] == [60.0] * 20
     for bad, target in ((hfr, 60), (longer, 120), (hfr, 119),
                         (hfr.replace("frame=3600 elapsed=30.0", "frame=1800 elapsed=30.0"), 120)):
         try:
@@ -371,6 +375,13 @@ def self_test():
         except ValueError:
             continue
         raise AssertionError("Invalid soak accepted")
+    try:
+        summarize(soak_text.replace("readback frame=1800", "readback frame=1801"),
+                  soak=True, strict_soak_fps=False)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Reporting a cadence miss bypassed pixel coverage checks")
     for bad in (gpu_present * 2, gpu_present.replace("128", "127"), gpu_present.replace("128", "130")):
         try:
             summarize(text + bad)
@@ -480,6 +491,8 @@ if __name__ == "__main__":
     parser.add_argument("--soak-seconds", type=int, default=300)
     parser.add_argument("--soak-target", type=int, choices=(60, 120), default=60,
                         help="Required sustained cadence; does not validate HDMI output")
+    parser.add_argument("--report-cadence-miss", action="store_true",
+                        help="Report soak target_met=false instead of rejecting slow cadence; retains all correctness checks")
     parser.add_argument("--window-target", type=int, choices=(30, 60, 90, 120))
     parser.add_argument("--window-height", type=int, choices=(1080, 1440, 2160), default=1080)
     parser.add_argument("--output-status", action="store_true")
@@ -493,4 +506,5 @@ if __name__ == "__main__":
         print(json.dumps(summarize(args.receipt.read_text(), args.host, args.submit_profile,
                                    args.deferred_batches, args.present_profile, args.clear_batches, args.soak,
                                    args.window_target, args.window_height, args.output_status,
-                                   args.prepare_profile, args.soak_seconds, args.soak_target), indent=2))
+                                   args.prepare_profile, args.soak_seconds, args.soak_target,
+                                   not args.report_cadence_miss), indent=2))
