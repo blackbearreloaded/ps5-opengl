@@ -169,6 +169,20 @@ G62 = {name: dict(runtime=None, sdk=None, archive=None, sdl_receipt=None,
                  guide="release-g62.md", version=f"0.2.0-{name}-sdl2",
                  qualification="host-only" if name == "1440p120" else "native-sampled")
        for name in ("1440p120", "2160p120")}
+G62["1440p120"].update(
+    runtime="eb4b1b705fcdcc59d68c8275b1c4a02ec8781c91",
+    sdk="52f867d4ded1894175e51a9a97ebf59c87b6cb11356bbc5bc3446fa5111d625f",
+    archive="a1c4f5c1d0185aeb2090765ff336416b824c3b712ede234633a2de6aead545ae",
+    sdl_receipt="485404ff320923e0deb6ee8ec62cb38ffd5bb66b2e6e4a0a3dd87fd3908ebe96",
+    sdl_source="eb4b1b705fcdcc59d68c8275b1c4a02ec8781c91",
+    evidence="29fa4e602492f172b0a8b8552aa2910506e86dfb42e2aef496f547d303ef41d7")
+G62["2160p120"].update(
+    runtime="eb4b1b705fcdcc59d68c8275b1c4a02ec8781c91",
+    sdk="6778637f060904653a75d66b5e3eead872520d3d93e9980c9c383723999de5a5",
+    archive="c3310041e2fdb71f9d5ed0c5a4c07c1d8d778af1492937c8f7cc4ee5ee55752b",
+    sdl_receipt="8a93c99f0860a9d53c9096b90c28bd4a3124706124763fc5ecdd4ccb69393c14",
+    sdl_source="eb4b1b705fcdcc59d68c8275b1c4a02ec8781c91",
+    evidence="674fed05f367d353821e7b5f63d62a9dc4a504bddeed4d150dc70cf469161674")
 
 
 def verify_g47_derivative(path, sdk, name):

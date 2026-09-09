@@ -27,9 +27,25 @@ complete sources, examples, licenses, checksums and exact-binary provenance.
 
 | SDK | Display profile | Acceptance for the downloaded binaries |
 | --- | --- | --- |
+| [SDK 0.2.0 — optimized release](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.2.0) | Separate **4K120** and **1440p120** archives | 4K: 202/202 sampled CTS executions, 82 GPU cases and bounded app/lifecycle checks; 1440p: host-checked only |
 | [G55 depth-fix preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g55-hfr-sdl2-focused) | Separate **4K120** and **1440p120** archives | 4K: six focused native checks; 1440p: host-checked only. Corrected depth/stencil mip blits and packed mip clears; no new CTS campaign |
 | [G47 HFR preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g47-hfr-sdl2-focused) | Separate **1440p120** and **4K120** archives | Fresh ImGui timing/pixels, SDL functional checks and native HDMI logs; no new CTS campaign |
 | [G25 + SDL2 preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260908-g25-sdl2-sampled) | **1080p60** | 204/204 sampled executions, matched offscreen/3D profiles, bounded memory/lifecycle and SDL checks |
+
+**SDK 0.2.0, September 9:** eligible blits/resolves, clears, additional color
+formats and mip/layer paths now use GPU-native operations. The final 4K runtime
+passed **202/202 sampled CTS executions**, **82 focused GPU cases** and SDL
+checks. ImGui window/offscreen workloads reached **119.883/119.897 FPS**; the
+128-cube ordinary/instanced workloads reached **58.09/117.41 completed FPS**.
+These are short workload measurements, not arbitrary-game guarantees.
+
+A **two-minute** session showed no steady tracked memory growth; its first
+30-second window reached 113.6 FPS, then 119.83–119.87 FPS. Memory acceptance
+passes but startup-inclusive cadence remains a partial pass. Three paced
+launch/exit cycles passed nine EGL sessions and 54 pixel checks. The
+[0.2.0 release guide](docs/release-g62.md) records exact binary identities,
+sample deferrals, display qualification and remaining limits. No full CTS
+campaign, ten-minute test or duplicate 1440p console run is claimed for 0.2.0.
 
 **Earlier G47 qualification, September 9:** the frozen G47 ImGui apps measured
 **119.880 FPS at 2560×1440** and **119.879 FPS at 3840×2160**, for 30 seconds
@@ -86,7 +102,7 @@ stability results remain in [Performance](docs/performance.md) and
 > The companion repository records the shader toolchain, GPU-visible memory,
 > command submission, synchronization, and presentation findings that informed
 > this OpenGL implementation, alongside related general-purpose GPU compute
-> research. Repository access may be required.
+> research.
 
 ## What is included
 

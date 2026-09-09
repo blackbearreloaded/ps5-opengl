@@ -1,4 +1,10 @@
-# G56–G61: GPU transfer and clear optimizations (local)
+# G56–G61: GPU transfer and clear optimization history
+
+The [SDK 0.2.0 release](release-g62.md) incorporates these optimizations and a
+later depth-only framebuffer fix. Its final runtime independently passed all
+82 focused GPU cases and 202 sampled CTS executions. The paired timings and
+local-only milestones below retain their original binaries and scope; the
+older G55 downloads are unchanged.
 
 G56 control: the unchanged G55 2160p SDK. Change only `ps5_screen.o`: reuse Mesa's
 blitter for sufficiently large, nearest, unscaled RGBA8 copies between distinct

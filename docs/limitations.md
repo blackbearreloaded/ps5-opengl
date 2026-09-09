@@ -1,6 +1,34 @@
 # Known limitations
 
-## Current G55 release — September 9, 2026
+## Current SDK 0.2.0 — September 9, 2026
+
+The [0.2.0 release](release-g62.md) has 202 sampled CTS passes, 82 focused GPU
+cases and bounded application/lifecycle qualification on its final 4K runtime.
+It is still experimental, not Khronos certified or exhaustively stable.
+The 1440p archive is host-checked only; it does not inherit 4K hardware results.
+
+- **Performance:** eligible GPU transfer/clear and native format/mip/layer paths
+  are optimized; other operations retain CPU fallbacks and synchronous waits.
+  Final 4K ImGui window/offscreen workloads reached about 119.88 FPS, while
+  128 cubes reached 58.09/117.41 completed FPS for ordinary/instanced draws.
+  These are workload-specific results, not a general 120-FPS guarantee.
+- **Bounded stability:** the two-minute session had no steady tracked heap/GPU
+  growth and balanced GPU allocations. Its first-window 113.6 FPS is a cadence
+  partial pass. Three lifecycle runs passed with five-second inter-session
+  gaps; earlier immediate recreation produced HDMI reconnects. Rapid HFR mode
+  churn, multi-hour sessions, suspend/resume, device-loss recovery, exhaustive
+  OOM, foreign heaps and process RSS remain unqualified.
+- **Verification and portability:** the 202-case sample explicitly defers two
+  extreme-axis executions whose earlier single-case runtimes exceeded 120
+  seconds. This is not the historical full campaign. No new independent TV or
+  controller qualification, broader SDL platform support, GLFW integration or
+  other-firmware coverage is inferred. Existing applications still require
+  platform adaptation.
+
+These are explicit release boundaries, not an ever-growing list of required
+work before distributing this experimental SDK.
+
+## Earlier G55 release — September 9, 2026
 
 The [G55 release](sdk-g55-release.md) fixes mip-chain depth/stencil blits and
 packed mip clears. Its final 4K GL/SDL pair passed six focused native checks;
@@ -50,7 +78,7 @@ Neither is a new full CTS campaign or a guarantee of arbitrary application compa
 
 The records below preserve earlier identities; figures such as the baseline's
 20-FPS demo, old offscreen copies and busy-unregister warning are not a statement
-that the current G47 paths still have those measured limitations. Current
+that the current SDK still has those measured limitations. Current
 qualification is summarized above; detailed comparisons are in [Performance](performance.md).
 
 The September 7 Core 3.3 campaign and final SDK consumer checks are complete

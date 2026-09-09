@@ -1,8 +1,25 @@
 # Performance
 
-Latest local GPU transfer/clear optimizations (G56–G61) have
-[focused native qualification](gpu-blit-performance.md#final-focused-qualification--september-9-2026).
-They are not included in the published G55 SDKs. Earlier CPU-clear measurements
+The [SDK 0.2.0 qualification](release-g62.md) combines the G56–G61 GPU
+transfer/clear optimizations with a depth-only framebuffer bounds fix. Its
+final 4K runtime has fresh exact-binary checks, not inherited G55 acceptance:
+
+| Final 4K workload | Completed FPS | Measurement |
+| --- | ---: | --- |
+| ImGui window | 119.883 | 30 seconds; native 2160p119.88 HDMI and restoration |
+| ImGui offscreen, case 11 | 119.897 | 30 seconds; frame p95 9.137 ms |
+| 128 cubes, ordinary draws | 58.09 | 30 seconds |
+| 128 cubes, instanced draws | 117.41 | 30 seconds |
+
+The 120-second normal-session windows measured 113.6, 119.867, 119.833 and
+119.867 FPS: tracked memory passed, but startup-inclusive cadence remains
+partial. Three paced lifecycle runs passed nine EGL sessions. HDMI negotiation
+logs are not independent per-frame TV measurements; these workloads do not
+predict full-game performance. 1440p is host-checked only for this release.
+
+The [paired optimization history](gpu-blit-performance.md) retains its separate
+runtime hashes and shorter copy timings. These changes are not in the older
+G55 downloads. Earlier CPU-clear measurements
 remain [below](#local-clear-optimization-and-startup-diagnosis-g48g49-unreleased).
 Released high-resolution workload checks retain their [separate identities](#release-derivative-high-resolution-checks-g47-local).
 The earlier G13 native storage reuse for

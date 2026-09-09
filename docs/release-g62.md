@@ -1,64 +1,151 @@
-# G62 release consolidation
+# SDK 0.2.0 — optimized GL/SDL2 release
 
-Complete a scoped stable 0.x release using the G57–G61 optimized runtime.
-Freeze graphics behavior before qualifying it. Reuse exact-binary
-evidence; a different binary requires its own acceptance. No full CTS rerun.
+September 9, 2026. G62 consolidates the GPU blit/resolve, clear, color-format
+and mip/layer optimizations with a depth-only framebuffer bounds fix. It is a
+scoped experimental release, **not Khronos certification, a new full CTS
+campaign or a universal stability guarantee**.
 
-## Frozen inputs and acceptance
+## Downloads and use
 
-- Corrected 4K runtime source: `eb4b1b705fcdcc59d68c8275b1c4a02ec8781c91`.
-- Corrected runtime SHA-256: `c3310041e2fdb71f9d5ed0c5a4c07c1d8d778af1492937c8f7cc4ee5ee55752b`.
-- Rerun the same [82 focused GPU cases](gpu-blit-performance.md#final-focused-qualification--september-9-2026)
-  on these new bytes; the earlier runtime's acceptance is not inherited.
-- Build the matching 1440p profile and SDL2 pairs; verify complete manifests,
-  source provenance, all Core exports and relocated GL/SDL consumer links.
-- Run 202 compact CTS executions: all 51 smoke cases on the two ordinary-sized
-  targets, and 50 each on the two extreme-axis targets. Defer only the latter
-  two `multisampled_to_singlesampled_blit_color_config_test` executions because
-  their previous single-case times exceeded the owner's 120-second bound.
-  This is a new explicitly scoped sample, not the historical 204-case gate.
-  Run ImGui window/offscreen and 3D checks on the same frozen 4K runtime.
-  Require all selected results and pixel/state oracles.
-- Run one 120-second normal ImGui session and three launch/exit cycles, each
-  with three EGL sessions and five-second inter-session settling. Require balanced tracked GPU allocations/mappings,
-  no steady tracked memory growth, clean close and healthy services.
-- Run the matching SDL2 native smoke (180 frames/two pixel checks). No new
-  physical-input or independent TV qualification is inferred.
-- Package verified bytes, sources, notices, checksums and scoped evidence.
-  Check a fresh extraction and its consumers before publishing new assets.
+The [0.2.0 release](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.2.0)
+provides two separate fixed-profile archives and SHA-256 sidecars:
 
-The owner requires only 4K hardware qualification; 1440p remains explicitly
-host-checked. Full-profile/GLFW portability, multi-hour sessions, suspend/resume,
-device-loss recovery, exhaustive allocation pressure and other firmware are
-outside this release claim. CPU fallbacks are not missing API functionality.
+| Archive | Exact-binary qualification |
+| --- | --- |
+| `ps5-opengl-sdk-0.2.0-2160p120-sdl2.tar.gz` | 4K native sample, focused GPU and bounded application/lifecycle checks below |
+| `ps5-opengl-sdk-0.2.0-1440p120-sdl2.tar.gz` | Host-checked only; no new 1440p console acceptance |
 
-The two immediate-recreation lifecycle attempts passed rendering, memory and
-close but recorded HDMI disconnect/reconnect events. They are preserved and
-not accepted for display qualification. With only a five-second gap between
-sessions, all three replacement cycles passed the unchanged display check.
-This supports a rapid mode-switch timing explanation, not a proven minimum
-settling time or device-loss recovery. The delay belongs to the lifecycle
-example, not to the GL runtime or steady rendering. Rapid HFR mode churn remains
-outside the release claim.
+Each includes compiled GL/EGL and SDL2 libraries, headers, Make/pkg-config/CMake
+metadata, complete project/dependency sources, examples, licenses, checksums
+and reconstructed validation/provenance. Do not mix libraries between profiles.
+An already configured native homebrew environment and the pinned external
+toolchain/title boilerplate remain prerequisites; no console enablement,
+proprietary runtime modules or native title assets are distributed here.
 
-## Console protocol
+For example, verify the downloaded 4K archive and every extracted file:
 
-Use the existing PPSA99005 native folder and WSL on the owner-configured
-firmware-6.02 console. Acquire the exact-token lock for each bounded cycle,
-verify idle/services/files, capture numerical and lifecycle evidence, close
-the exact title, verify health and release only that token. Stop on any
-functional/lifecycle/health failure; preserve the receipt and investigate
-offline. No graphics ELF injection, settings changes or routine screenshots.
+```sh
+sha256sum --check ps5-opengl-sdk-0.2.0-2160p120-sdl2.tar.gz.sha256
+tar -xzf ps5-opengl-sdk-0.2.0-2160p120-sdl2.tar.gz
+cd ps5-opengl-sdk-0.2.0-2160p120-sdl2
+sha256sum --check SHA256SUMS
+(cd sdk && sha256sum --check manifest.sha256)
+(cd sdl2 && sha256sum --check manifest.sha256)
+```
 
-## Milestones
+Follow [Building](building.md), the [SDL2 bridge](../integration/SDL2/README.md)
+and the included examples for integration. The bridge supports one fixed
+window and one unshared Core 3.3 context, not a complete SDL platform.
+Existing G25/G47/G55 releases retain their own identities and acceptance.
 
-- 2026-09-09 | G62 preparation | reused b42f771 runtime and 82-case evidence; owner capped stability session at 120 seconds; remaining gates pending.
-- 2026-09-09 | G62 SDL | dccc5af | 4K | pass: matched SDL2, 180 frames/two probes, HDMI/restoration, clean/healthy/unlocked | results/g62-sdl-2160-20260909-v1.
-- 2026-09-09 | G62 integrations | daa29c5 | 4K | pass: ImGui window 119.882 FPS, offscreen 119.900 completed FPS; 128 cubes ordinary/instanced 57.36/116.28 FPS, 30 seconds per mode; clean/healthy/unlocked.
-- 2026-09-09 | G62 stability | daa29c5 | 4K | 120 seconds: no steady tracked heap/GPU growth, GPU allocations/mappings balanced, five pixel probes, clean/healthy/unlocked. Cadence remains partial: first window 113.53 FPS, later windows 119.83–119.87 FPS.
-- 2026-09-09 | G62 lifecycle-0 v1 | daa29c5 | not accepted: three EGL sessions/18 pixel checks and memory/close passed, but a logged HDMI disconnect/reconnect added an extra mode event. Receipt preserved; unchanged app awaits one replacement cycle. No graphics fault recorded.
-- 2026-09-09 | G62 lifecycle-0 v2 | b362848 | same HDMI reconnects; functional/memory/teardown pass, display gate not accepted. Owner confirms direct HDMI4 TV; test a five-second inter-session gap, unchanged SDK.
-- 2026-09-09 | G62 paced lifecycle | d0a1ff7 | pass: 3 launches/9 EGL sessions/54 pixel checks, balanced GPU memory, no heap growth, six expected HDMI modes per run; clean/healthy/unlocked.
-- 2026-09-09 | G62 CTS v1 | 7a9e9ec | stopped: 49/51 pass on config0; packed depth/stencil blits failed for both formats, with eight MSAA draws rejected before submission. Clean/healthy/unlocked. Offline regression reproduces a full-display-sized dummy color extent on depth-only FBOs; replacing it with one texel preserves color-write disabling and allocation checks. Fixed runtime needs new native acceptance; the old results above do not qualify new bytes.
-- 2026-09-09 | G62 CTS fix | eb4b1b7 | pass: 2/2 isolated regressions, then 202/202 sampled executions (51/51/50/50); no failures/warnings/unsupported results, all clean/healthy/unlocked | results/g62-cts-20260909-v2.
-- 2026-09-09 | G62 corrected-runtime GPU/integrations | 6964cd4 | pass: 82 GPU cases, SDL 180 frames/two probes, ImGui window/offscreen 119.883/119.897 FPS; clean/healthy/unlocked. New 3D/stability/lifecycle gates remain.
+## Final 4K qualification
+
+All accepted runs use the final runtime below on one firmware-6.02 console,
+with owner-configured 2160p output and a direct Hisense 55U78N HDMI4 connection.
+There were **14 clean final native cycles**. Each records exact app/SDK
+identity, title teardown, healthy services and exact-token lock release.
+
+| Gate | Result |
+| --- | --- |
+| Compact CTS | **202/202 Pass**, configurations 51/51/50/50; zero failures, warnings, waivers or `NotSupported` |
+| GPU transfer/clear batch | **22 blit/resolve + 46 clear + 6 format cases Pass**; pixel, state and driver-counter checks |
+| GPU mip/layer batch | **8 cases Pass**, including neighboring-image preservation and state/counter checks |
+| SDL2 | 180 frames and two exact pixel probes Pass; not an SDL FPS benchmark |
+| ImGui window | **119.883392 FPS**, 30 seconds |
+| ImGui offscreen, case 11 | **119.897011 completed FPS**, 30 seconds; frame p95 **9.136574 ms** |
+| 128 cubes | Ordinary **58.09**, instanced **117.41 completed FPS**, 30 seconds per mode |
+| Normal session | **120 seconds**; memory acceptance Pass, startup-inclusive cadence **partial-pass** |
+| Paced lifecycle | Three launches, nine EGL sessions, 54 pixel checks; two five-second gaps per launch; Pass |
+
+The normal-session windows were **113.6, 119.867, 119.833 and 119.867 FPS**.
+Four steady samples showed zero tracked owned-heap/direct/mapped growth or
+range. Tracked GPU allocations/mappings returned to zero; the owned heap ended
+at 9,455 bytes/22 shared-lifetime blocks, not zero. This is bounded accounting,
+not process-RSS, foreign-heap or exhaustive leak proof.
+
+Window, offscreen, 3D, SDL and normal-session logs recorded native 2160p119.88
+HDMI with same-resolution 59.94-Hz restoration. Each lifecycle run recorded
+three expected HFR/restoration pairs. Numerical GPU/CTS tests do **not** count
+as display qualification. HDMI negotiation is not an independent per-run TV
+measurement or proof that every rendered frame reached the panel.
+
+The CTS selection is fixed before running: all 51 smoke cases on two ordinary
+targets, 50 each on two extreme-axis targets. Only
+`KHR-GL33.framebuffer_blit.multisampled_to_singlesampled_blit_color_config_test`
+on configurations 2 and 3 is deferred: earlier single-case times exceeded the
+owner's 120-second bound. These are two explicit unexecuted cases, not discarded
+failures. The historical 39,544-result campaign belongs to a different
+[frozen SDK](validation.md); its acceptance is not inherited.
+
+## Fixes and preserved failures
+
+The first G62 CTS attempt found two packed-depth/stencil blit failures before
+GPU submission. A depth-only framebuffer's write-disabled dummy color slot was
+incorrectly sized to full scanout, too large for its MSAA placeholder. Describing
+that unused slot as one texel preserves real depth/raster bounds, write disabling
+and allocation checks. The host regression failed before the fix and passed
+afterward. Two isolated regressions and the 202-execution sample then passed;
+all final GPU/application gates were rerun on the corrected runtime.
+
+Two immediate-recreation lifecycle attempts passed rendering/memory/close but
+recorded HDMI reconnects and were not accepted for display qualification.
+Five-second gaps between example sessions passed the unchanged display checks.
+This supports a mode-switch timing explanation, not a proven minimum interval
+or device-loss recovery. The delay is in the lifecycle example, not the runtime
+or steady rendering. Rapid HFR mode churn remains unqualified.
+
+An offline blit report used its last case's height as the display height.
+The generator was corrected and rerun on the same raw receipt; original and
+corrected reports are preserved. Only metadata changed, not pixel results,
+executable identity or native acceptance criteria.
+
+## Frozen identities
+
+Runtime and SDL source companion:
+`eb4b1b705fcdcc59d68c8275b1c4a02ec8781c91`.
+Application/runner and packaging commits are separate; the archive's
+`provenance.json` identifies the exact included source snapshot.
+
+| SHA-256 | 4K120 | 1440p120, host-only |
+| --- | --- | --- |
+| GL manifest | `6778637f060904653a75d66b5e3eead872520d3d93e9980c9c383723999de5a5` | `52f867d4ded1894175e51a9a97ebf59c87b6cb11356bbc5bc3446fa5111d625f` |
+| Runtime archive | `c3310041e2fdb71f9d5ed0c5a4c07c1d8d778af1492937c8f7cc4ee5ee55752b` | `a1c4f5c1d0185aeb2090765ff336416b824c3b712ede234633a2de6aead545ae` |
+| SDL build receipt | `8a93c99f0860a9d53c9096b90c28bd4a3124706124763fc5ecdd4ccb69393c14` | `485404ff320923e0deb6ee8ec62cb38ffd5bb66b2e6e4a0a3dd87fd3908ebe96` |
+| Local evidence index | `674fed05f367d353821e7b5f63d62a9dc4a504bddeed4d150dc70cf469161674` | `29fa4e602492f172b0a8b8552aa2910506e86dfb42e2aef496f547d303ef41d7` |
+
+Both SDK/SDL pairs pass all 344 Core exports and host consumer links. 1440p is
+host-only by owner decision: no duplicate console runs or borrowed 4K receipts.
+G47 dependency lineage and the G51 Mesa fix remain separately checked; the
+[linker-metadata exception](sdk-path-free-derivative.md) remains documented.
+
+## Reproducing the release audit
+
+The packager pins all six identities per profile, checks source equivalence,
+recomputes raw receipt audits and rejects missing/changed inputs. It reuses the
+[distribution contract](sdk-g55-release.md#build-provenance-and-distribution):
+
+```sh
+python3 tools/build-sdk-bundle.py --g62-profile "$PROFILE" \
+  --sdk "$FINAL_GL" --sdl-build "$FINAL_SDL_NATIVE_BUILD" \
+  --candidate "$G62_RELEASE_INDEX" --results "$LOCAL_EVIDENCE_ROOT" \
+  --consumer-report "$FINAL_GL_CONSUMER_REPORT" \
+  --source-commit "$(git rev-parse HEAD)" --third-party "$DEPENDENCY_SOURCE_CACHE" \
+  --destination "$NEW_BUNDLE_DIRECTORY"
+```
+
+The private index and raw receipts remain local. Only reconstructed numerical
+results/hashes enter `focused-validation.json`; build provenance and consumer
+checks are separate. Prefixes and nested source archives are scanned for private
+paths, hosts and native assets. Packaging does not strip or modify frozen libs.
+Release acceptance also requires a fresh extraction: archive/root checksums,
+both prefix manifests, three GL and two SDL consumer links using extracted libs.
+CI runs host/staging checks; fresh CI SDKs do not inherit native results.
+
+## Scope boundary
+
+No ten-minute tests or duplicate 1440p hardware runs were performed for this
+release. CPU fallbacks outside eligible fast paths are not automatically missing
+API functionality. Multi-hour sessions, suspend/resume, device loss, exhaustive
+memory pressure, full SDL/GLFW portability, new physical-input checks and other
+firmware remain outside the claim. See [limitations](limitations.md) and
+[performance](performance.md).
