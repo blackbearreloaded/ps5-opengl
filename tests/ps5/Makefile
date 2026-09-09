@@ -1725,6 +1725,9 @@ egl_public_core33_msaa4_texture_fetch.o: egl_public_core33_msaa4.c
 egl_public_core33_scaled_linear_blit.o: egl_public_core33_scaled_linear_blit.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_gpu_blit.o: egl_public_core33_gpu_blit.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
 egl_public_core33_depth_stencil_blit.o: \
 	egl_public_core33_depth_stencil_blit.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<

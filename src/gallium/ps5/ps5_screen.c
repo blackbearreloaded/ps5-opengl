@@ -78,6 +78,9 @@ _Static_assert(PIPE_LOGICOP_CLEAR == 0 && PIPE_LOGICOP_COPY == 12 &&
 #ifndef PS5_GPU_CLEAR_MIN_PIXELS
 #define PS5_GPU_CLEAR_MIN_PIXELS 16384u
 #endif
+#ifndef PS5_GPU_BLIT_MIN_PIXELS
+#define PS5_GPU_BLIT_MIN_PIXELS (512u * 512u)
+#endif
 #define PS5_RENDER_TARGET_BYTES PS5_SCANOUT_BYTES
 #ifndef PS5_RENDER_ARENA_BYTES
 #define PS5_RENDER_ARENA_BYTES 0u
@@ -5348,6 +5351,114 @@ ps5_replicate_depth_stencil_msaa4(struct pipe_context *context,
           info->dst.box.width, info->dst.box.height, info->mask);
 }
 
+static bool
+ps5_blit_gpu_color(struct ps5_context *context, const struct pipe_blit_info *info)
+{
+   /* ponytail: only large, unscaled native RGBA8 copies; retain the existing
+    * fallback for all other layouts. Tune the floor with paired measurements. */
+   if (!PS5_ENABLE_RENDER_TO_TEXTURE_CANDIDATE || !PS5_ENABLE_MRT_CANDIDATE ||
+       !PS5_ENABLE_UBO_CANDIDATE || !context || !info ||
+       !info->src.resource || !info->dst.resource ||
+       info->mask != PIPE_MASK_RGBA || info->filter != PIPE_TEX_FILTER_NEAREST ||
+       info->src.level || info->dst.level || info->scissor_enable ||
+       info->num_window_rectangles || info->alpha_blend || info->swizzle_enable ||
+       info->sample0_only || info->dst_sample || context->render_condition_query ||
+       context->stream_output_target_count || context->active_occlusion_query ||
+       context->active_primitives_generated_query || context->active_primitives_emitted_query ||
+       info->src.box.width != info->dst.box.width ||
+       info->src.box.height != info->dst.box.height ||
+       info->src.box.width <= 0 || info->src.box.height <= 0 ||
+       (uint64_t)info->src.box.width * info->src.box.height < PS5_GPU_BLIT_MIN_PIXELS)
+      return false;
+
+   const struct ps5_resource *resources[] = {
+      (const struct ps5_resource *)info->src.resource,
+      (const struct ps5_resource *)info->dst.resource,
+   };
+   const struct pipe_box *boxes[] = {&info->src.box, &info->dst.box};
+   if (info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+       info->dst.format != PIPE_FORMAT_R8G8B8A8_UNORM)
+      return false;
+   for (unsigned i = 0; i < 2; ++i) {
+      const struct ps5_resource *r = resources[i];
+      const struct pipe_box *b = boxes[i];
+      if (r->base.target != PIPE_TEXTURE_2D || r->base.last_level ||
+          r->base.depth0 != 1 || r->base.array_size != 1 ||
+          r->base.nr_samples > 1 || r->base.nr_storage_samples > 1 ||
+          r->base.format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+          !(r->base.bind & PIPE_BIND_RENDER_TARGET) ||
+          (r->base.bind & PIPE_BIND_DISPLAY_TARGET) ||
+          ps5_linear_sampled_layout(&r->base) ||
+          r->render_staging_size || r->depth_staging_size ||
+          !r->data || !r->allocation_size ||
+          r->allocation_size > UINTPTR_MAX - (uintptr_t)r->data ||
+          !r->base.width0 || !r->base.height0 ||
+          r->base.width0 > PS5_MAX_COLOR_WIDTH || r->base.height0 > PS5_MAX_COLOR_HEIGHT ||
+          ps5_tiled_color_surface_size(r->base.format, r->base.width0,
+                                      r->base.height0) > r->allocation_size ||
+          b->x < 0 || b->y < 0 || b->z || b->depth != 1 ||
+          (uint64_t)b->x + b->width > r->base.width0 ||
+          (uint64_t)b->y + b->height > r->base.height0)
+         return false;
+   }
+   /* Resource objects can alias a shared render pool. Check actual byte ranges. */
+   uintptr_t src = (uintptr_t)resources[0]->data, dst = (uintptr_t)resources[1]->data;
+   if (src < dst + resources[1]->allocation_size &&
+       dst < src + resources[0]->allocation_size)
+      return false;
+
+   if (!context->blitter)
+      context->blitter = util_blitter_create(&context->base);
+   struct blitter_context *blitter = context->blitter;
+   if (!blitter || blitter->running || !util_blitter_is_blit_supported(blitter, info))
+      return false;
+   struct pipe_surface surface;
+   struct pipe_sampler_view templ;
+   util_blitter_default_dst_texture(&surface, info->dst.resource, 0, 0);
+   util_blitter_default_src_texture(blitter, &templ, info->src.resource, 0);
+   struct pipe_sampler_view *view = context->base.create_sampler_view(
+      &context->base, info->src.resource, &templ);
+   if (!view)
+      return false;
+
+   bool viewport_valid = context->viewport_valid, scissor_valid = context->scissor_valid;
+   bool framebuffer_valid = context->framebuffer_valid, queries_enabled = context->queries_enabled;
+   unsigned draws_before = context->draw_calls;
+   util_blitter_save_vertex_buffers(blitter, context->vertex_buffers, context->vertex_buffer_count);
+   util_blitter_save_vertex_elements(blitter, context->vertex_elements);
+   util_blitter_save_vertex_shader(blitter, context->vs);
+   util_blitter_save_geometry_shader(blitter, context->gs);
+   util_blitter_save_so_targets(blitter, 0, NULL, context->stream_output_primitive);
+   util_blitter_save_rasterizer(blitter, context->rasterizer);
+   util_blitter_save_fragment_shader(blitter, context->fs);
+   util_blitter_save_depth_stencil_alpha(blitter, context->depth_stencil_alpha);
+   util_blitter_save_blend(blitter, context->blend);
+   util_blitter_save_stencil_ref(blitter, &context->stencil_ref);
+   util_blitter_save_viewport(blitter, &context->viewport);
+   util_blitter_save_scissor(blitter, &context->scissor);
+   util_blitter_save_sample_mask(blitter, context->sample_mask, 1);
+   util_blitter_save_framebuffer(blitter, &context->framebuffer);
+   util_blitter_save_fragment_sampler_states(blitter, PS5_MAX_TEXTURE_UNITS, context->samplers[1]);
+   util_blitter_save_fragment_sampler_views(blitter, PS5_MAX_TEXTURE_UNITS, context->sampler_views[1]);
+   /* The caller drained prior work; blitter copies use the synchronous draw
+    * path, not the special deferred-clear exception. No CPU replay on failure. */
+   util_blitter_blit_generic(blitter, &surface, &info->dst.box, view, &info->src.box,
+                             info->src.resource->width0, info->src.resource->height0,
+                             info->mask, info->filter, NULL, false, false, 0, NULL);
+   pipe_sampler_view_reference(&view, NULL);
+   context->viewport_valid = viewport_valid;
+   context->scissor_valid = scissor_valid;
+   context->framebuffer_valid = framebuffer_valid;
+   context->queries_enabled = queries_enabled;
+   if (context->draw_calls == draws_before)
+      context->last_draw_status = -30;
+   if (context->last_draw_status != 0 || draws_before < 3)
+      printf("[ps5-gallium] blit-gpu-color status=%d draws=%u size=%dx%d\n",
+             context->last_draw_status, context->draw_calls - draws_before,
+             info->dst.box.width, info->dst.box.height);
+   return true;
+}
+
 static void
 ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
 {
@@ -5368,6 +5479,8 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    unsigned min_x, min_y, max_x, max_y;
 
    ps5_draw_batch_drain();
+   if (ps5_blit_gpu_color(ps5, info))
+      return;
    if (PS5_ENABLE_MSAA4_CANDIDATE && info && info->src.resource &&
        info->src.resource->nr_samples == 4) {
       if (info->mask & PIPE_MASK_ZS)
