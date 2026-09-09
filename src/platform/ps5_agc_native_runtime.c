@@ -1172,6 +1172,8 @@ static void runtime_video_report(const char *stage)
 extern int sceVideoOutIsOutputSupported(int32_t, uint32_t, const void *, const void *, const void *);
 extern int sceVideoOutConfigureOutput(int32_t, uint32_t, const void *, const void *, const void *);
 static int runtime_output_needs_restore;
+/* Survives EGL teardown; only a successful HFR port close arms this guard. */
+static int runtime_output_reopen_pending;
 
 static int runtime_video_configure_output(void)
 {
@@ -1252,6 +1254,10 @@ int ps5_agc_gate2_shutdown_present(void)
     /* A failed close does not release ownership of the scanout allocation. */
     if (close_rc != 0)
         return close_rc;
+#if PS5_SCANOUT_FPS > 60
+    if (runtime_video_handle >= 0)
+        runtime_output_reopen_pending = 1;
+#endif
     memset(&runtime_video_api, 0, sizeof(runtime_video_api));
     runtime_video_handle = -1;
     runtime_video_framebuffer = NULL;
@@ -1287,6 +1293,23 @@ static int runtime_video_acquire(const video_api_t *video,
         return 0;
     if (runtime_video_handle >= 0 && ps5_agc_gate2_shutdown_present() != 0)
         return -1;
+#if PS5_SCANOUT_FPS > 60
+    if (runtime_output_reopen_pending) {
+        /* ponytail: conservative process-local settling, not sink readiness.
+         * Keep the proven five-second interval until a shorter one is qualified.
+         * First open, live reuse and final close never pay this reopen wait. */
+        for (unsigned i = 0; i < 10; ++i) {
+            int wait = sceKernelUsleep(UINT32_C(500000));
+            if (wait != 0) {
+                printf("[ps5-output-reopen] settle_ms=5000 result=%08" PRIx32 "\n",
+                       (uint32_t)wait);
+                return wait; /* Keep the guard armed; no open/register occurred. */
+            }
+        }
+        runtime_output_reopen_pending = 0;
+        printf("[ps5-output-reopen] settle_ms=5000 result=00000000\n");
+    }
+#endif
     for (int attempt = 1; attempt <= 3; ++attempt) {
         *attempts = attempt;
         runtime_video_handle = video->open(0xff, 0, 0, NULL);

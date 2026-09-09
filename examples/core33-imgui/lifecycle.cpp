@@ -9,7 +9,7 @@
 #include <unistd.h>
 
 #ifndef PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS
-#define PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS 5
+#define PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS 0
 #endif
 static_assert(PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS >= 0 &&
               PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS <= 10, "bounded HDMI settle interval");
@@ -21,8 +21,8 @@ int main()
         if (imgui_session() != 0) return 1;
         printf("[ps5-imgui-lifecycle] session=%u PASS\n", session);
         if (session != 2) {
-            // Pace separate EGL sessions while the sink restores its home mode.
-            // This is not evidence that rapid mode churn or device loss is safe.
+            // Default: immediate application recreation. The HFR runtime owns
+            // its conservative reopen interval; this override is diagnostic only.
             printf("[ps5-imgui-lifecycle] settle_after=%u seconds=%u\n",
                    session, unsigned(PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS));
             unsigned remaining = PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS;

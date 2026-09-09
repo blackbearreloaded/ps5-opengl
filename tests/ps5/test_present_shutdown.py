@@ -17,6 +17,8 @@ acquire_wait = runtime[runtime.index("static int runtime_video_acquire("):
                        runtime.index("static int runtime_video_prepare_draw(")]
 video_api = runtime[runtime.index("typedef struct video_api {"):
                     runtime.index("} video_api_t;") + len("} video_api_t;")]
+hfr = runtime[runtime.index("#if PS5_SCANOUT_FPS > 60\n#ifndef PS5_NATIVE_TITLE_RUNTIME"):
+              runtime.index("int ps5_agc_gate2_shutdown_present(void)")]
 terminate = egl[egl.index("EGLAPI EGLBoolean EGLAPIENTRY\neglTerminate("):
                 egl.index("EGLAPI EGLint EGLAPIENTRY\neglGetError(")]
 destroy = egl[egl.index("EGLAPI EGLBoolean EGLAPIENTRY\neglDestroySurface("):
@@ -58,6 +60,7 @@ static int unregister_video(int handle, int group) {
 }
 static unsigned opens, registrations, sleeps, pending_calls, waits, pending_until;
 static int acquire_failure, pending_error, wait_error;
+static unsigned sleep_error_at;
 static int open_video(int32_t user, int32_t bus, int32_t index, const void *p) {
     assert(user == 0xff && !bus && !index && !p); ++opens;
     return acquire_failure == 1 ? -10 : 7;
@@ -78,14 +81,25 @@ static int register_video(int32_t handle, int32_t group, int32_t start,
     ++registrations;
     return acquire_failure == 3 ? -12 : 0;
 }
-static int sceKernelUsleep(uint32_t us) { assert(us == 500000); ++sleeps; return 0; }
+static int sceKernelUsleep(uint32_t us) {
+    assert(us == 500000); ++sleeps;
+    return sleep_error_at && sleeps == sleep_error_at ? -23 : 0;
+}
+#if PS5_SCANOUT_FPS > 60
+int sceVideoOutIsOutputSupported(int32_t h, uint32_t mode, const void *a, const void *b, const void *c) {
+    assert(h == 7 && mode == 15 && !a && !b && !c); return 1;
+}
+int sceVideoOutConfigureOutput(int32_t h, uint32_t mode, const void *a, const void *b, const void *c) {
+    assert(h == 7 && (mode == 1 || mode == 15) && !a && !b && !c); return 0;
+}
+#endif
 static int pending(int32_t handle) {
     assert(handle == 7); ++pending_calls;
     return pending_error ? pending_error : (waits < pending_until);
 }
 static int vblank(int32_t handle) { assert(handle == 7); ++waits; return wait_error; }
 static int runtime_video_wait_idle(void);
-''' + shutdown + acquire_wait + r'''
+''' + hfr + shutdown + acquire_wait + r'''
 #define EGLAPI
 #define EGLAPIENTRY
 #define EGL_TRUE 1
@@ -167,6 +181,56 @@ static void inject(int failure) {
 #endif
 }
 int main(void) {
+#if PS5_SCANOUT_FPS > 60
+    setup();
+    video_api_t api = runtime_video_api;
+    runtime_video_handle = -1; runtime_video_registered = 0;
+    runtime_video_framebuffer = NULL; runtime_video_framebuffer_size = 0;
+    int attempts = -1;
+    assert(!runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts));
+    assert(opens == 1 && registrations == 1 && sleeps == 0 && attempts == 1);
+    assert(!runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts));
+    assert(opens == 1 && sleeps == 0 && attempts == 0); /* Live reuse, not reopen. */
+    assert(!ps5_agc_gate2_shutdown_present() && closes == 1 && sleeps == 0);
+    assert(!ps5_agc_gate2_shutdown_present() && closes == 1 && sleeps == 0);
+    assert(!runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts));
+    assert(sleeps == 10 && opens == 2 && registrations == 2 && attempts == 1);
+    assert(!runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts));
+    assert(sleeps == 10 && opens == 2 && attempts == 0);
+
+    /* A close error keeps ownership; settling cannot authorize replacement. */
+    unsigned char replacement[FRAMEBUFFER_POOL_BYTES];
+    close_failure = 1;
+    assert(runtime_video_acquire(&api, replacement, sizeof(replacement), &attempts));
+    assert(runtime_video_handle == 7 && runtime_video_framebuffer == scanout);
+    assert(opens == 2 && sleeps == 10 && attempts == 0);
+    close_failure = 0;
+    assert(!runtime_video_acquire(&api, replacement, sizeof(replacement), &attempts));
+    assert(opens == 3 && sleeps == 20 && attempts == 1);
+
+    /* An interrupted settle never opens/registers; a caller retry waits anew. */
+    assert(!ps5_agc_gate2_shutdown_present());
+    sleep_error_at = sleeps + 4;
+    assert(runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts) == -23);
+    assert(opens == 3 && registrations == 3 && sleeps == 24 && attempts == 0);
+    assert(runtime_video_handle == -1 && !runtime_video_registered);
+    assert(!ps5_agc_gate2_shutdown_present()); /* Must retain the reopen guard. */
+    sleep_error_at = 0;
+    assert(!runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts));
+    assert(opens == 4 && sleeps == 34 && attempts == 1);
+
+    /* Failed setup that successfully closes also needs guarded reacquisition. */
+    assert(!ps5_agc_gate2_shutdown_present());
+    acquire_failure = 2;
+    assert(runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts));
+    assert(opens == 5 && sleeps == 44 && runtime_video_handle == -1);
+    acquire_failure = 0;
+    assert(!runtime_video_acquire(&api, scanout, sizeof(scanout), &attempts));
+    assert(opens == 6 && sleeps == 54);
+    assert(!ps5_agc_gate2_shutdown_present());
+    puts("present-HFR-reopen: PASS first/live acquisition, five-second settle, close/setup errors and interrupted waits");
+    return 0;
+#endif
     for (unsigned n = 0; n <= 121; ++n) {
         setup(); pending_until = n;
         assert((ps5_agc_gate2_shutdown_present() == 0) == (n <= 120));
@@ -302,7 +366,9 @@ int main(void) {
 '''
 with tempfile.TemporaryDirectory() as temporary:
     executable = str(Path(temporary) / "present-shutdown")
-    for flags in ([], ["-DPS5_GPU_PRESENT_BATCH=1"]):
+    for flags in ([], ["-DPS5_GPU_PRESENT_BATCH=1"],
+                  ["-DPS5_SCANOUT_FPS=120", "-DPS5_NATIVE_TITLE_RUNTIME=1"],
+                  ["-DPS5_SCANOUT_FPS=120", "-DPS5_NATIVE_TITLE_RUNTIME=1", "-DPS5_GPU_PRESENT_BATCH=1"]):
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-address",
                         *flags, "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
         subprocess.run([executable], cwd=temporary, check=True)

@@ -170,6 +170,7 @@ int main(void) {
     assert(runtime_video_configure_output() == 0 && runtime_output_needs_restore);
     assert(runtime_video_restore_output() == 0 && !runtime_output_needs_restore);
     int previous = restores; assert(runtime_video_restore_output() == 0 && restores == previous);
+    assert(!runtime_output_reopen_pending); /* Configuration/restoration is not a successful close. */
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
