@@ -31,8 +31,7 @@ are 180/180/450/450 seconds and stop on completion. The soak cap is 660 seconds.
 Release the shared lock between bounded native cycles, before analysis/builds.
 Stop at a functional, lifecycle or health failure; preserve the failed receipt.
 
-Console: owner-configured 192.168.4.30, recorded firmware 6.02, WSL traffic,
-PPSA99005 native folder, required services 2121/3232/9021. Use the existing
+Console: one owner-configured system, recorded firmware 6.02. Use the existing
 title-aware protocol and exact-token lock. No graphics application ELF injection,
 Settings, enablement changes or automatic retries after a suspected fault.
 

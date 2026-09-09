@@ -485,6 +485,19 @@ class HFRBundleTests(unittest.TestCase):
         self.assertNotIn("details", json.dumps(report))
         self.assertNotIn("appDirectory", json.dumps(report))
 
+    def test_receipt_host_is_a_private_marker_only(self):
+        host = "private-console.example.invalid"
+        for kind in self.records:
+            path = self.paths[kind]["runner"]
+            runner = json.loads(path.read_text())
+            runner["ps5Host"] = host
+            path.write_text(json.dumps(runner))
+            self.repin(kind)
+        private_hosts = set()
+        report = BUNDLE.hfr_report(self.root, self.profile, self.sdl, private_hosts)
+        self.assertEqual(private_hosts, {host})
+        self.assertNotIn(host, json.dumps(report))
+
     def test_records_and_every_raw_receipt_are_pinned(self):
         for kind in self.records:
             record = self.root / self.profile[kind + "_record"]
@@ -567,11 +580,13 @@ class HFRBundleTests(unittest.TestCase):
         path = root / "lib.a"
         # Split literals so the tests themselves contain no personal path/URL.
         private = [b"/mnt/" + b"c/Users/person/build", b"C:" + b"\\Users\\person\\build",
-                   b"/home/" + b"person/build", b"https://" + b"192.168.1.2/private"]
+                   b"/home/" + b"person/build", b"https://" + b"192.0.2.99/private"]
+        markers = BUNDLE.private_markers([Path(private[0].decode()), Path(private[2].decode())],
+                                          hosts=["192.0." + "2.99"])
         for value in private:
             path.write_bytes(b"!<arch>\n" + value)
-            with self.assertRaisesRegex(ValueError, "private build path or URL"):
-                BUNDLE.require_distributable_tree(root)
+            with self.assertRaisesRegex(ValueError, "private build path or host"):
+                BUNDLE.require_distributable_tree(root, markers)
             self.assertTrue(path.read_bytes().endswith(value))
         path.write_bytes(b"!<arch>\n/user/home/%04x/\n")
         BUNDLE.require_distributable_tree(root)
@@ -582,22 +597,50 @@ class HFRBundleTests(unittest.TestCase):
                 member = tarfile.TarInfo("project/file.c")
                 member.size = len(private[0])
                 archive.addfile(member, io.BytesIO(private[0]))
-            with self.assertRaisesRegex(ValueError, "private build path or URL"):
-                BUNDLE.require_distributable_tree(root)
+            with self.assertRaisesRegex(ValueError, "private build path or host"):
+                BUNDLE.require_distributable_tree(root, markers)
             archive_path.unlink()
-        for name in ("raw.log", "eboot.bin", "libc.prx", "pic0.dds", "snd0.at9"):
+        for name in ("PPSA99005-20260908-200944-klog.log", "eboot.bin", "EBOOT.BIN", "libc.prx", "libSceExample.sprx"):
             extra = root / name
             extra.write_text("must not ship")
             with self.assertRaisesRegex(ValueError, "raw receipt or native title asset"):
                 BUNDLE.require_distributable_tree(root)
             extra.unlink()
-        for name in ("project/raw.log", "project/sce_sys/icon0.png"):
+        for name in ("project/PPSA99005-20260908-200944-opengl.log", "project/sce_sys/icon0.png"):
             with tarfile.open(root / "title.tar", "w") as archive:
                 member = tarfile.TarInfo(name)
                 member.size = 4
                 archive.addfile(member, io.BytesIO(b"data"))
             with self.assertRaisesRegex(ValueError, "raw receipt or native title asset"):
                 BUNDLE.require_distributable_tree(root)
+
+    def test_self_source_and_public_source_fixtures_pass_without_redaction(self):
+        root = self.root / "public-distribution"
+        (root / "sources").mkdir(parents=True)
+        public = {
+            "tools/build-sdk-bundle.py": Path(BUNDLE.__file__).read_bytes(),
+            "tools/test_sdk_bundle.py": Path(__file__).read_bytes(),
+            "docs/example.md": b"Example: /home/user/project or /Users/example/project; http://localhost:8080\n",
+            "tests/fixtures/data.bin": bytes(range(256)),
+            "tests/fixtures/parser.log": b"public parser input\n",
+        }
+        for name, data in public.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        source_tar = root / "sources/project.tar.xz"
+        with tarfile.open(source_tar, "w:xz") as archive:
+            for name, data in public.items():
+                member = tarfile.TarInfo("project/" + name)
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+        before = {path: BUNDLE.digest(path) for path in root.rglob("*") if path.is_file()}
+        BUNDLE.require_distributable_tree(root)
+        self.assertEqual(before, {path: BUNDLE.digest(path) for path in before})
+        host = "192.0." + "2.99"
+        (root / "docs/example.md").write_text("actual receipt host: " + host)
+        with self.assertRaisesRegex(ValueError, "private build path or host"):
+            BUNDLE.require_distributable_tree(root, BUNDLE.private_markers([], [host]))
 
 
 if __name__ == "__main__":

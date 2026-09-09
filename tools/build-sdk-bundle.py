@@ -113,7 +113,7 @@ def require_ci_profile(sdk, config, name):
     return profile
 
 
-def hfr_report(results, profile, sdl):
+def hfr_report(results, profile, sdl, private_hosts=None):
     """Re-audit hash-pinned G37/G38/G39/G40 receipts; emit only selected fields."""
     receipt, receipt_hash, _ = sdl
     expected = profile["display"]
@@ -142,6 +142,9 @@ def hfr_report(results, profile, sdl):
             require(digest(path) == accepted["raw_sha256"][key], "HFR raw receipt changed: " + kind + "/" + key)
         cycle, runner = [json.loads(paths[key].read_text(encoding="utf-8-sig"))
                          for key in ("cycle", "runner")]
+        if private_hosts is not None:
+            require(isinstance(runner.get("ps5Host"), str) and runner["ps5Host"], "missing receipt host")
+            private_hosts.add(runner["ps5Host"])
         require(cycle["titleId"] == "PPSA99005" and cycle["outcome"] == "entered-eboot" and
                 cycle["teardownSignal"] == "runtime-layers-released" and
                 cycle["ebootSha256"].lower() == accepted["eboot_sha256"] == profile[kind + "_eboot"] and
@@ -201,22 +204,43 @@ def hfr_report(results, profile, sdl):
     return report
 
 
-def require_distributable_tree(root):
-    """Fail closed on personal paths, LAN URLs, raw receipts or native title files.
+def private_markers(paths, hosts=()):
+    """Actual input/user roots and verified receipt hosts, not illustrative paths."""
+    roots = {str(Path.home())}
+    for path in paths:
+        text = str(path).replace("\\", "/")
+        match = re.match(r"(/mnt/[a-z]/Users/[^/]+|/Users/[^/]+|/home/[^/]+|[A-Za-z]:/Users/[^/]+)(?:/|$)", text)
+        roots.add(match[1] if match else text)
+    for root in tuple(roots):
+        match = re.fullmatch(r"/mnt/([a-z])/(Users/.+)", root)
+        if match:
+            roots.add(match[1].upper() + ":/" + match[2])
+    values = set(hosts)
+    for root in roots:
+        values.update((root, root.replace("/", "\\"), root.replace("/", "\\\\")))
+    return tuple(sorted(value.encode().lower() for value in values if value))
 
-    Frozen bytes are never stripped or rewritten to pass this packaging gate.
-    Source tars are inspected too; hashes/provenance still describe exact sources.
+
+def require_distributable_tree(root, private=()):
+    """Inspect exact bytes, including sources; never redact or strip frozen inputs.
+
+    Public source examples may contain generic home paths, localhost URLs and
+    binary fixtures. Only actual private context and native receipt/title paths
+    are rejected here; this is not a classifier for every third-party URL/file.
     """
-    forbidden = re.compile(rb"(?:/mnt/[a-z]/Users/|[A-Za-z]:[/\\]+Users[/\\]+|/Users/|/home/(?!%|\$|<)[A-Za-z0-9_.-]+/|https?://(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.))")
+    forbidden = set(private) | set(private_markers([root]))
+    overlap = max(map(len, forbidden), default=1)
 
     def check(stream, name):
-        require(Path(name).suffix.lower() not in (".log", ".qpa", ".prx", ".bin", ".dds", ".at9") and
-                "sce_sys" not in Path(name).parts,
+        require(Path(name).suffix.lower() not in (".prx", ".sprx") and
+                not re.search(r"(?:^|/)(?:PPSA\d{5}-\d{8}-\d{6}-[^/]+\.(?:log|json|qpa)|eboot\.bin)$", name, re.I) and
+                not {"sce_sys", "sce_module"}.intersection(part.lower() for part in Path(name).parts),
                 "raw receipt or native title asset in bundle input: " + name)
         tail = b""
         while chunk := stream.read(1024 * 1024):
-            require(not forbidden.search(tail + chunk), "private build path or URL in bundle input: " + name)
-            tail = chunk[-256:]
+            data = tail + chunk.lower()
+            require(not any(marker in data for marker in forbidden), "private build path or host in bundle input: " + name)
+            tail = data[-overlap:]
 
     for path in sorted(root.rglob("*")):
         require(not path.is_symlink() and (path.is_file() or path.is_dir()), "non-regular bundle input")
@@ -516,11 +540,13 @@ def main():
                         "tests/ps5/native-app.mk", "native-app"], check=True)
         consumers = json.loads(args.consumer_report.read_text())
         require_consumers(consumers, sdk_hash)
-        focused = hfr_report(args.results.resolve(), profile, sdl)
+        private_hosts = set()
+        focused = hfr_report(args.results.resolve(), profile, sdl, private_hosts)
+        private = private_markers([repo, sdk, native, third_party, args.results.resolve()], private_hosts)
         # Do this before creating any distribution output: path removal would
         # change the frozen library identities and needs a separate decision.
-        require_distributable_tree(sdk)
-        require_distributable_tree(native / "sdk")
+        require_distributable_tree(sdk, private)
+        require_distributable_tree(native / "sdk", private)
         version = profile["version"]
     else:
         require(args.candidate and args.results and
@@ -644,7 +670,7 @@ def main():
         provenance["sdl2"] = sdl_provenance
     write_json(stage / "provenance.json", provenance)
     if args.hfr_profile:
-        require_distributable_tree(stage)
+        require_distributable_tree(stage, private)
     archive_path, count = archive_bundle(stage, epoch)
     print(f"BUNDLE={archive_path}\nFILES={count}\nSHA256={digest(archive_path)}")
 
