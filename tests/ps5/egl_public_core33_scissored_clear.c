@@ -111,6 +111,8 @@ main(void)
    glReadPixels(0, 0, SIZE, SIZE, GL_DEPTH_COMPONENT, GL_FLOAT, depths);
    glReadPixels(0, 0, SIZE, SIZE, GL_STENCIL_INDEX, GL_UNSIGNED_BYTE,
                 stencils);
+   if (glGetError() != GL_NO_ERROR)
+      goto cleanup;
    for (unsigned y = 0; y < SIZE; ++y) {
       for (unsigned x = 0; x < SIZE; ++x) {
          unsigned index = y * SIZE + x;

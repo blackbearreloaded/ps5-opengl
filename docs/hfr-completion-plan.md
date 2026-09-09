@@ -110,3 +110,12 @@ including transfers, mip staging and scissored clears. Pinned AMD 16-pipe
 `64KB_Z_X` tables exactly match the existing X/Y/sample masks, but include
 Z3..Z0 at address bits 8..11. Host checks cover both formats, 1x/4x samples,
 32 layers and tile boundaries; device qualification is still pending.
+
+- 2026-09-09 | G48 layer fix | pass: 3,072 clear and 3,072 draw pixels across three layers; full host suite and three installed consumer links pass; clean/healthy/unlocked | results/g48-layer-xor-1440-20260909/.
+
+Next, reuse the scissored masked depth/stencil and 4x depth-texture gates,
+then three-session lifecycle and paired 30-second-per-mode cubes. These check
+the relevant layer-zero siblings, not every array/mip combination. The old
+depth-array shader lacks scalar selection; depth-mip-target also requires an
+invalid 3D depth texture. Do not use those unchanged as acceptance or relax their
+oracles. Mip staging and nonzero-layer stencil/4x checks remain separate gaps.
