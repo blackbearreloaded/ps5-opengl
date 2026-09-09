@@ -112,9 +112,9 @@ and checked retirement. This measures completed offscreen work, not displayed FP
 
 The 1440p ten-minute check completed 71,678 frames and 21 pixel checks with zero
 steady growth in tracked owned heap/GPU memory. GPU allocations and mappings
-returned to zero; owned heap ended at 9,455 bytes/22 blocks. Its **strict120-Hz
-cadence criterion did not pass**: the first30-second window was112.17 FPS, and
-the remaining19 windows were119.83–119.87. Three further EGL sessions passed18
+returned to zero; owned heap ended at 9,455 bytes/22 blocks. Its **strict 120-Hz
+cadence criterion did not pass**: the first 30-second window was 112.17 FPS, and
+the remaining 19 windows were 119.83–119.87. Three further EGL sessions passed 18
 frame checks with no post-session heap growth and balanced GPU memory.
 Module-internal memory, RSS and longer recovery behavior remain outside scope.
 
@@ -123,6 +123,33 @@ Local receipt identities and remaining release checks are indexed in the
 [physical SDL input/reconnect check](sdl-input-validation.md) and
 [independent source builds](independent-hfr-build.md) do not confer new CTS
 acceptance or change older SDK download identities.
+
+### Release-derivative 4K checks (G47, local)
+
+The separately identified [G47 SDK derivative](sdk-path-free-derivative.md)
+completed five native-app cycles on the same console. Its 30-second ImGui
+window measured **119.879451 FPS** (3,597 frames); the selected offscreen case
+measured **119.901034 completed frames/s** (3,598 frames). Window and offscreen
+pixel oracles passed; offscreen throughput is not displayed FPS.
+
+The two-minute check passed five pixel probes with zero steady growth in
+tracked owned heap/GPU memory. GPU allocations and mappings returned to zero;
+owned heap ended at 9,455 bytes/22 blocks. Cadence remains a **partial pass**:
+the four 30-second windows measured 114.77, 119.83, 119.87 and 119.83 FPS.
+The soak clock starts before the first frame; the separate window benchmark
+excludes 30 warm-up frames. This measurement difference does not erase the
+recorded first-window miss or establish its complete cause.
+
+Three further EGL sessions passed 18 pixel checks, with zero post-session
+tracked heap growth and balanced GPU allocations/mappings. The new SDL app
+completed 180 frames and two exact pixel probes; SDL FPS and physical input
+were not measured in this run. Every cycle restored normal output, closed
+cleanly and passed service-health/lock-release checks. Console logs recorded
+2160p119.88 negotiation and 2160p59.94 restoration, including three pairs in
+the lifecycle test. The owner reported the TV off; no live sink observation
+is claimed. The new 1440p derivative still awaits matching-output hardware
+qualification. These results do not transfer the earlier full CTS campaign
+to the changed SDK bytes.
 
 ## Broader format and subresource coverage (G25, local)
 

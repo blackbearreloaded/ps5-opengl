@@ -36,9 +36,11 @@ full 39,544-case rerun for example, documentation or packaging-only changes.
 - 2026-09-08 | G45 1440p lifecycle | pass: three EGL sessions/18 frame oracles, zero post-session heap growth, GPU baseline restored, three HDMI restore cycles, clean/healthy/unlocked | results/g45-lifecycle-1440-20260908/.
 - 2026-09-08 | G42 | pass: owner-confirmed physical Cross/stick sequence before/after removal and new instance; 38.336s, HDMI restoration, clean/healthy/unlocked | docs/sdl-input-validation.md.
 - 2026-09-08 | G44 4K cubes attempt 1 | render workload passed, HDMI mismatch: 2160p render / 1440p119.88 output; clean/healthy/unlocked; not native-4K acceptance | results/g44-cubes-2160-20260908/.
-- 2026-09-08 | G44 native 4K cubes | pass: 39.96 ordinary / 59.94 instanced FPS; all pixels/counts, native2160p HDMI, clean/healthy/unlocked; clear ~12ms | results/g44-cubes-2160-native-20260908/.
-- 2026-09-08 | G43 | reviewed host pass: independent1440/2160 GL builds, 38 files/344 exports each, six relocated GL links and two1440 SDL links; no hardware inheritance | docs/independent-hfr-build.md.
-- 2026-09-08 | G41/G46 | integrated24 packaging checks + SDL integrity/profile checks; full host suite passed; frozen HFR archives blocked by personal build paths, G47 preparing separate derivatives | docs/sdk-bundle-hfr.md.
+- 2026-09-08 | G44 native 4K cubes | pass: 39.96 ordinary / 59.94 instanced FPS; all pixels/counts, native 2160p HDMI, clean/healthy/unlocked; clear ~12ms | results/g44-cubes-2160-native-20260908/.
+- 2026-09-08 | G43 | reviewed host pass: independent 1440/2160 GL builds, 38 files/344 exports each, six relocated GL links and two 1440 SDL links; no hardware inheritance | docs/independent-hfr-build.md.
+- 2026-09-08 | G41/G46 | integrated 24 packaging checks + SDL integrity/profile checks; full host suite passed; frozen HFR archives blocked by personal build paths, G47 preparing separate derivatives | docs/sdk-bundle-hfr.md.
+- 2026-09-08 | G47 build | both derivatives host-checked: exact manifests, six relocated consumers, privacy audit and explicit ADDRSIG exception; originals unchanged | docs/sdk-path-free-derivative.md.
+- 2026-09-08 | G47 4K | five cycles closed: window 119.879 FPS, offscreen 119.901 completed FPS, three EGL sessions/18 pixels, SDL 180 frames/two pixels; 120s memory pass/cadence partial; HDMI/cleanup/health/unlock passed, no live TV observation | results/g47-{window,offscreen,soak,lifecycle,sdl2}-2160-20260908/.
 
 The 1440p soak's first 30-second window was 112.17 FPS; the remaining nineteen
 were 119.83–119.87 FPS. Its strict 120-Hz cadence target failed. Explicit
@@ -48,7 +50,10 @@ Tracked owned heap ended at 9,455 bytes/22 blocks; tracked GPU allocations and
 mappings returned to zero. Module-internal memory, RSS and longer sessions are
 outside this observation. No additional ten-minute runs are planned.
 
-To avoid duplicate console cycles, the remaining 4K offscreen, two-minute memory
-check and three-session EGL check will use G47's separately verified release
-derivative. Prepared but unrun G31 versions stay preserved. New ImGui30-second
-and SDL180-frame receipts bind each derivative profile to its actual binaries.
+To avoid duplicate console cycles, the 4K offscreen, two-minute memory check
+and three-session EGL check used G47's separately verified release derivative.
+Prepared but unrun G31 versions stay preserved. New 30-second ImGui and
+180-frame SDL receipts bind the 4K derivative to its actual binaries. The
+equivalent two 1440p checks await owner-selected 1440p output; do not qualify
+them using the current 2160p setting or assumed TV capabilities. Packaging
+review continues offline without holding the console lock.
