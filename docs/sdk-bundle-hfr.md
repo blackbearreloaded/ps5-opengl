@@ -134,6 +134,16 @@ Local output: `build/bundle-g47-2160p120-v1/`; extraction checks:
 `build/g47-extracted-2160-v1/`. This later documentation does not change that
 archive's source snapshot or frozen library identities.
 
+The matching 1440p archive was assembled on September 9 from source snapshot
+`2309e5ca9868fae7b111ad5596bee103e60a4c8e`. Archive SHA-256:
+`8c0a91b6951eb96e075464e751ca727c764826e857301518d916244f3ca25538`
+(174,370,464 bytes). The sidecar, all 242 checksummed files, GL/SDL manifests
+and five extracted consumer links passed; the full host suite also passed.
+Local output: `build/bundle-g47-1440p120-v1/`; extracted verification:
+`build/g47-extracted-1440-v1/`. Both archives remain local and unpublished.
+The original 4K archive checksum was reverified unchanged; no library rebuild
+or new CTS campaign was needed for this qualification and packaging milestone.
+
 For either qualified profile, set `DERIVATIVE` and `SDL_BUILDS` to the preserved
 `build/g47-path-free-v1` and `build/g47-sdl-v1` roots and run from the clean
 packaging checkout (destination must not exist):

@@ -44,6 +44,7 @@ full 39,544-case rerun for example, documentation or packaging-only changes.
 - 2026-09-08 | G46/G47 | local 4K bundle verified: 242 checksummed files, extracted GL/SDL manifests and five consumer links pass; integrated host suite/31 packaging tests pass; unpublished | docs/sdk-bundle-hfr.md.
 - 2026-09-08 | G47 1440p | no-run: owner requested Chiaki configuration, but Windows denied desktop access before launch; no settings changed, post-health passed and exact lock released | results/g47-chiaki-display-20260908/.
 - 2026-09-09 | G47 1440p | pass: window 119.880 FPS; SDL 180 frames/two pixels; both native HDMI/restore/cleanup/health/unlock passed | results/g47-{window,sdl2}-1440-20260909/.
+- 2026-09-09 | G46/G47 | both local HFR bundles verified: 242 checksummed files each, GL/SDL manifests and five extracted consumer links each; host suite passed; unpublished | docs/sdk-bundle-hfr.md.
 
 The 1440p soak's first 30-second window was 112.17 FPS; the remaining nineteen
 were 119.83–119.87 FPS. Its strict 120-Hz cadence target failed. Explicit
@@ -59,6 +60,7 @@ Prepared but unrun G31 versions stay preserved. New 30-second ImGui and
 180-frame SDL receipts bind the 4K derivative to its actual binaries. The
 equivalent two 1440p checks also passed after the owner selected 1440p,
 with fresh 1440p119.88 negotiation and 1440p59.94 restoration in both logs.
-No desktop control or new app build was needed. Packaging and the 4K archive
-are verified locally; the matching 1440p archive is the remaining local
-assembly/extraction check. No console lock is held during packaging.
+No desktop control or new app build was needed. Both matching archives passed
+local assembly, extraction, integrity and consumer-link checks. The focused
+high-resolution release gate is complete locally; publication remains separate.
+No console lock is held. The broader qualification limits above remain.
