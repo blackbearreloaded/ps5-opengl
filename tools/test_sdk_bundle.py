@@ -829,5 +829,427 @@ class G47DerivativeTests(unittest.TestCase):
                     verify()
 
 
+class G55BundleTests(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.e = BUNDLE.G55_EVIDENCE
+        self.profile = dict(BUNDLE.G55["1440p120"], runtime="a" * 40, sdk="b" * 64,
+                            archive="c" * 64, sdl_receipt="d" * 64, sdl_source="e" * 40, evidence="f" * 64)
+        self.sdl = (dict(display_profile=self.profile["display"], sdk_manifest_sha256=self.profile["sdk"],
+                         sdk_runtime_sha256=self.profile["archive"], payload_manifest_sha256="1" * 64),
+                    self.profile["sdl_receipt"], {})
+        self.evidence = dict(format="ps5-opengl-g55-release-v1", display_profile=self.profile["display"],
+            runtime_source_commit=self.profile["runtime"], sdk_manifest_sha256=self.profile["sdk"],
+            runtime_archive_sha256=self.profile["archive"], sdl_source_companion=self.profile["sdl_source"],
+            sdl_build_receipt_sha256=self.profile["sdl_receipt"], inherited_acceptance=False,
+            build_provenance="build.json", build_provenance_sha256="2" * 64,
+            consumer_report_sha256="6" * 64,
+            g47_sdk="base", g47_provenance="g47.json", g51_candidate="g51.json", runs={})
+        self.paths, self.accepted = {}, {}
+        for kind, gate in self.e.GATES.items():
+            folder = self.root / kind
+            folder.mkdir()
+            paths = self.paths[kind] = {key: folder / ("PPSA99005-20260909-000000" + suffix)
+                for key, suffix in (("app", "-opengl.log"), ("cycle", "-result.json"),
+                                    ("runner", "-runner.json"), ("klog", "-klog.log"))}
+            paths["candidate"] = folder / "candidate.json"
+            paths["audit"] = folder / "audit.json"
+            entry = self.evidence["runs"][kind] = dict(
+                audit=paths["audit"].relative_to(self.root).as_posix(), audit_sha256="3" * 64,
+                app=paths["app"].relative_to(self.root).as_posix(),
+                candidate=paths["candidate"].relative_to(self.root).as_posix(),
+                source_companion=self.profile["sdl_source"] if kind == "sdl" else "4" * 40)
+            candidate = dict(hardware_run=False, sdk_manifest_sha256=self.profile["sdk"],
+                             files={"eboot.bin": BUNDLE.hashlib.sha256(kind.encode()).hexdigest(),
+                                    "sce_module/libc.prx": self.e.LIBC})
+            if kind == "sdl":
+                candidate.update(display_profile=self.profile["display"], example="smoke",
+                    sdk_runtime_sha256=self.profile["archive"], native_receipt_sha256=self.sdl[1],
+                    template_libc_sha256=self.e.LIBC,
+                    selected_test_sha256=BUNDLE.hashlib.sha256((gate + "\n").encode()).hexdigest())
+            else:
+                candidate.update(profile=self.profile["display"], runtime_sha256=self.profile["archive"],
+                    source_companion=entry["source_companion"], gate=gate, build_flags={})
+            if kind == "imgui":
+                entry["mode"] = "startup"
+                candidate["build_flags"] = dict(PS5_IMGUI_PROFILE="1", PS5_GPU_MEMORY_PROFILE="1")
+            cycle = dict(titleId="PPSA99005", outcome="entered-eboot", teardownSignal="runtime-layers-released",
+                         ebootSha256=candidate["files"]["eboot.bin"], libcSha256=self.e.LIBC,
+                         appDirectory="private-cycle-directory")
+            runner = dict(gate=gate, checkoutCommit="5" * 40, protocolCommit=self.e.PROTOCOL,
+                          postHealthChecked=True, lockReleased=True, ps5Host="private-host.invalid")
+            for key, data in (("candidate", candidate), ("cycle", cycle), ("runner", runner)):
+                paths[key].write_text(json.dumps(data))
+            paths["app"].write_text(self.log(kind))
+            paths["klog"].write_text("launchApp(PPSA99005)\nEXEC /app0/eboot.bin\n"
+                "[AvControl] video: port:HDMI 1440P_11988\n[AvControl] video: port:HDMI 1440P_5994\n")
+            self.accepted[kind] = dict(classification="pass", candidate=candidate, runner_companion=runner["checkoutCommit"])
+            self.reaudit(kind)
+        self.index = self.root / "release.json"
+        self.repin_index()
+
+    @staticmethod
+    def log(kind):
+        gate = "[pss-opengl-native] gate completed status=0\n"
+        if kind == "mip-blit":
+            stages = [item.split(",") for item in (
+                "mip0-mip1,0:0:2,1:1:3;mip1-mip2,0:1:3,1:2:2;mip2-mip0,0:2:2,1:0:3;"
+                "same-chain-0-1,0:0:2,0:1:3;same-chain-1-0,0:1:3,0:0:2;single-mip,2:0:2,1:2:3;"
+                "mip-single,0:1:3,2:0:2;flip-source-x,0:1:2,1:1:3;flip-dest-y,0:1:3,1:1:2;"
+                "scale-up,0:2:2,1:1:3;scale-down,0:0:3,1:2:2;flip-scale-scissor,0:1:2,1:2:3;"
+                "msaa4-mip,3:0:3,1:1:2;mip-msaa4,0:2:2,3:0:3").split(";")]
+            rows = ["mode=native renderer=fixture version=3.3 size=32 levels=0/1/2 array_layers=2/3 uniform_samples=1 sample_isolation=0"]
+            number = 0
+            for fmt, target, pixels, masks in (("D32", "2D", 4736, ["depth"]),
+                    ("D32", "2D-array", 18944, ["depth"]),
+                    ("D32S8", "2D", 4736, ["depth", "stencil", "both"]),
+                    ("D32S8", "2D-array", 18944, ["depth", "stencil", "both"])):
+                rows.append(f"format={fmt} target={target} stage=initial pixels={pixels} result=0")
+                for mask in masks:
+                    for stage, src, dst in stages:
+                        number += 1
+                        if target == "2D":
+                            src, dst = src.rsplit(":", 1)[0] + ":0", dst.rsplit(":", 1)[0] + ":0"
+                        rows.append(f"case={number} format={fmt} target={target} stage={stage} mask={mask} src={src} dst={dst} "
+                                    f"samples={4 if src[0] == '3' else 1}->{4 if dst[0] == '3' else 1} pixels={pixels} "
+                                    "depth_errors=0 stencil_errors=0 result=0")
+                rows.append(f"format={fmt} target={target} cleanup=1 result=0")
+            rows.append("summary cases=112 passed=112 pixels=1373440 depth_pixels=1373440 stencil_pixels=1018240 errors=0 "
+                        "depth_errors=0 stencil_errors=0 gl_errors=0 fbo_errors=0 driver_errors=0 egl_error=0x3000 cleanup=1 result=0")
+            return "".join("[depth-mip-blit] " + row + "\n" for row in rows) + gate
+        if kind == "depth-array-samples":
+            rows = ["draw_counter=native-driver"]
+            for samples in (1, 4):
+                for phase in range(3):
+                    for layer in range(4):
+                        rows.append(f"samples={samples} phase={phase} layer={layer} pixels=1024/1024")
+                for layer in (2, 3):
+                    rows.append(f"samples={samples} layer={layer} draw=0/{layer}->0/{layer+1}")
+                rows.append(f"samples={samples} explicit_draws=2 cleanup=1 result=0")
+            rows += ["final_draw=0/4 result=0", "cleanup=1 result=0"]
+            return "".join("[ps5-egl-core33-depth-array-samples] " + row + "\n" for row in rows) + gate
+        if kind == "depth-array-fetch":
+            rows = ["draw_counter=native-driver renderer=fixture version=3.3 uniform_samples=1 sample_isolation=0"]
+            for fmt, stencil in (("D32", "0/0"), ("D32S8", "1024/1024")):
+                rows.append(f"format={fmt} samples=4 fixed=1 layers=2/3 resolve=1024/1024 stencil={stencil} "
+                            "sampled=1024/1024 rgba=255/255/255/255 draw_delta=1 cleanup=1 result=0")
+            rows += ["final_draw=0/2 result=0", "cleanup=1 result=0"]
+            return "".join("[ps5-egl-msaa4-depth-array-texture] " + row + "\n" for row in rows) + gate
+        if kind == "depth-mip":
+            return ("[ps5-egl-core33-depth-mip-target] invalid_3d_error=0x502 expected=0x502 result=0\n"
+                    "[ps5-egl-core33-depth-mip-target] matching=5 depths=0.500000/0.500000/0.500000/0.500000/0.500000 draw=0/5 rejected_3d=1 error=0x0 result=0\n"
+                    "[ps5-egl-core33-depth-mip-target] cleanup=1 result=0\n") + gate
+        if kind == "sdl":
+            return ("[sdl2-g19] GL=3.3 (Core Profile) Mesa 26.2.0 drawable=2560x1440 nominal_refresh=120Hz (not negotiated HDMI)\n"
+                    "[sdl2-g19] probe frame=0 rgba=0,38,102,255 expected=0,38,102,255 pass=1\n"
+                    "[sdl2-g19] probe frame=179 rgba=254,38,102,255 expected=254,38,102,255 pass=1\n"
+                    "[sdl2-g19] frames=180 probes=2 status=0\n") + gate
+        startup = "frame30_seconds=0.078 window_seconds=30.005 window_complete=1 clock_valid=1 window_stage_ms=1078 window_outside_stages_ms=28927 window_snapshot_log_ms=1"
+        for group, frames, times in (("frame0", 1, (.1, 1, .5, 0, 1)), ("first30", 30, (3, 30, 15, 0, 30)),
+                                     ("window", 130, (103, 230, 315, 0, 430))):
+            startup += f" {group}_frames={frames}"
+            startup += "".join(f" {group}_{stage}_ms={value}" for stage, value in zip(("ui", "clear", "draw", "readback", "swap"), times))
+        return ("[ps5-imgui-tv] readback frame=0 rgba=45,215,245,255 PASS\n"
+                "[ps5-imgui-tv] readback frame=10 rgba=45,215,245,255 PASS\n"
+                "[ps5-imgui-perf] frames=100 warmup=30 ui_ms=1 clear_ms=2 draw_ms=3 readback_ms=0 swap_ms=4 cpu_wall_ms=10 status=0\n"
+                "[ps5-imgui-tv] finished frames=130 changes=0 status=0\n[ps5-imgui] finished status=0\n"
+                "[ps5-prepare-perf] calls=300 failures=0 warmup_frames=30 setup_ms=0.5 scanout_flush_ms=0.5 video_ms=0 command_ms=0.25 command_flush_ms=0.25 total_ms=1.5\n"
+                + "[ps5-multidraw-batch] draws=2 attempted=2 waits=1 result=0\n[ps5-deferred-batch] draws=2 result=0\n" * 100
+                + "[ps5-imgui-startup] " + startup + "\n" + gate)
+
+    def repin_index(self):
+        self.index.write_text(json.dumps(self.evidence))
+        self.profile["evidence"] = BUNDLE.digest(self.index)
+
+    def repin(self, kind):
+        record, paths = self.accepted[kind], self.paths[kind]
+        record["raw_sha256"] = {key: BUNDLE.digest(path) for key, path in paths.items() if key != "audit"}
+        paths["audit"].write_text(json.dumps(record))
+        self.evidence["runs"][kind]["audit_sha256"] = BUNDLE.digest(paths["audit"])
+
+    def reaudit(self, kind):
+        paths, record = self.paths[kind], self.accepted[kind]
+        record["workload"] = self.e.summarize_workload(kind, paths["app"].read_text(), self.profile["display"],
+                                                      self.evidence["runs"][kind].get("mode"))
+        record["display"] = BUNDLE.DISPLAY.hdmi_report(paths["klog"].read_text(), "PPSA99005", 2560, 1440, 119.88)
+        if kind not in ("imgui", "sdl"):
+            record["display"]["acceptance_scope"] = "not-a-display-test"
+        self.repin(kind)
+
+    def report(self):
+        return self.e.report(self.root, self.profile, self.sdl, self.evidence, set())
+
+    def test_six_exact_runs_and_public_scope(self):
+        self.assertEqual(self.e.load_evidence(self.index, self.profile), self.evidence)
+        hosts = set()
+        report = self.e.report(self.root, self.profile, self.sdl, self.evidence, hosts)
+        self.assertEqual(hosts, {"private-host.invalid"})
+        self.assertEqual(report["clean_cycles"], 6)
+        self.assertFalse(report["inherited_acceptance"])
+        self.assertEqual(report["runs"]["mip-blit"]["workload"]["cases"], 112)
+        self.assertLess(report["runs"]["imgui"]["workload"]["startup_inclusive_fps"], 114)
+        self.assertFalse(report["runs"]["imgui"]["startup_is_cadence_acceptance"])
+        self.assertIsNone(report["runs"]["sdl"]["workload"]["measured_fps"])
+        serialized = json.dumps(report)
+        for private in ("private-host", "private-cycle", str(self.root), "details", "appDirectory"):
+            self.assertNotIn(private, serialized)
+
+    def test_all_release_pins_pending_and_modes_exclusive(self):
+        for name, frozen in BUNDLE.G55.items():
+            pending = dict(frozen, runtime=None)
+            with self.assertRaisesRegex(ValueError, "not yet frozen"):
+                self.e.load_evidence(self.root / "missing", pending)
+            args = ["bundle", "--g55-profile", name, "--sdk", "unused", "--source-commit", "a" * 40,
+                    "--candidate", "unused", "--results", "unused", "--sdl-build", "unused",
+                    "--consumer-report", "unused", "--destination", str(self.root / "never")]
+            with mock.patch.dict(BUNDLE.G55, {name: pending}), mock.patch("sys.argv", args), \
+                    self.assertRaisesRegex(ValueError, "not yet frozen"):
+                BUNDLE.main()
+            for other in (["--ci-version", "ci"], ["--sample-version", BUNDLE.VERSION],
+                          ["--targeted-version", BUNDLE.TARGETED_VERSION], ["--hfr-profile", name], ["--g47-profile", name]):
+                with mock.patch("sys.argv", args + other), self.assertRaisesRegex(ValueError, "mutually exclusive"):
+                    BUNDLE.main()
+            self.assertFalse((self.root / "never").exists())
+        for key in ("runtime", "sdk", "archive", "sdl_receipt", "sdl_source", "evidence"):
+            with mock.patch.dict(self.profile, {key: None}), self.assertRaisesRegex(ValueError, "not yet frozen"):
+                self.e.load_evidence(self.index, self.profile)
+        self.index.write_text(self.index.read_text() + " ")
+        with self.assertRaisesRegex(ValueError, "index changed"):
+            self.e.load_evidence(self.index, self.profile)
+
+    def test_missing_extra_mixed_and_rehashed_identity(self):
+        for key, bad in (("sdk_manifest_sha256", "0" * 64), ("runtime_source_commit", BUNDLE.G47_RUNTIME),
+                         ("inherited_acceptance", True), ("display_profile", BUNDLE.DISPLAY_PROFILES["2160p120"])):
+            with mock.patch.dict(self.evidence, {key: bad}):
+                self.repin_index()
+                with self.assertRaises(ValueError):
+                    self.e.load_evidence(self.index, self.profile)
+        for kind in self.e.GATES:
+            saved = self.evidence["runs"].pop(kind)
+            with self.assertRaisesRegex(ValueError, "six focused"):
+                self.report()
+            self.evidence["runs"][kind] = saved
+        for key, value in (("sdk_manifest_sha256", "0" * 64), ("sdk_runtime_sha256", "0" * 64),
+                           ("display_profile", BUNDLE.DISPLAY_PROFILES["2160p120"])):
+            with mock.patch.dict(self.sdl[0], {key: value}), self.assertRaises(ValueError):
+                self.report()
+
+    def test_every_raw_and_audit_file_is_bound(self):
+        for kind, paths in self.paths.items():
+            for path in paths.values():
+                before = path.read_bytes()
+                path.write_bytes(before + b" ")
+                with self.subTest(kind=kind, path=path.name), self.assertRaisesRegex(ValueError, "changed"):
+                    self.report()
+                path.write_bytes(before)
+
+    def test_rehashed_numerical_failures_still_rejected(self):
+        changes = {
+            "mip-blit": [("passed=112", "passed=111"), ("case=112 ", "case=111 "), ("pixels=4736", "pixels=4735"),
+                         ("stage=scale-up", "stage=scale-down"), ("mask=stencil", "mask=depth"),
+                         ("samples=4->1", "samples=1->1"), ("stencil_errors=0", "stencil_errors=1"),
+                         ("mode=native", "mode=host")],
+            "depth-array-samples": [("pixels=1024/1024", "pixels=1023/1024"), ("draw=0/2->0/3", "draw=0/2->0/2")],
+            "depth-array-fetch": [("sampled=1024/1024", "sampled=1023/1024"), ("sample_isolation=0", "sample_isolation=1")],
+            "depth-mip": [("matching=5", "matching=4"), ("invalid_3d_error=0x502", "invalid_3d_error=0x0")],
+            "sdl": [("frames=180", "frames=179"), ("254,38,102,255", "253,38,102,255")],
+            "imgui": [("clock_valid=1", "clock_valid=0"), ("window_seconds=30.005", "window_seconds=nan"),
+                      ("window_frames=130", "window_frames=129"), ("window_stage_ms=1078", "window_stage_ms=1077"),
+                      ("window_clear_ms=230", "window_clear_ms=231"), ("frame30_seconds=0.078", "frame30_seconds=31")],
+        }
+        for kind, mutations in changes.items():
+            path = self.paths[kind]["app"]
+            original = path.read_text()
+            for before, after in mutations + [("status=0", "status=1")]:
+                path.write_text(original.replace(before, after, 1))
+                self.repin(kind)
+                with self.subTest(kind=kind, mutation=before), self.assertRaises(ValueError):
+                    self.report()
+            path.write_text(original)
+            self.repin(kind)
+
+    def test_rehashed_native_source_lifecycle_and_sdl_relink_mismatch(self):
+        for kind, key, field, bad in (("mip-blit", "candidate", "sdk_manifest_sha256", BUNDLE.G47["1440p120"]["sdk"]),
+                ("mip-blit", "candidate", "source_companion", "0" * 40),
+                ("mip-blit", "runner", "protocolCommit", "0" * 40),
+                ("mip-blit", "runner", "postHealthChecked", False),
+                ("mip-blit", "runner", "lockReleased", False),
+                ("mip-blit", "cycle", "teardownSignal", "timeout"),
+                ("sdl", "candidate", "native_receipt_sha256", "0" * 64),
+                ("sdl", "candidate", "selected_test_sha256", "0" * 64)):
+            path = self.paths[kind][key]
+            original = path.read_text()
+            changed = dict(json.loads(original), **{field: bad})
+            path.write_text(json.dumps(changed))
+            if key == "candidate":
+                self.accepted[kind]["candidate"] = changed
+            self.repin(kind)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.report()
+            path.write_text(original)
+            if key == "candidate":
+                self.accepted[kind]["candidate"] = json.loads(original)
+            self.repin(kind)
+
+    def test_native_display_required_for_imgui_sdl_only(self):
+        for kind in self.e.GATES:
+            path = self.paths[kind]["klog"]
+            original = path.read_text()
+            path.write_text("launchApp(PPSA99005)\nEXEC /app0/eboot.bin\n")
+            self.reaudit(kind)
+            if kind in ("imgui", "sdl"):
+                with self.assertRaisesRegex(ValueError, "HDMI"):
+                    self.report()
+            else:
+                self.assertEqual(self.report()["runs"][kind]["display_scope"], "not-a-display-test")
+            path.write_text(original)
+            self.reaudit(kind)
+
+    def test_confined_paths(self):
+        for name in ("../escape", "/absolute", "C:/absolute", "a\\b", "./imgui/audit.json"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                self.e.evidence_path(self.root, name)
+        alias = self.root / "alias"
+        alias.symlink_to(self.paths["imgui"]["audit"])
+        with self.assertRaises(ValueError):
+            self.e.evidence_path(self.root, "alias")
+
+    def test_g51_patch_and_current_build_identity_are_retained(self):
+        sdk, repo = self.root / "sdk", self.root / "source"
+        (sdk / "lib").mkdir(parents=True)
+        (repo / "toolchain").mkdir(parents=True)
+        (repo / "toolchain/mesa-ps5.patch").write_text("fixture patch")
+        files = {"lib/libps5_opengl_core33.a": b"new runtime", "lib/libmesa.a": b"G51 Mesa", "lib/libpsbc.ps5.a": b"unchanged"}
+        for name, data in files.items():
+            (sdk / name).write_bytes(data)
+        original = dict(profiles={"1440p120": dict(files={name: dict(derived_sha256=BUNDLE.digest(sdk / name)) for name in files})})
+        mesa = dict(status="PASS", hardware_run=False, source_companion="7" * 40,
+            patch_sha256=BUNDLE.digest(repo / "toolchain/mesa-ps5.patch"),
+            raw_object_sha256="8" * 64, installed_object_sha256="9" * 64,
+            strip_addrsig_exceptions=[dict(section=".llvm_addrsig", original_link=".symtab", derived_link=None,
+                                          bytes=12, contents_sha256="0" * 64)],
+            profiles={"1440": dict(mesa_archive_sha256=BUNDLE.digest(sdk / "lib/libmesa.a"),
+                                     changed_member="main_fbobject.c.o", unchanged_mesa_members=219)})
+        (self.root / "g51.json").write_text(json.dumps(mesa))
+        build = dict(source_companion=self.profile["runtime"], hardware_run=False,
+                     new_manifest=dict(sha256=self.profile["sdk"], files=len(files)), runtime_sha256=self.profile["archive"],
+                     command=["private build command"])
+        (self.root / "build.json").write_text(json.dumps(build))
+        self.evidence["build_provenance_sha256"] = BUNDLE.digest(self.root / "build.json")
+        def verify():
+            return self.e.verify_build(self.evidence, self.root, repo, sdk, self.profile, original)
+        with mock.patch.object(self.e, "G51_CANDIDATE", BUNDLE.digest(self.root / "g51.json")):
+            checked = verify()
+            self.assertEqual(checked["unchanged_g47_files"], 1)
+            self.assertEqual(checked["mesa"]["strip_addrsig_exceptions"][0]["bytes"], 12)
+            self.assertNotIn("private", json.dumps(checked))
+            self.assertNotIn("command", checked)
+            for path in (sdk / "lib/libmesa.a", sdk / "lib/libpsbc.ps5.a", repo / "toolchain/mesa-ps5.patch",
+                         self.root / "g51.json", self.root / "build.json"):
+                before = path.read_bytes()
+                path.write_bytes(before + b"changed")
+                with self.subTest(path=path.name), self.assertRaises(ValueError):
+                    verify()
+                path.write_bytes(before)
+            for field, bad in (("source_companion", BUNDLE.G47_RUNTIME), ("hardware_run", True),
+                               ("runtime_sha256", BUNDLE.G47["1440p120"]["archive"]),
+                               ("new_manifest", dict(sha256=self.profile["sdk"], files=99))):
+                (self.root / "build.json").write_text(json.dumps(dict(build, **{field: bad})))
+                self.evidence["build_provenance_sha256"] = BUNDLE.digest(self.root / "build.json")
+                with self.subTest(field=field), self.assertRaisesRegex(ValueError, "provenance mismatch"):
+                    verify()
+
+    def test_startup_cannot_substitute_for_window_evidence(self):
+        with self.assertRaises(ValueError):
+            self.e.summarize_workload("imgui", self.log("imgui"), self.profile["display"], "window")
+
+    def test_g55_assembly_uses_existing_archive_and_excludes_raw_evidence(self):
+        sdk, native, dependencies = (self.root / name for name in ("sdk", "native", "dependencies"))
+        (sdk / "lib").mkdir(parents=True)
+        for name in ("libps5_opengl_core33.a", "libpsbc.ps5.a", "libmesa.a"):
+            (sdk / "lib" / name).write_bytes(b"!<arch>\n")
+        for name in ("libSceAgc.so", "libSceAgcDriver.so"):
+            (sdk / "lib" / name).write_bytes(b"fixture import")
+        (sdk / "lib/libPS5OpenGLCore33.a").write_text("GROUP ( libmesa.a )\n")
+        helper = importlib.import_module("test_sdl_sdk")
+        helper.profile_header(sdk, **self.profile["display"])
+        self.profile.update(sdk=BUNDLE.CHECK.verify_manifest(sdk)["sha256"], archive=BUNDLE.digest(sdk / "lib/libps5_opengl_core33.a"))
+        self.evidence.update(sdk_manifest_sha256=self.profile["sdk"], runtime_archive_sha256=self.profile["archive"])
+        self.sdl[0].update(sdk_manifest_sha256=self.profile["sdk"], sdk_runtime_sha256=self.profile["archive"])
+        for kind in self.e.GATES:
+            candidate = self.accepted[kind]["candidate"]
+            candidate["sdk_manifest_sha256"] = self.profile["sdk"]
+            candidate["sdk_runtime_sha256" if kind == "sdl" else "runtime_sha256"] = self.profile["archive"]
+            self.paths[kind]["candidate"].write_text(json.dumps(candidate))
+            self.repin(kind)
+        consumers = dict(status="PASS", manifest=BUNDLE.CHECK.verify_manifest(sdk),
+            gl33=dict(commands=344, exported=344), consumers=dict.fromkeys(("make", "pkgconfig", "cmake"), {}),
+            outputs=dict.fromkeys(("make/a.elf", "pkgconfig/a.elf", "cmake/a.elf"), "1" * 64))
+        consumer_path = self.root / "consumers.json"
+        consumer_path.write_text(json.dumps(consumers))
+        self.evidence["consumer_report_sha256"] = BUNDLE.digest(consumer_path)
+        self.repin_index()
+        (self.root / "base").mkdir()
+        prior = self.root / "g47.json"
+        prior.write_text(json.dumps(dict(profiles={})))
+        (native / "sdk").mkdir(parents=True)
+        dependencies.mkdir()
+        mesa = dependencies / "mesa-26.2.0.tar.xz"
+        with tarfile.open(mesa, "w:xz") as archive:
+            member = tarfile.TarInfo("mesa-26.2.0/src/mesa/glapi/glapi/registry/gl.xml")
+            member.size = 11
+            archive.addfile(member, io.BytesIO(b"<registry/>"))
+        names = ("opengnm-psbc", "opengnm", "SPIRV-Headers", "Vulkan-Headers", "imgui", "nanovg", "sokol", "sokol-samples")
+        pins = dict(mesa=dict(sha256=BUNDLE.digest(mesa)), repositories={name: dict(revision="1" * 40) for name in names})
+
+        def snapshot(repo, revision, name, destination):
+            files = {"LICENSE": b"fixture license", "LICENSE.md": b"fixture license"}
+            if name == "ps5-opengl":
+                files.update({"dependencies.json": json.dumps(pins).encode(),
+                              "docs/sdk-g55-release.md": b"Fixture distribution, not GPU evidence."})
+            with tarfile.open(destination, "w") as archive:
+                for filename, data in files.items():
+                    member = tarfile.TarInfo(name + "/" + filename)
+                    member.size = len(data)
+                    archive.addfile(member, io.BytesIO(data))
+
+        def copy_sdl(native, stage, checked, epoch):
+            # SDL copy/receipt integrity is independently exercised by SDLBundleTests.
+            (stage / "sdl2").mkdir()
+            (stage / "sdl2/manifest.sha256").write_text("fixture SDL payload\n")
+            return dict(hardware_run=False)
+
+        out = self.root / "output"
+        argv = ["bundle", "--g55-profile", "1440p120", "--sdk", str(sdk), "--sdl-build", str(native),
+                "--candidate", str(self.index), "--results", str(self.root), "--consumer-report", str(consumer_path),
+                "--source-commit", "9" * 40, "--third-party", str(dependencies), "--destination", str(out)]
+        with mock.patch.dict(BUNDLE.G55, {"1440p120": self.profile}), mock.patch("sys.argv", argv), \
+                mock.patch.object(BUNDLE, "verify_sdl", return_value=self.sdl), \
+                mock.patch.object(BUNDLE, "copy_sdl", side_effect=copy_sdl), \
+                mock.patch.object(BUNDLE, "verify_g47_derivative", return_value=({"g47-derivative-provenance.json": (prior, BUNDLE.digest(prior))}, {})), \
+                mock.patch.object(self.e, "verify_build", return_value=dict(fixture=True)), \
+                mock.patch.object(BUNDLE, "snapshot", side_effect=snapshot), \
+                mock.patch.object(BUNDLE.subprocess, "run") as command, \
+                mock.patch.object(BUNDLE.subprocess, "check_output", side_effect=lambda argv, **kw:
+                                  "" if "status" in argv else "123" if "show" in argv else "9" * 40):
+            BUNDLE.main()
+            self.assertTrue(any("diff" in call.args[0] and self.profile["runtime"] in call.args[0]
+                                for call in command.call_args_list))
+        stage = out / ("ps5-opengl-sdk-" + self.profile["version"])
+        report = json.loads((stage / "focused-validation.json").read_text())
+        self.assertEqual(set(report["runs"]), set(self.e.GATES))
+        self.assertNotIn("private-host", json.dumps(report))
+        self.assertTrue((stage / "verification/g55-build-validation.json").is_file())
+        archive = Path(str(stage) + ".tar.gz")
+        self.assertEqual(Path(str(archive) + ".sha256").read_text().split()[0], BUNDLE.digest(archive))
+        for row in (stage / "SHA256SUMS").read_text().splitlines():
+            checksum, relative = row.split("  ", 1)
+            self.assertEqual(checksum, BUNDLE.digest(stage / relative))
+        with tarfile.open(archive) as packed:
+            self.assertFalse(any(name.endswith(("-opengl.log", "candidate.json", "release.json")) for name in packed.getnames()))
+
+
 if __name__ == "__main__":
     unittest.main()
