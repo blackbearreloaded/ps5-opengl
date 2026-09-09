@@ -256,3 +256,12 @@ and restored 2160p59.94. These are completed workload averages, not a promise
 of steady 60/120 FPS or an arbitrary game's performance; cadence misses remain.
 
 - 2026-09-09 | G52 depth-array | caa5d7c | pass: corrected mip generation/raw/shadow sampling, cleanup/health/unlock | results/g52-depth-array-2160-20260909-v1/.
+
+- 2026-09-09 | G52 depth-mip | failed: five draws rejected with status -17; expected 3D-depth rejection passed, clean/healthy/unlocked | results/g52-depth-mip-2160-20260909-v1/.
+
+G53 aligns depth-mip staging offsets to the existing native API's 2 MiB
+requirement, rather than color staging's 64 KiB. The pointer validators remain
+unchanged. Extracted allocation/validator regression passes under sanitizers,
+covers rounding/overflow and packed depth/stencil, and rejects the old alignment.
+Host suites pass; native qualification is pending. This can add up to roughly
+2 MiB of padding per affected resource; no memory-use improvement is claimed.

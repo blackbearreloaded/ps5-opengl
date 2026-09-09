@@ -3288,8 +3288,8 @@ ps5_resource_create_unlocked(struct pipe_screen *screen,
                                    sample_layer_size * layers);
       }
       depth_staging_offset =
-         (size + PS5_COLOR_TARGET_ALIGNMENT - 1u) &
-         ~(size_t)(PS5_COLOR_TARGET_ALIGNMENT - 1u);
+         (size + PS5_RENDER_ALIGNMENT - 1u) &
+         ~(size_t)(PS5_RENDER_ALIGNMENT - 1u);
       if (depth_staging_offset < size ||
           depth_staging_size > SIZE_MAX - depth_staging_offset) {
          free(resource);

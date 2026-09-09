@@ -57,6 +57,7 @@ test-staging:
 	python3 tests/ps5/test_depth_layer_layout.py
 	python3 tests/ps5/test_depth_subresources.py
 	python3 tests/ps5/test_generate_mipmap.py
+	python3 tests/ps5/test_depth_staging_alignment.py
 	bash tools/test-depth-array-samples-host.sh
 	bash tools/test-staging-host.sh
 test:
