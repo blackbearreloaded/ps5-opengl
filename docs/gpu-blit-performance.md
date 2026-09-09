@@ -85,3 +85,13 @@ also promotes single-level 2D R8/RG8/RGBA16F storage and large scissored/full-ma
 depth/stencil clears. Host checks are not native qualification. Full-depth
 memset, partial masks and unsupported layouts retain the existing CPU paths.
 Mip chains and arrays still require further work; G60 is not implemented yet.
+
+- 2026-09-09 | G57 control | 442ec97 | 4K | failed: inset LINEAR edge pixels; clean/healthy/unlocked | results/g57-blit-control-2160-20260909-v1 | fix CPU filter halo before pairing.
+
+The control exposed an existing fallback error: interpolation clamped to the
+copied rectangle, not the source image. The corrected CPU path maps a one-texel
+halo, preserving image-edge clamping and untouched destination pixels, as required
+by the [OpenGL blit rules](https://registry.khronos.org/OpenGL/specs/gl/glspec46.core.pdf).
+The successor pair uses identical corrected source; the CPU control sets the
+existing `PS5_GPU_BLIT_MIN_PIXELS` compile-time threshold to `UINT32_MAX`.
+This disables accelerated blits for these workloads without changing their oracle.

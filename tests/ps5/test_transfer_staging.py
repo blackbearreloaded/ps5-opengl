@@ -43,6 +43,7 @@ code = r'''
 #define PS5_RENDER_WIDTH 1920
 #define PS5_RENDER_HEIGHT 1080
 #define MAX2(a,b) ((a) > (b) ? (a) : (b))
+#define MIN2(a,b) ((a) < (b) ? (a) : (b))
 #define CLAMP(v,lo,hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) : (v))
 enum { PIPE_BUFFER, PIPE_TEXTURE_2D, PIPE_TEXTURE_3D, PIPE_TEXTURE_2D_ARRAY };
 enum pipe_format { COLOR, PIPE_FORMAT_Z32_FLOAT, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT, COLOR_UINT };
@@ -224,6 +225,36 @@ static void check_blit(unsigned target, unsigned src_level, unsigned dst_level, 
     }
     free(expected); free(src.data); free(dst.data);
 }
+static void check_linear_halo(unsigned flip, bool inset, bool tiled, bool up) {
+    uint8_t input[32*24*4], output[32*24*4];
+    for (unsigned y=0;y<24;++y) for (unsigned x=0;x<32;++x)
+        for (unsigned c=0;c<4;++c) input[(y*32+x)*4+c]=(uint8_t)(x*7+y*13+c*53);
+    memset(output,0xa5,sizeof(output));
+    struct ps5_resource src={.base={.target=PIPE_TEXTURE_2D,.format=COLOR,
+        .width0=32,.height0=24,.array_size=1},.level_stride={32*4},
+        .layer_stride=sizeof(input),.data=input,.size=sizeof(input),.allocation_size=sizeof(input)};
+    struct ps5_resource dst=src; dst.data=output; dst.base.bind=tiled ? PIPE_BIND_RENDER_TARGET : 0;
+    int x0=inset ? 3:0, y0=inset ? 5:0, sw=8, sh=6, dw=up ? 16:4, dh=up ? 12:3;
+    struct pipe_blit_info b={.src={&src.base,0,COLOR,{x0+(flip&1 ? sw:0),y0+(flip&2 ? sh:0),0,
+        flip&1 ? -sw:sw,flip&2 ? -sh:sh,1}},.dst={&dst.base,0,COLOR,{3,4,0,dw,dh,1}},
+        .mask=PIPE_MASK_RGBA,.filter=PIPE_TEX_FILTER_LINEAR};
+    ps5_blit(NULL,&b); idle();
+    for (int y=0;y<24;++y) for (int x=0;x<32;++x) for (unsigned c=0;c<4;++c) {
+        double expected=0xa5;
+        if (x>=3 && x<3+dw && y>=4 && y<4+dh) {
+            double sx=b.src.box.x+(x-3+.5)*b.src.box.width/dw-.5;
+            double sy=b.src.box.y+(y-4+.5)*b.src.box.height/dh-.5;
+            int ix=(int)sx-(sx<(int)sx), iy=(int)sy-(sy<(int)sy);
+            double wx=sx-ix, wy=sy-iy;
+            /* Full-image clamping, independent of the mapped halo rectangle. */
+            int xa=CLAMP(ix,0,31), xb=CLAMP(ix+1,0,31);
+            int ya=CLAMP(iy,0,23), yb=CLAMP(iy+1,0,23);
+            expected=(1-wy)*((1-wx)*input[(ya*32+xa)*4+c]+wx*input[(ya*32+xb)*4+c])+
+                     wy*((1-wx)*input[(yb*32+xa)*4+c]+wx*input[(yb*32+xb)*4+c]);
+        }
+        assert(abs((int)output[(y*32+x)*4+c]-(int)(expected+.5))<=1);
+    }
+}
 static void check(unsigned format, unsigned width, unsigned height, unsigned layers) {
     struct ps5_resource r={.base={.target=PIPE_TEXTURE_2D,.format=format,
         .width0=width,.height0=height,.array_size=layers,
@@ -313,6 +344,10 @@ int main(void) {
         check_swizzle(PIPE_TEX_FILTER_LINEAR,integer,tiled);
     }
     puts("transfer-color-swizzle: PASS nearest/linear, tiled/mapped, constants/permutation and integer-filter rejection");
+    for (unsigned flip=0;flip<4;++flip) for (unsigned inset=0;inset<2;++inset)
+        for (unsigned tiled=0;tiled<2;++tiled) for (unsigned up=0;up<2;++up)
+            check_linear_halo(flip,inset,tiled,up);
+    puts("transfer-linear-halo: PASS 32 actual inset/edge/up/down/flip cases, both destination layouts and untouched borders");
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:

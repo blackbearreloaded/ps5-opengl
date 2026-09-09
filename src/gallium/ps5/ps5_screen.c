@@ -5737,6 +5737,27 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    src_box.width = (int)src_width;
    src_box.height = (int)src_height;
 
+   unsigned linear_x = 0, linear_y = 0;
+   if (info->filter == PIPE_TEX_FILTER_LINEAR) {
+      /* Filtering clamps at the source IMAGE boundary, not the blit rectangle.
+       * Map a one-texel halo so inset/upscaled edges can read their neighbors. */
+      if (info->src.level > info->src.resource->last_level || info->src.level >= 32)
+         return;
+      int64_t width = MAX2(info->src.resource->width0 >> info->src.level, 1u);
+      int64_t height = MAX2(info->src.resource->height0 >> info->src.level, 1u);
+      if (src_x < 0 || src_y < 0 || src_x + src_width > width || src_y + src_height > height)
+         return;
+      int64_t left = MAX2(src_x - 1, 0), bottom = MAX2(src_y - 1, 0);
+      int64_t right = MIN2(src_x + src_width + 1, width);
+      int64_t top = MIN2(src_y + src_height + 1, height);
+      if (right - left > INT_MAX || top - bottom > INT_MAX)
+         return;
+      linear_x = (unsigned)(src_x - left);
+      linear_y = (unsigned)(src_y - bottom);
+      src_box.x = (int)left; src_box.y = (int)bottom;
+      src_box.width = (int)(right - left); src_box.height = (int)(top - bottom);
+   }
+
    src_pixel_size = ps5_texture_format_size(info->src.format);
    dst_pixel_size = ps5_texture_format_size(info->dst.format);
    if (!src_pixel_size || !dst_pixel_size)
@@ -5835,16 +5856,18 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
                fx = (int64_t)(src_width - 1u) * INT64_C(0x10000) - fx;
             if (info->src.box.height < 0)
                fy = (int64_t)(src_height - 1u) * INT64_C(0x10000) - fy;
+            fx += (int64_t)linear_x * INT64_C(0x10000);
+            fy += (int64_t)linear_y * INT64_C(0x10000);
             x0 = fx >= 0 ? fx / INT64_C(0x10000)
                          : -((-fx + INT64_C(0xffff)) / INT64_C(0x10000));
             y0 = fy >= 0 ? fy / INT64_C(0x10000)
                          : -((-fy + INT64_C(0xffff)) / INT64_C(0x10000));
             wx1 = (uint64_t)(fx - x0 * INT64_C(0x10000));
             wy1 = (uint64_t)(fy - y0 * INT64_C(0x10000));
-            ix0 = (unsigned)CLAMP(x0, 0, (int64_t)src_width - 1);
-            ix1 = (unsigned)CLAMP(x0 + 1, 0, (int64_t)src_width - 1);
-            iy0 = (unsigned)CLAMP(y0, 0, (int64_t)src_height - 1);
-            iy1 = (unsigned)CLAMP(y0 + 1, 0, (int64_t)src_height - 1);
+            ix0 = (unsigned)CLAMP(x0, 0, (int64_t)src_box.width - 1);
+            ix1 = (unsigned)CLAMP(x0 + 1, 0, (int64_t)src_box.width - 1);
+            iy0 = (unsigned)CLAMP(y0, 0, (int64_t)src_box.height - 1);
+            iy1 = (unsigned)CLAMP(y0 + 1, 0, (int64_t)src_box.height - 1);
             union pipe_color_union p00, p10, p01, p11;
             float tx = (float)wx1 / 65536.0f;
             float ty = (float)wy1 / 65536.0f;

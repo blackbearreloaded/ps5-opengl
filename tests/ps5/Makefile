@@ -1734,6 +1734,9 @@ egl_public_core33_gpu_blit_extended.o: egl_public_core33_gpu_blit_extended.c
 egl_public_core33_gpu_clear_extended.o: egl_public_core33_gpu_clear_extended.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
 
+egl_public_core33_native_color_formats.o: egl_public_core33_native_color_formats.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
 egl_public_core33_depth_stencil_blit.o: \
 	egl_public_core33_depth_stencil_blit.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
