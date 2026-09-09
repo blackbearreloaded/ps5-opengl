@@ -112,3 +112,13 @@ two-element blit layout with its position-only depth-clear shader. Host tests pa
 the original failed candidate remains preserved and is not accepted.
 
 - 2026-09-09 | G61 | daf289b | 4K | pass: 46 clears, 8 state checks, strict GPU counters; clean/healthy/unlocked | results/g61-clear-candidate-2160-20260909-v3.
+
+- 2026-09-09 | G58 formats | daf289b | 4K | pass: 6 cases/60 pixel-sampling probes, paired native storage; clean/healthy/unlocked | results/g58-format-{control,candidate}-2160-20260909-v{1,3}.
+
+Short completed-operation samples (eight operations, setup/readback excluded):
+scissored 970x696 depth clears improved from 19.43/19.46 ms to 8.40/8.39 ms
+for D32/D32S8. Full-depth CPU clears remained approximately 0.77 ms. Ordinary
+1024x768 draws into R8, RG8 and RGBA16F improved from 16.67, 16.74 and 25.00 ms
+to 8.38, 8.25 and 8.33 ms, respectively. These isolate tested operations, not
+game FPS or sustained throughput. The single-level format promotion removes
+draw-time staging; explicit CPU upload/readback still converts the tiled image.
