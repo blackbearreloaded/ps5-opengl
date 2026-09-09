@@ -6,6 +6,13 @@
 #define main imgui_session
 #include "main.cpp"
 #undef main
+#include <unistd.h>
+
+#ifndef PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS
+#define PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS 5
+#endif
+static_assert(PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS >= 0 &&
+              PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS <= 10, "bounded HDMI settle interval");
 
 int main()
 {
@@ -13,6 +20,14 @@ int main()
         printf("[ps5-imgui-lifecycle] session=%u begin\n", session);
         if (imgui_session() != 0) return 1;
         printf("[ps5-imgui-lifecycle] session=%u PASS\n", session);
+        if (session != 2) {
+            // Pace separate EGL sessions while the sink restores its home mode.
+            // This is not evidence that rapid mode churn or device loss is safe.
+            printf("[ps5-imgui-lifecycle] settle_after=%u seconds=%u\n",
+                   session, unsigned(PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS));
+            unsigned remaining = PS5_IMGUI_LIFECYCLE_SETTLE_SECONDS;
+            while (remaining) remaining = sleep(remaining);
+        }
     }
     printf("[ps5-imgui-lifecycle] finished sessions=3 status=0\n");
     return 0;

@@ -43,6 +43,7 @@ EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 \
 if [[ ${1:-} == --lifecycle ]]; then
     test "$(grep -cE '^\[ps5-imgui-lifecycle\] session=[012] PASS$' "$root/build/imgui-host/check.log")" = 3
     test "$(grep -cE '^\[ps5-imgui\] frame=.* PASS$' "$root/build/imgui-host/check.log")" = 18
+    test "$(grep -cE '^\[ps5-imgui-lifecycle\] settle_after=[01] seconds=5$' "$root/build/imgui-host/check.log")" = 2
 fi
 if [[ ${1:-} == --benchmark ]]; then
     python3 "$root/tools/summarize-imgui-benchmark.py" "$root/build/imgui-host/check.log" --host \
