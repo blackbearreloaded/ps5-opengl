@@ -16,8 +16,8 @@ application receipts, not new CTS campaigns or universal game-performance claims
 Only the main agent touches the console, through the existing native-folder
 runner and shared exact-token lock. Prepare and audit offline; release the lock
 after every bounded cycle. Use logs and numerical probes, not routine screenshots.
-Stop on uncertain foreground, lifecycle or service health. Current owner-selected
-output is 1440p; an actual 4K HDMI cycle needs the owner to select 4K first.
+Stop on uncertain foreground, lifecycle or service health. The owner confirmed
+the switch from 1440p to 4K after G42; qualify each fresh HDMI cycle separately.
 
 Physical controller actions and an independently available second console/firmware
 require owner participation. Suspend/resume, device-loss recovery and hardware
@@ -32,7 +32,7 @@ full 39,544-case rerun for example, documentation or packaging-only changes.
 - 2026-09-08 | G44 1440p offscreen | 0826b57 | pass: 119.90 completed FPS, pixels/retirement/preview HDMI/cleanup/health/unlock | results/g44-offscreen-1440-20260908/; next soak.
 - 2026-09-08 | G45 1440p | partial-pass: 71,678 frames/600s, 21 pixels, zero steady tracked growth, GPU balanced, clean/healthy/unlocked; first-window cadence miss | results/g45-soak-1440-20260908/.
 - 2026-09-08 | G45 1440p lifecycle | pass: three EGL sessions/18 frame oracles, zero post-session heap growth, GPU baseline restored, three HDMI restore cycles, clean/healthy/unlocked | results/g45-lifecycle-1440-20260908/.
-- 2026-09-08 | G42 | integrated 9c12420 + test-only ad738dc; frozen source/folder verified, host sanitizer/receipt checks pass; physical test pending | docs/sdl-input-validation.md.
+- 2026-09-08 | G42 | pass: owner-confirmed physical Cross/stick sequence before/after removal and new instance; 38.336s, HDMI restoration, clean/healthy/unlocked | docs/sdl-input-validation.md.
 
 The 1440p soak's first 30-second window was 112.17 FPS; the remaining nineteen
 were 119.83–119.87 FPS. Its strict 120-Hz cadence target failed. Explicit

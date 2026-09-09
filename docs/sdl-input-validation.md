@@ -1,8 +1,19 @@
 # G42: bounded SDL physical input and reconnect
 
-Offline candidate only; hardware status is **no-run**. Parent alone operates
-PPSA99005 on the environment recorded in canonical `.local/ENVIRONMENT.md`.
-No inherited G19/G25/G32 or historical campaign acceptance applies.
+Hardware status: **focused physical-input/reconnect pass**, 2026-09-08, one
+firmware-6.02 console. Parent operated PPSA99005 and the owner performed and
+confirmed the physical actions and screen colors. No inherited G19/G25/G32 or
+historical campaign acceptance applies.
+
+Frozen source `9c124202845b9b6acdfe831d62151e18b0cb514b`, eboot SHA-256
+`6e4ee48c8970dd956d829e984a2b1930f96e0c2cdb2c350b30623c422680eab9`:
+Cross press/release and left-stick travel/center passed on instance 0, removal
+at 23.956 seconds, reconnection as instance 1 at 28.101 seconds, then fresh
+button/axis activity completed at 38.336 seconds. The 2560x1440 drawable matched
+captured HDMI 1440p119.88; output restored to 1440p59.94. SDL cleanup, native-title
+teardown, service health and exact-token release passed. Local evidence:
+`results/g42-input-1440-20260908/PPSA99005-20260908-212312-opengl-g42-audit.json`.
+This is one controller/user, not all-button, multi-controller, or 4K input coverage.
 
 G42 criterion: within 120 seconds, observe a nonvirtual controller, button
 press/release and deliberate stick motion, its removal, a new attached instance,
@@ -86,4 +97,4 @@ status 1 is a functional/cleanup failure. Both still use deterministic SDL
 cleanup and the existing parent-controlled main-return hold. No GPU timing,
 extended soak, multi-controller coverage or 4K input qualification is implied.
 
-- 2026-09-08 | G42 | offline candidate | partial-pass: SDL sanitizer/receipt contracts and native build | build/g42-evidence/commands.md | parent physical cycle pending.
+- 2026-09-08 | G42 | pass: host sanitizer/receipt contracts plus owner-confirmed native button/axis/disconnect/reconnect sequence; clean/healthy/unlocked | local receipt above.
