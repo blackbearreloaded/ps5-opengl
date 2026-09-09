@@ -64,3 +64,16 @@ Local receipts and identity/lifecycle audits:
 Host guards, unchanged transfer/clear regressions, full fast host suite, software
 GL oracle and an injected wrong-coordinate rejection passed. No duplicate 1440p
 run, new release bundle, push or GitHub publication was performed.
+
+## Requested follow-on work (local)
+
+- G57: scaled/filtered/flipped/scissored RGBA8 GPU blits; pixel/state oracle and short paired timing.
+- G58: remove more format/mip/layer staging using existing native layout/transfer machinery; validate ownership and neighboring images.
+- G59: RGBA8 MSAA color resolve on GPU; distinguish sample values and preserve exact resolve semantics.
+- G60: GPU mip generation where storage permits; compare independent mip/layer pixels and retain guarded unsupported paths.
+- G61: extend large depth/stencil/color GPU clears; validate masks, scissor, mixed clears, state and cleanup.
+
+These are separate optimization gates, not changes to G56 acceptance or published G55.
+Keep submission/retirement unchanged, test host-first, and batch bounded numerical
+checks in PPSA99005 under the shared lock. Main owns driver integration and console;
+agents prepare disjoint tests and offline layout analysis. No automatic publication.
