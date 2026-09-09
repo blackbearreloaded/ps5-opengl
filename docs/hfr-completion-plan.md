@@ -4,6 +4,9 @@ Starting point: G37–G40 qualified the unchanged G31/G32 artifacts at native
 1440p119.88 and 2160p119.88 on one firmware-6.02 console. These are focused
 application receipts, not new CTS campaigns or universal game-performance claims.
 
+Latest local status: [G54 targeted qualification](#g54-local-qualification).
+The milestones below retain earlier failures and then superseding results.
+
 | Gate | Owner | Work and acceptance |
 | --- | --- | --- |
 | G41 | Packaging agent | Frozen GL/SDL2 bundles for both heights; complete public sources, licenses, checksums, provenance and focused receipts; reject mismatched evidence; relocated consumers pass. Preserve old releases. |
@@ -243,7 +246,7 @@ The byte-identical local rebuild resolves the failed app's stack to
 formats through Mesa's absent RGBA converter. G52 uses the existing depth
 unpack/pack helpers, preserving stencil bytes; the runnable sanitizer regression
 covers both depth formats, color controls, odd/1D extents, selected layers and
-base levels, and rejects the old dispatch. Native qualification is pending.
+base levels, and rejects the old dispatch. G52's native result is recorded below.
 The console recorded an app-level segmentation fault, not a kernel panic; the
 failed receipt is retained and was not retried unchanged.
 
@@ -263,7 +266,7 @@ G53 aligns depth-mip staging offsets to the existing native API's 2 MiB
 requirement, rather than color staging's 64 KiB. The pointer validators remain
 unchanged. Extracted allocation/validator regression passes under sanitizers,
 covers rounding/overflow and packed depth/stencil, and rejects the old alignment.
-Host suites pass; native qualification is pending. This can add up to roughly
+Host suites pass; G53's native result is recorded below. This can add up to roughly
 2 MiB of padding per affected resource; no memory-use improvement is claimed.
 
 - 2026-09-09 | G53 depth-mip | a236962 | pass: all five targets depth=0.5, draw=0/5, cleanup/health/unlock | results/g53-depth-mip-2160-20260909-v1/.
@@ -273,5 +276,27 @@ G54 addresses those two admission/copy gaps and the depth-MS-array descriptor
 type found in the offline review. Existing depth/stencil copy paths now select
 one checked tiled layer and retain its slice XOR; no GPU submission/lifetime
 change. Mip-chain blits remain outside this path. Host regressions cover masks,
-bounds, copy/resolve/replicate and capability prerequisites; native qualification
-remains pending. The array oracle stops on its first failed variant.
+bounds, copy/resolve/replicate and capability prerequisites. The array oracle
+stops on its first failed variant; native results follow.
+
+## G54 local qualification
+
+- 2026-09-09 | G53 4K startup | a236962 | pass: 3,404 frames/30.007s including startup (113.44 FPS), video preparation 1,571.212ms, native HDMI/cleanup/health/unlock | results/g53-startup-2160-20260909-v1/.
+- 2026-09-09 | G54 array/MSAA | 0f78ee9 | pass: 24,576 color/depth/stencil pixel tuples at 1x/4x, four draws, layers 2/3 and neighboring-layer preservation, cleanup/health/unlock | results/g54-depth-array-samples-2160-20260909-v1/.
+- 2026-09-09 | G54 MS-array fetch | 0f78ee9 | pass: D32/D32S8, all four sample indices at layers 2/3, 4,096 resolved-depth + 2,048 stencil + 2,048 sampled-color pixels, cleanup/health/unlock | results/g54-depth-array-fetch-2160-20260909-v1/.
+
+Both `build/g54-depth-array-{1440,2160}-v1/gl` SDKs pass 38-file manifests,
+344 exports and three consumer links each. Only `ps5_screen.o` changes from
+G53; the other runtime objects and dependencies remain exact. Local manifests:
+
+| Profile | SDK manifest SHA-256 |
+| --- | --- |
+| 1440p120 | `af3bf641cab22a968198b59840604198500efb4e305e68abcb94dd222510da1e` |
+| 2160p120 | `3d87c654b45bbb24a59cdbdb6c969466404ae14ace82ffbc49ae0bb0db856794` |
+
+Scope: the newest 2160p runtime has the two focused G54 native receipts, not a
+new full CTS campaign. Its 1440p counterpart is host-checked only. MSAA values
+are uniform across samples: fetching every sample index does not prove sample
+isolation. Mip-chain depth blits, suspend/resume, device loss and hardware OOM
+remain unqualified. The G53 startup window is diagnostic, not soak acceptance
+or a G54 performance measurement. No publication or release replacement made.

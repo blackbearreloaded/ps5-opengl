@@ -24,14 +24,16 @@ candidates and decisions; later acceptance does not rewrite those receipts.
 
 ## Local clear optimization and startup diagnosis (G48/G49, unreleased)
 
-September 9, same firmware-6.02 console, native 1440p119.88 output. Replacing
+September 9, same firmware-6.02 console, native 1440p119.88 and 2160p119.88 output. Replacing
 the full-layer depth-fill loop with Mesa's `util_memset32` preserves flushing,
 masks and retirement. Matched 128-cube profiles ran 30 seconds per mode:
 
-| Workload | G47 control FPS | Candidate FPS | Mean clear, control → candidate |
+| Resolution / workload | Control FPS | Candidate FPS | Mean clear, control → candidate |
 | --- | ---: | ---: | ---: |
-| Ordinary draws | 57.24 | 59.94 | 6.101 → 3.043 ms |
-| Instanced draws | 114.81 | 119.88 | 6.107 → 3.053 ms |
+| 1440p ordinary draws | 57.24 | 59.94 | 6.101 → 3.043 ms |
+| 1440p instanced draws | 114.81 | 119.88 | 6.107 → 3.053 ms |
+| 2160p ordinary draws | 39.96 | 57.69 | 12.093 → 5.588 ms |
+| 2160p instanced draws | 59.94 | 119.02 | 12.038 → 5.535 ms |
 
 These are completed workload frames, not arbitrary-game guarantees. Both runs
 passed before/after pixels, draw counts, HDMI restoration, teardown and health.
@@ -39,7 +41,8 @@ Focused checks also exposed and fixed missing slice XOR in CPU depth/stencil
 addressing: all three depth layers now match. Masked scissor, 4x depth sampling/
 resolve and three EGL sessions passed; the latter checked 18 pixels with no
 post-session tracked heap growth and balanced GPU allocations. No full CTS rerun.
-The 4K candidates are built and host-linked, but not yet hardware measured.
+The later paired 4K runs used the frozen G48 control and slice-XOR successor.
+Occasional cadence misses remain: averages are not perfectly steady 60/120 FPS.
 
 A separate G47-derived startup diagnostic attributes **1,856.544 ms** to the
 first video acquisition/preparation interval, out of a **1,862.156 ms** first
@@ -49,9 +52,17 @@ and preparation, not an individually timed VideoOut API or proof of physical
 HDMI handshake duration. The first 30-second window remains about **112.3 FPS**;
 startup was not excluded and no startup-latency improvement is claimed.
 
+The later G53 4K diagnostic recorded **1,571.212 ms** in video preparation
+and **1,577.362 ms** in the first clear. It completed 3,404 frames over
+30.007 seconds (**113.44 FPS including startup**); post-warmup frame stages
+averaged 8.340 ms. Native 2160p119.88 and restoration were logged. This is a
+separate build/display-mode observation, not a matched startup optimization or
+a stability soak. Receipt: `results/g53-startup-2160-20260909-v1/`.
+
 Local evidence: `results/g48-{control,layer-xor}-cubes-1440-20260909/`,
 `results/g48-layer-xor-{scissor,msaa-depth,lifecycle}-1440-20260909/`, and
-`results/g49-startup-prepare-1440-20260909/`. Frozen SDK/app hashes and remaining
+`results/g49-startup-prepare-1440-20260909/`; the 4K pair is in
+`results/g48-{control,layer-xor}-cubes-2160-20260909-v1/`. Frozen SDK/app hashes and remaining
 qualification gaps are recorded in the [completion plan](hfr-completion-plan.md).
 These separate derivatives do not replace the published G47 SDKs or qualify a
 new combined release build.
