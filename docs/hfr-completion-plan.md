@@ -227,3 +227,9 @@ unchanged. Build/input/member/consumer hashes are in the sibling `candidate.json
 Qualify G51 with the strict corrected attachment gate before release. This fixes
 a CPU metadata-query bug, not draw speed or HDMI negotiation. The 4K paired
 performance and native nonzero-layer stencil/4x gates above remain pending.
+
+- 2026-09-09 | G51 frozen | both strict query apps native-link verified at
+  `.local/g51-query-apps/{1440,2160}/depth-targets/`; final host suite/static
+  capability audit pass, known system-query failure preserved. Exact SDK/app/log
+  inventory: `.local/g51-offline-inventory-v1.json`. Eight folders total including
+  the six preserved G50 controls; zero uploads/launches/publication.
