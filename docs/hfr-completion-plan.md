@@ -65,3 +65,31 @@ No desktop control or new app build was needed. Both matching archives passed
 local assembly, extraction, integrity and consumer-link checks. The focused
 high-resolution release gate is complete and the exact SDK archives are published.
 No console lock is held. The broader qualification limits above remain.
+
+## Next performance gates (local development)
+
+- G48: separate depth-fill/cache-flush costs; optimize the existing clear path
+  with unchanged ownership, bounds, masks and synchronization. Reuse host
+  correctness checks, a bounded clear/depth/lifecycle batch, then matched
+  30-second ordinary/instanced cube runs. Preserve the released G47 bytes.
+- G49: diagnose first-window cadence using existing receipts, then instrument
+  only the missing timing boundaries. Retain startup costs and original failed
+  receipts; a warm-up exclusion is not a fix. Use short bounded checks.
+
+Only the main agent uses the console through the exact-token lock. Start at
+the owner's recorded 1440p; native 4K comparisons require matching output.
+No game changes, whole-CTS rerun, release replacement or automatic publication.
+
+G48's first candidate replaces only the unscissored tiled depth fill with
+Mesa's existing `util_memset32`; cache flushing, masks, layer bounds and queue
+ordering stay unchanged. The local SDK changes only `ps5_screen.o` in G47's
+runtime archive; the other four objects and all dependencies remain byte-identical.
+Run the existing clear sweep, layered-depth gate, three-session lifecycle gate
+and 30-second-per-mode cube profile. Require their pixel/status/retirement
+oracles and clean teardown; compare stage times, not just refresh-capped FPS.
+The host fill/flush microbenchmark is screening evidence, not PS5 performance.
+
+G49 uses unchanged G47 runtime bytes and the existing startup-inclusive
+30-second profiling mode (not a shortened soak). Add frame-0, first-30-frame
+and first-window stage/clock receipts, preserving the existing probes and
+acceptance. Historical cadence misses remain partial passes.

@@ -47,6 +47,7 @@ ps5_runtime_printf(const char *format, ...)
 #include "util/u_framebuffer.h"
 #include "util/u_helpers.h"
 #include "util/u_inlines.h"
+#include "util/u_memset.h"
 #include "util/u_prim.h"
 #include "util/u_prim_restart.h"
 #include "util/u_surface.h"
@@ -8331,8 +8332,6 @@ ps5_clear_depth_stencil(struct ps5_context *context, unsigned buffers,
 {
    struct ps5_resource *resource;
    uint32_t clear_bits;
-   uint32_t *words;
-   size_t count;
    size_t index;
    size_t depth_layer_size = 0;
    size_t stencil_layer_size = 0;
@@ -8428,10 +8427,8 @@ reject:
          uint8_t *layer_data = resource->data + layer * depth_layer_size;
 
          if (!scissor_state) {
-            words = (uint32_t *)layer_data;
-            count = depth_layer_size / sizeof(*words);
-            for (index = 0; index < count; ++index)
-               words[index] = clear_bits;
+            util_memset32(layer_data, clear_bits,
+                          depth_layer_size / sizeof(clear_bits));
          } else {
             unsigned min_x, min_y, max_x, max_y;
 

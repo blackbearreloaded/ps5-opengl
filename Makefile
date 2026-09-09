@@ -50,6 +50,7 @@ test-multidraw:
 test-layered-mip:
 	bash tools/test-layered-mip-host.sh
 test-staging:
+	python3 tests/ps5/test_depth_clear_fill.py
 	bash tools/test-staging-host.sh
 test:
 	python3 -m unittest discover -s tools -p 'test_*.py'
