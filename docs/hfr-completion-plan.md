@@ -93,3 +93,13 @@ G49 uses unchanged G47 runtime bytes and the existing startup-inclusive
 30-second profiling mode (not a shortened soak). Add frame-0, first-30-frame
 and first-window stage/clock receipts, preserving the existing probes and
 acceptance. Historical cadence misses remain partial passes.
+
+- 2026-09-09 | G48 precheck | clear sweep passed; layered draws missed identically on candidate and G47 control; both clean/healthy/unlocked | results/g48-layered{,-control}-1440-20260909/.
+
+The layered test assigned `gl_Layer` only before its vertex loop, although
+[GLSL 3.30 sections 7.1/8.10](https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.3.30.pdf)
+leave outputs undefined after `EmitVertex`. It also assumed untouched texture
+contents were zero. Define every emitted layer and initialize the attachment;
+keep the same per-layer pixel expectations. Compare this corrected test on the
+unchanged release and the clear candidate before resuming performance tests.
+The two original failed receipts remain unchanged; no driver fix is claimed.

@@ -94,8 +94,8 @@ main(void)
       "void main(){\n"
       " for(int layer=0;layer<3;++layer){\n"
       "  float z=-0.5+0.5*float(layer);\n"
-      "  gl_Layer=layer;\n"
       "  for(int vertex=0;vertex<3;++vertex){\n"
+      "   gl_Layer=layer;\n" /* EmitVertex leaves all outputs undefined (GLSL 3.30, 8.10). */
       "   gl_Position=vec4(gl_in[vertex].gl_Position.xy,z,1);\n"
       "   EmitVertex();\n"
       "  }\n"
@@ -181,6 +181,12 @@ main(void)
    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
    glDrawBuffer(GL_NONE);
    glReadBuffer(GL_NONE);
+   /* Define the untouched layer too; NULL texture data does not promise zeros. */
+   glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, texture, 0);
+   if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+      goto cleanup;
+   glClearDepth(0.0);
+   glClear(GL_DEPTH_BUFFER_BIT);
    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                              texture, 0, 1);
    layer_status[0] = glCheckFramebufferStatus(GL_FRAMEBUFFER);
