@@ -13,6 +13,12 @@ bundled documents were rewritten to publish them. Read the release notes and
 the G47 section below for current qualification and exact identities.
 The older [G25 1080p60 download](sdk-bundle-g25.md) remains unchanged.
 
+Publication verified September 9: all four GitHub assets were downloaded and
+matched the original archive/sidecar hashes. Both prior releases retained their
+asset identities. Publication source is `50edf9396c77ee19bafdadda13d688c6808efe71`;
+[GitHub host checks passed](https://github.com/blackbearreloaded/ps5-opengl/actions/runs/34341975575).
+This publication did not rebuild the SDKs or perform another console run.
+
 ## Original G31/G32 packaging mode (historical blocker, not G47)
 
 The `--hfr-profile 1440p120` and `--hfr-profile 2160p120` modes of

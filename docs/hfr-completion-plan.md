@@ -45,6 +45,7 @@ full 39,544-case rerun for example, documentation or packaging-only changes.
 - 2026-09-08 | G47 1440p | no-run: owner requested Chiaki configuration, but Windows denied desktop access before launch; no settings changed, post-health passed and exact lock released | results/g47-chiaki-display-20260908/.
 - 2026-09-09 | G47 1440p | pass: window 119.880 FPS; SDL 180 frames/two pixels; both native HDMI/restore/cleanup/health/unlock passed | results/g47-{window,sdl2}-1440-20260909/.
 - 2026-09-09 | G46/G47 | both local HFR bundles verified: 242 checksummed files each, GL/SDL manifests and five extracted consumer links each; host suite passed; unpublished | docs/sdk-bundle-hfr.md.
+- 2026-09-09 | G46/G47 | published: both frozen HFR SDKs and sidecars downloaded from GitHub and hash-verified; source CI passed; prior assets unchanged | docs/sdk-bundle-hfr.md.
 
 The 1440p soak's first 30-second window was 112.17 FPS; the remaining nineteen
 were 119.83–119.87 FPS. Its strict 120-Hz cadence target failed. Explicit
@@ -62,5 +63,5 @@ equivalent two 1440p checks also passed after the owner selected 1440p,
 with fresh 1440p119.88 negotiation and 1440p59.94 restoration in both logs.
 No desktop control or new app build was needed. Both matching archives passed
 local assembly, extraction, integrity and consumer-link checks. The focused
-high-resolution release gate is complete locally; publication remains separate.
+high-resolution release gate is complete and the exact SDK archives are published.
 No console lock is held. The broader qualification limits above remain.
