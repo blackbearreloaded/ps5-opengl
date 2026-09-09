@@ -110,3 +110,5 @@ accounts for those draws separately from the new clear helper. The successor
 validates/fetches only shader-consumed vertex elements, allowing Mesa's shared
 two-element blit layout with its position-only depth-clear shader. Host tests pass;
 the original failed candidate remains preserved and is not accepted.
+
+- 2026-09-09 | G61 | daf289b | 4K | pass: 46 clears, 8 state checks, strict GPU counters; clean/healthy/unlocked | results/g61-clear-candidate-2160-20260909-v3.
