@@ -1,12 +1,15 @@
 # Performance
 
-Current local optimization results are summarized [below](#local-clear-optimization-and-startup-diagnosis-g48g49-unreleased).
+Latest local GPU transfer/clear optimizations (G56–G61) have
+[focused native qualification](gpu-blit-performance.md#final-focused-qualification--september-9-2026).
+They are not included in the published G55 SDKs. Earlier CPU-clear measurements
+remain [below](#local-clear-optimization-and-startup-diagnosis-g48g49-unreleased).
 Released high-resolution workload checks retain their [separate identities](#release-derivative-high-resolution-checks-g47-local).
 The earlier G13 native storage reuse for
 single-mip 2D RGBA8 images (`16e651b`) improves the matched 1080p ImGui FBO
 workload from **19.98 to 59.95 FPS**. Both 30-second runs pass pixels, completion
 and lifecycle checks; render p95 is **17.20 ms**, not perfect 60 FPS pacing.
-Other formats, mips and layers retain staging. The frozen local 1080p60 SDK has
+That G13 candidate retains staging for other formats, mips and layers. Its frozen local 1080p60 SDK has
 204/204 sampled Pass results and a ten-minute tracked-memory soak; see the
 [offscreen and stability gates](offscreen-stability.md) and
 [local bundle scope](sdk-bundle-g13.md). It is local only; no new full CTS campaign was run.

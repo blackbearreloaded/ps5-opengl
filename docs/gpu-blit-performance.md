@@ -1,6 +1,6 @@
-# G56: GPU-resident color copies (local experiment)
+# G56–G61: GPU transfer and clear optimizations (local)
 
-Control: the unchanged G55 2160p SDK. Change only `ps5_screen.o`: reuse Mesa's
+G56 control: the unchanged G55 2160p SDK. Change only `ps5_screen.o`: reuse Mesa's
 blitter for sufficiently large, nearest, unscaled RGBA8 copies between distinct
 native 2D images. Keep synchronous submission and the existing CPU fallback for
 other layouts, formats, masks, queries, scissors, mip levels and layers.
@@ -83,7 +83,8 @@ resolve compile; extended software-GL oracles pass (22 blit/resolve cases,
 46 clear cases plus state reuse and injected-error rejection). The candidate
 also promotes single-level 2D R8/RG8/RGBA16F storage and large scissored/full-mask
 depth/stencil clears. Host checks are not native qualification. Full-depth
-memset, partial masks and unsupported layouts retain the existing CPU paths.
+memset and unsupported layouts retain existing fallbacks; partial masks keep
+Mesa's existing clear routing.
 At this milestone, mip chains and arrays still required further work (G60).
 
 - 2026-09-09 | G57 control | 442ec97 | 4K | failed: inset LINEAR edge pixels; clean/healthy/unlocked | results/g57-blit-control-2160-20260909-v1 | fix CPU filter halo before pairing.
@@ -127,8 +128,9 @@ G60 local candidate reuses canonical linear storage for selected single-target
 2D/array mip/layer rendering, and checked large exact-halving blits for mipmap
 generation. Small mip tails, odd reductions, depth/integer formats, layered
 draws and MRT retain existing fallbacks. Allocation and sampling layouts are
-unchanged. Full fast host/staging checks pass; paired native qualification is
-pending. Mixed-layout backend register checks are host evidence only.
+unchanged. Full fast host/staging checks pass; paired native qualification and
+final regression are recorded below. Mixed-layout backend register checks are
+host evidence only.
 
 - 2026-09-09 | G60 | a619262 | 4K | partial-pass: all 8 pixel cases, GPU layer blit; mip generation incorrectly fell back to CPU | results/g60-mipmap-candidate-2160-20260909-v1.
 
@@ -136,3 +138,41 @@ The strict counter audit caught positional `pipe_box` initialization using an
 obsolete field order. The successor uses designated fields; its host regression
 extracts the pinned Mesa declaration and rejects the old initializer. Both G60
 v1 cycles closed cleanly with healthy services and exact-token release.
+
+## Final focused qualification — September 9, 2026
+
+- G60 | b42f771 | 4K profile | pass: paired 8-case mip/layer oracle, all levels and neighboring layers, immediate sampling/state checks, strict per-operation GPU counters | results/g60-mipmap-{control,candidate}-2160-20260909-v{1,2}.
+- G57–G61 | b42f771 | 4K profile | pass: final-runtime combined batch, 22 blit/resolve cases + 46 clears/8 state checks + 6 format cases/60 probes | results/g60-transfer-regression-2160-20260909-v2.
+
+All five requested categories now have guarded implementations and focused
+native evidence. The mip batch checks RGBA8/R8/RG8/RGBA16F 2D chains and RGBA8
+array views. Large exact-halving levels recorded one GPU draw per layer;
+the small NPOT control recorded none. The selected array-layer copy preserved
+every other level/layer. The final regression reuses the three existing public
+GL oracles in one app launch, with separate strict acceptance audits.
+
+| Tested operation | CPU control (ms) | Final candidate (ms) |
+| --- | ---: | ---: |
+| LINEAR upscale, 1,978,624 destination pixels | 264.098 | 8.342 |
+| RGBA16F draw, 1024×768 | 25.001 | 8.402 |
+| Scissored 4× RGBA8 resolve, 512×512 | 106.472 | 8.194 |
+| Complete RGBA8 mip chain, 2048×1024 | 74.361 | 24.730 |
+| Scissored D32S8 clear, 970×696 | 19.464 | 8.401 |
+
+These are short completed API wall-time samples, not game FPS or GPU bandwidth:
+eight operations for upscale/draw/clear, four complete mip generations, and one
+resolve. Setup and pixel readback are excluded. Full-depth CPU clears remain
+faster (about 0.72 ms in the final batch) and are intentionally retained.
+Small mip tails, odd reductions, unsupported formats/layouts, layered draws and
+MRT retain fallbacks; explicit CPU uploads/readback still require conversion.
+This does not mean every transfer or clear is now GPU-native.
+
+Final source: `b42f77102fce612cfcdd46a233a79aaaed02320b`;
+runtime: `f80b80b05ba7e82f763c7a08c78976b0e63fc03b0284c63393db90a84fd70714`.
+Mipmap receipt SHA-256: `b6781da9c387ba4fa6349cf20c2f743ac22218a0fe6952694466da4cc6e2ee26`;
+combined receipt: `3bd32256f7ee5ad9d8361c4022a0a6e2dd9c8c4c7cb4c5ad74984a4b0fdc4cd4`.
+Frozen app/SDK identities and lifecycle evidence accompany those local receipts.
+Both final cycles closed normally, restored output mode, passed post-health,
+and released only their exact lock tokens. Final `make test`, actual-Mesa-box
+mipmap regression and combined software-GL/fail-stop checks passed. No new
+whole-CTS campaign, duplicate 1440p run, release bundle or publication is claimed.
