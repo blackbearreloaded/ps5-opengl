@@ -46,6 +46,8 @@ launch/exit cycles passed nine EGL sessions and 54 pixel checks. The
 [0.2.0 release guide](docs/release-g62.md) records exact binary identities,
 sample deferrals, display qualification and remaining limits. No full CTS
 campaign, ten-minute test or duplicate 1440p console run is claimed for 0.2.0.
+Both archives passed all **246 file checksums**, GL/SDL manifests and five
+consumer builds after fresh extraction; the guide records their SHA-256 hashes.
 
 **Earlier G47 qualification, September 9:** the frozen G47 ImGui apps measured
 **119.880 FPS at 2560×1440** and **119.879 FPS at 3840×2160**, for 30 seconds

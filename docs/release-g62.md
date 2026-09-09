@@ -38,6 +38,22 @@ and the included examples for integration. The bridge supports one fixed
 window and one unshared Core 3.3 context, not a complete SDL platform.
 Existing G25/G47/G55 releases retain their own identities and acceptance.
 
+### Final archive verification
+
+Both archives passed fresh extraction, all **246 file checksums**, both prefix
+manifests and **three GL plus two SDL consumer builds**. Link traces confirmed
+the extracted libraries were used. Final host and software-GL staging tests
+passed; these checks require no console access.
+
+Packaging/bundled source snapshot: `bbdc918c1f83502f1f97952cdb06e8f5deb297bd`.
+The release tag includes later documentation only; bundled preparation-time
+provenance and frozen archive bytes are unchanged.
+
+| Archive | Bytes | SHA-256 |
+| --- | ---: | --- |
+| 4K120 | 174,551,443 | `fb05ad9d3bc9497cee3a99cb33bb132f60707a1256bc08233c86af9c53653c10` |
+| 1440p120, host-only | 174,534,075 | `59251697dd6e97ac0ac4b885faa00066cce2f430a97454dc807ff46a43c83c10` |
+
 ## Final 4K qualification
 
 All accepted runs use the final runtime below on one firmware-6.02 console,
