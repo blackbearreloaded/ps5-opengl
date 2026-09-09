@@ -112,7 +112,19 @@ Window acceptance SHA-256 is
 `241720ec3328603b819f8c7a6508bda4f28c5672f9a445d75ddd22cd9bedc912`;
 SDL acceptance is `90417420114e0b4fe941c50ddf8bb5c4b8c9783c278a971a0a6f38b7a661facd`.
 1440 has no new focused hardware qualification; both receipt pins remain absent
-and packaging fails before staging. No G47 archive is claimed at this milestone.
+and packaging fails before staging.
+
+The local 2160p archive was subsequently assembled from source snapshot
+`e41dea9d6799c8ad0c4ebe053fcb83174c5ecc55`. Archive SHA-256:
+`38ee215ba2429b0f7ff6e96d3375c674ee2380e629111a15c1fa01cc59d6069e`
+(174,370,158 bytes). Its checksum sidecar, 242 checksummed files, both installed
+manifests, and five GL/SDL consumer links passed after extraction into a new
+directory. The integrated host suite, including 31 packaging checks, passed.
+The archive remains local and unpublished; earlier downloads are unchanged.
+Local output: `build/bundle-g47-2160p120-v1/`; extraction checks:
+`build/g47-extracted-2160-v1/`. This later documentation does not change that
+archive's source snapshot or frozen library identities.
+
 For qualified 2160 assembly, set `DERIVATIVE` and `SDL_BUILDS` to the preserved
 `build/g47-path-free-v1` and `build/g47-sdl-v1` roots and run from the clean
 packaging checkout (destination must not exist):
