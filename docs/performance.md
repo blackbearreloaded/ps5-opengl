@@ -1,6 +1,7 @@
 # Performance
 
-Latest focused offscreen result (September 8): G13 native storage reuse for
+Current high-resolution workload checks are summarized [below](#high-resolution-application-checks-g44g45-local).
+The earlier G13 native storage reuse for
 single-mip 2D RGBA8 images (`16e651b`) improves the matched 1080p ImGui FBO
 workload from **19.98 to 59.95 FPS**. Both 30-second runs pass pixels, completion
 and lifecycle checks; render p95 is **17.20 ms**, not perfect 60 FPS pacing.
@@ -85,6 +86,43 @@ This publishes source support and scoped findings, not replacement SDK downloads
 It does not establish arbitrary-game FPS, perfect pacing, HDR rendering accuracy,
 long high-resolution sessions or a new full CTS campaign. Existing G25 releases
 and historical validation retain their own identities. Raw logs remain local.
+
+## High-resolution application checks (G44/G45, local)
+
+The unchanged G31 SDKs above ran the same 128-cube scene: 1,536 triangles, two
+procedural 2x2 textures, 30 measured seconds per draw mode, with warmup excluded.
+Both sizes passed before/after pixel checks, exact draw retirement, native HDMI
+negotiation/restoration, title teardown and service-health checks.
+
+| Native size | Ordinary draws, completed FPS | Instanced, completed FPS | Mean clear time |
+| --- | ---: | ---: | ---: |
+| 2560x1440 | 57.01 | 112.91 | 6.12 ms |
+| 3840x2160 | 39.96 | 59.94 | 12.02–12.07 ms |
+
+Ordinary rendering retires 129 native draws per frame including clear;
+instancing retires two. Clearing is the largest measured stage in the instanced
+path. These low-poly, draw-overhead measurements are not a game benchmark or
+a GPU hardware ceiling. The 120-FPS ImGui window result does not imply 120 FPS
+for this depth-tested workload. An initial 4K-render/1440p-output run was retained
+as a display-qualification failure; the table uses the subsequent native-4K run.
+
+The selected 1440p ImGui offscreen case separately reached **119.90 completed
+frames/s** over 30 seconds, with render p95 **8.68 ms**, six exact pixel probes
+and checked retirement. This measures completed offscreen work, not displayed FPS.
+
+The 1440p ten-minute check completed 71,678 frames and 21 pixel checks with zero
+steady growth in tracked owned heap/GPU memory. GPU allocations and mappings
+returned to zero; owned heap ended at 9,455 bytes/22 blocks. Its **strict120-Hz
+cadence criterion did not pass**: the first30-second window was112.17 FPS, and
+the remaining19 windows were119.83–119.87. Three further EGL sessions passed18
+frame checks with no post-session heap growth and balanced GPU memory.
+Module-internal memory, RSS and longer recovery behavior remain outside scope.
+
+Local receipt identities and remaining release checks are indexed in the
+[completion plan](hfr-completion-plan.md). The separate
+[physical SDL input/reconnect check](sdl-input-validation.md) and
+[independent source builds](independent-hfr-build.md) do not confer new CTS
+acceptance or change older SDK download identities.
 
 ## Broader format and subresource coverage (G25, local)
 

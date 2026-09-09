@@ -47,3 +47,8 @@ timing and retirement records; it does not turn that result into a full pass.
 Tracked owned heap ended at 9,455 bytes/22 blocks; tracked GPU allocations and
 mappings returned to zero. Module-internal memory, RSS and longer sessions are
 outside this observation. No additional ten-minute runs are planned.
+
+To avoid duplicate console cycles, the remaining 4K offscreen, two-minute memory
+check and three-session EGL check will use G47's separately verified release
+derivative. Prepared but unrun G31 versions stay preserved. New ImGui30-second
+and SDL180-frame receipts bind each derivative profile to its actual binaries.
