@@ -27,3 +27,5 @@ automatic functionality failure; optimize only a demonstrated bottleneck.
 
 Record one short milestone per completed gate, linking immutable evidence. No
 full 39,544-case rerun for example, documentation or packaging-only changes.
+
+- 2026-09-08 | G44 1440p cubes | 0826b57 | pass: 57.01 ordinary / 112.91 instanced FPS; pixels, counts, HDMI, teardown/health/unlock | results/g44-cubes-1440-20260908/; next offscreen.
