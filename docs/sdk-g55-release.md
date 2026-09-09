@@ -27,6 +27,26 @@ The packager builds nothing, launches nothing, and publishes nothing. G47
 profiles, archives and acceptance remain unchanged. G55 has no sampled/full CTS,
 extended-soak, physical-controller or independently observed TV acceptance.
 
+## Prepared archives — September 9
+
+Both archives passed their sidecar checksums, all **244** root file checksums,
+GL/SDL manifests, and **three GL plus two SDL consumer builds after extraction**.
+The packaging/source snapshot is `6de02989bd292168d2d1625282dc683c83d4ba9d`;
+the runtime and SDL build source remains `9f3b6dda933727dad61175b69438005e6f8abf7b`.
+No runtime rebuild or additional console cycle was needed for the policy change.
+
+| Archive | Bytes | SHA-256 |
+| --- | --- | --- |
+| `ps5-opengl-sdk-0.1.0-perf20260909-g55-2160p120-sdl2-focused.tar.gz` | 174453207 | `5cd937cd2e42e9bb736e4e098a885a50a8e669f2e7c47686fa124eb93b91be2a` |
+| `ps5-opengl-sdk-0.1.0-perf20260909-g55-1440p120-sdl2-host-checked.tar.gz` | 174455260 | `607010cf28b391a6db816eeb289832b2a57f72b38adc38d83ba20695c749b474` |
+
+The 4K entry supersedes the unpublished packaging draft ending in checksum
+`0c0113`; that draft is preserved locally. Historical G47/G25 downloads are
+unchanged. Local `make test`, `make test-staging`, 43 packaging regressions and
+SDL integrity/profile checks passed. The staging gates are required by both
+GitHub workflows; the updated workflows have not yet run on GitHub. Publication
+of source and these exact archives is still a separate step.
+
 ## Maintainer integration API
 
 The final identities are pinned independently in

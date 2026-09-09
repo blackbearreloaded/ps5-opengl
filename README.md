@@ -55,6 +55,8 @@ release gate; duplicate 1440p console runs are omitted by owner decision.** The
 1440p pair is built and host-checked, not separately console-validated. See the
 [G55 release guide](docs/sdk-g55-release.md). These results do not apply to the
 G47/G25 downloads or constitute a new full CTS campaign.
+Both local archives passed all 244 file checksums, GL/SDL manifests and five
+consumer builds after extraction; their identities are recorded in that guide.
 
 **Current-source SDK builds:** [GitHub Actions](.github/workflows/release.yml)
 produces compiled SDK archives with sources, notices, checksums and provenance.
