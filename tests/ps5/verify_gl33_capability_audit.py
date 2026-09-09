@@ -1866,17 +1866,42 @@ require("ps5_depth_render_target" in SCREEN and
 
 require("target == PIPE_TEXTURE_1D_ARRAY" in SCREEN and
         "target == PIPE_TEXTURE_CUBE" in SCREEN and
-        "target == PIPE_TEXTURE_3D" in SCREEN and
+        "target == PIPE_TEXTURE_2D_ARRAY" in SCREEN and
         "ps5_texture_level_layers" in SCREEN and
         "UINT32_C(0xb1800000)" in SCREEN and
-        "UINT32_C(0xa1800000)" in SCREEN and
+        "UINT32_C(0xd1800000)" in SCREEN and
         "egl_public_core33_depth_targets.o:" in MAKEFILE and
         "glFramebufferTexture1D" in DEPTH_TARGETS and
         "GL_TEXTURE_CUBE_MAP_NEGATIVE_Y" in DEPTH_TARGETS and
         "glFramebufferTextureLayer" in DEPTH_TARGETS and
+        "GL_TEXTURE_CUBE_MAP, GL_TEXTURE_2D_ARRAY," in DEPTH_TARGETS and
+        "GL_TEXTURE_3D" not in DEPTH_TARGETS and
+        "GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER" in DEPTH_TARGETS and
+        "target == GL_TEXTURE_1D || target == GL_TEXTURE_1D_ARRAY" in DEPTH_TARGETS and
+        "? 1 : SIZE;" in DEPTH_TARGETS and
+        "glViewport(0, 0, SIZE, height)" in DEPTH_TARGETS and
+        "glReadPixels(SIZE / 2, height / 2, 1, 1" in DEPTH_TARGETS and
+        "layers[4] = {0, 2, 0, 2}" in DEPTH_TARGETS and
+        "attached_layer == (GLint)layer" in DEPTH_TARGETS and
+        "glGetTexImage(target, 0, GL_DEPTH_COMPONENT, GL_FLOAT, array_pixels)" in DEPTH_TARGETS and
+        "index / SIZE == layer ? 0.5f : 0.25f" in DEPTH_TARGETS and
+        "routing_ok &= array_pixels[index] == expected" in DEPTH_TARGETS and
+        "routing_ok && fabsf(*depth - 0.5f)" in DEPTH_TARGETS and
+        "query_discrepancy=%d" in DEPTH_TARGETS and
         "matching == 4" in DEPTH_TARGETS and
         "draw_calls == 4" in DEPTH_TARGETS,
-        "Core 1D/cube/3D depth-target slice routing regressed")
+        "Core depth-target nonzero layers, strict routing, or explicit query limitation regressed")
+
+require("#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE" in DEPTH_TARGETS and
+        '#define TAG "[host-egl-core33-depth-targets]"' in DEPTH_TARGETS and
+        '#define TAG "[ps5-egl-core33-depth-targets]"' in DEPTH_TARGETS and
+        "#define SURFACE_TYPE EGL_PBUFFER_BIT" in DEPTH_TARGETS and
+        "#define SURFACE_TYPE EGL_WINDOW_BIT" in DEPTH_TARGETS and
+        "eglCreatePbufferSurface" in DEPTH_TARGETS and
+        "eglCreateWindowSurface" in DEPTH_TARGETS and
+        "++host_draw_calls;" in DEPTH_TARGETS and
+        "draw_counter=host-issued" in DEPTH_TARGETS,
+        "Depth-target host reference lost separation from native draw-status proof")
 
 require("ps5_depth_staging_required" in SCREEN and
         "ps5_stage_depth_surface" in SCREEN and
@@ -1886,9 +1911,12 @@ require("ps5_depth_staging_required" in SCREEN and
         "glFramebufferTexture2D" in DEPTH_MIP_TARGET and
         "glFramebufferTextureLayer" in DEPTH_MIP_TARGET and
         "glGetTexImage" in DEPTH_MIP_TARGET and
+        "#define TARGET_COUNT 5" in DEPTH_MIP_TARGET and
+        "rejected_3d = test_invalid_3d_depth();" in DEPTH_MIP_TARGET and
+        "rejected = error == GL_INVALID_OPERATION;" in DEPTH_MIP_TARGET and
         "matching == TARGET_COUNT" in DEPTH_MIP_TARGET and
-        "draw_calls == TARGET_COUNT" in DEPTH_MIP_TARGET,
-        "Core mipmapped Z32 depth-target staging route regressed")
+        "draw_calls == TARGET_COUNT && rejected_3d" in DEPTH_MIP_TARGET,
+        "Core five legal mipmapped Z32 depth targets or mandatory invalid 3D rejection regressed")
 
 require("egl_public_core33_scissored_clear.o:" in MAKEFILE and
         "ps5_clear_bounds" in SCREEN and

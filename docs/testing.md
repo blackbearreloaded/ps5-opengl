@@ -32,10 +32,16 @@ untouched allocation guards. Queue/cache operations are mocked, so this is not
 GPU execution or cache-coherency acceptance. Run
 `python3 tests/ps5/test_depth_subresources.py --fault-checks` to additionally
 reject broken tile sizes, clear bits, flush lengths, mip offsets and staging
-bounds. `test-depth-targets` runs the same
-GLSL/pixel/API oracles on llvmpipe, with explicitly host-issued draw counters:
-five legal depth-mip targets must pass and 3D depth storage must be rejected.
-Four deliberate faults must fail. Native builds retain their driver counters.
+bounds. `test-depth-targets` runs the same GLSL/pixel/API oracles on llvmpipe,
+with explicitly host-issued draw counters: five legal depth-mip targets must
+pass and 3D depth storage must be rejected. Five deliberate faults must fail.
+Native builds retain their driver counters. It also executes the actual Mesa
+attachment-layer query arm against patched sources and rejects the original
+predicate bug. Applying the PS5 Mesa patch does not modify the system GL driver:
+unpatched llvmpipe may return zero for a selected 1D-array layer of two. The
+runner reports that exact known query discrepancy and **exits 1**, not PASS;
+routing, pixels and the query expectation stay strict. See the
+[G51 scope and successors](hfr-completion-plan.md#g51-offline-mesa-query-fix).
 
 `test-compiler` runs existing real NIR/ACO regressions for framebuffer exports,
 vertex inputs and geometry descriptors, including invalid-input rejection.

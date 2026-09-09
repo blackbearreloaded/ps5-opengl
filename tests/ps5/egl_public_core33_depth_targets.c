@@ -13,7 +13,21 @@
 #define SIZE 64
 #define LAYERS 4
 
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+#define TAG "[host-egl-core33-depth-targets]"
+#define SURFACE_TYPE EGL_PBUFFER_BIT
+/* Host counts issued calls only; native still checks driver draw status. */
+static unsigned host_draw_calls;
+static int ps5_egl_current_draw_status(unsigned *draw_calls)
+{
+   *draw_calls = host_draw_calls;
+   return 0;
+}
+#else
+#define TAG "[ps5-egl-core33-depth-targets]"
+#define SURFACE_TYPE EGL_WINDOW_BIT
 int ps5_egl_current_draw_status(unsigned *draw_calls);
+#endif
 
 static GLuint
 compile_shader(GLenum type, const char *source)
@@ -29,7 +43,7 @@ compile_shader(GLenum type, const char *source)
       GLsizei length = 0;
 
       glGetShaderInfoLog(shader, sizeof(log), &length, log);
-      printf("[ps5-egl-core33-depth-targets] shader=0x%x log=%.*s\n",
+      printf(TAG " shader=0x%x log=%.*s\n",
              type, length, log);
       glDeleteShader(shader);
       return 0;
@@ -42,9 +56,12 @@ test_target(GLenum target, unsigned layer, float *depth)
 {
    GLuint texture = 0, framebuffer = 0;
    GLenum face = GL_TEXTURE_CUBE_MAP_NEGATIVE_Y;
+   GLenum error = GL_NO_ERROR;
    GLint object_type = 0, object_name = 0, attached_layer = -1;
-   int height = target == GL_TEXTURE_1D ? 1 : SIZE;
-   int result = 0;
+   float array_pixels[SIZE * LAYERS];
+   int height = (target == GL_TEXTURE_1D || target == GL_TEXTURE_1D_ARRAY)
+                   ? 1 : SIZE;
+   int attachment_ok = 0, routing_ok = 1, result = 0;
 
    glGenTextures(1, &texture);
    glBindTexture(target, texture);
@@ -56,8 +73,10 @@ test_target(GLenum target, unsigned layer, float *depth)
                    GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
       break;
    case GL_TEXTURE_1D_ARRAY:
+      for (unsigned index = 0; index < SIZE * LAYERS; ++index)
+         array_pixels[index] = 0.25f;
       glTexImage2D(target, 0, GL_DEPTH_COMPONENT32F, SIZE, LAYERS, 0,
-                   GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+                   GL_DEPTH_COMPONENT, GL_FLOAT, array_pixels);
       break;
    case GL_TEXTURE_CUBE_MAP:
       for (unsigned index = 0; index < 6; ++index)
@@ -65,7 +84,7 @@ test_target(GLenum target, unsigned layer, float *depth)
                       GL_DEPTH_COMPONENT32F, SIZE, SIZE, 0,
                       GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
       break;
-   case GL_TEXTURE_3D:
+   case GL_TEXTURE_2D_ARRAY:
       glTexImage3D(target, 0, GL_DEPTH_COMPONENT32F, SIZE, SIZE, LAYERS, 0,
                    GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
       break;
@@ -92,7 +111,7 @@ test_target(GLenum target, unsigned layer, float *depth)
    glGetFramebufferAttachmentParameteriv(
       GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
       GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &object_name);
-   if (target == GL_TEXTURE_1D_ARRAY || target == GL_TEXTURE_3D)
+   if (target == GL_TEXTURE_1D_ARRAY || target == GL_TEXTURE_2D_ARRAY)
       glGetFramebufferAttachmentParameteriv(
          GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
          GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER, &attached_layer);
@@ -101,15 +120,37 @@ test_target(GLenum target, unsigned layer, float *depth)
    glClearDepth(0.75);
    glClear(GL_DEPTH_BUFFER_BIT);
    glDrawArrays(GL_TRIANGLES, 0, 3);
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   ++host_draw_calls;
+#endif
    glFinish();
    glReadPixels(SIZE / 2, height / 2, 1, 1,
                 GL_DEPTH_COMPONENT, GL_FLOAT, depth);
-   result = glCheckFramebufferStatus(GL_FRAMEBUFFER) ==
-               GL_FRAMEBUFFER_COMPLETE &&
-            object_type == GL_TEXTURE && object_name == (GLint)texture &&
-            (attached_layer == -1 || attached_layer == (GLint)layer) &&
-            fabsf(*depth - 0.5f) < 0.00001f &&
-            glGetError() == GL_NO_ERROR;
+   if (target == GL_TEXTURE_1D_ARRAY) {
+      glGetTexImage(target, 0, GL_DEPTH_COMPONENT, GL_FLOAT, array_pixels);
+      for (unsigned index = 0; index < SIZE * LAYERS; ++index) {
+         float expected = index / SIZE == layer ? 0.5f : 0.25f;
+         routing_ok &= array_pixels[index] == expected;
+      }
+   }
+   attachment_ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) ==
+                      GL_FRAMEBUFFER_COMPLETE &&
+                   object_type == GL_TEXTURE && object_name == (GLint)texture;
+   error = glGetError();
+   if (target == GL_TEXTURE_1D_ARRAY) {
+      /* GL3.3 core section 6.1.13, printed p277, requires the selected layer
+       * for 1D arrays too. Unpatched system Mesa may still report zero;
+       * report that discrepancy without changing native acceptance. */
+      printf(TAG " 1d-array selected=%u query=%d expected=%u routing=%d "
+             "attachment=%d error=0x%x query_discrepancy=%d\n",
+             layer, attached_layer, layer, routing_ok,
+             attachment_ok, error, attached_layer != (GLint)layer);
+   }
+   result = attachment_ok &&
+            ((target != GL_TEXTURE_1D_ARRAY && target != GL_TEXTURE_2D_ARRAY) ||
+             attached_layer == (GLint)layer) &&
+            routing_ok && fabsf(*depth - 0.5f) < 0.00001f &&
+            error == GL_NO_ERROR;
 
 cleanup:
    glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -132,10 +173,11 @@ main(void)
       "void main(){}\n";
    static const GLenum targets[4] = {
       GL_TEXTURE_1D, GL_TEXTURE_1D_ARRAY,
-      GL_TEXTURE_CUBE_MAP, GL_TEXTURE_3D,
+      GL_TEXTURE_CUBE_MAP, GL_TEXTURE_2D_ARRAY,
    };
+   static const unsigned layers[4] = {0, 2, 0, 2};
    static const EGLint config_attributes[] = {
-      EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+      EGL_SURFACE_TYPE, SURFACE_TYPE,
       EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
       EGL_NONE,
    };
@@ -164,14 +206,25 @@ main(void)
        !eglChooseConfig(display, config_attributes, &config, 1, &count) ||
        count != 1)
       goto cleanup;
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   const EGLint surface_attributes[] = {
+      EGL_WIDTH, SIZE, EGL_HEIGHT, SIZE, EGL_NONE,
+   };
+   surface = eglCreatePbufferSurface(display, config, surface_attributes);
+#else
    surface = eglCreateWindowSurface(display, config,
                                     (EGLNativeWindowType)0, NULL);
+#endif
    context = eglCreateContext(display, config, EGL_NO_CONTEXT,
                               context_attributes);
    if (surface == EGL_NO_SURFACE || context == EGL_NO_CONTEXT ||
        !eglMakeCurrent(display, surface, surface, context))
       goto cleanup;
    current = 1;
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   printf(TAG " draw_counter=host-issued renderer=%s version=%s\n",
+          glGetString(GL_RENDERER), glGetString(GL_VERSION));
+#endif
 
    shaders[0] = compile_shader(GL_VERTEX_SHADER, vertex_source);
    shaders[1] = compile_shader(GL_FRAGMENT_SHADER, fragment_source);
@@ -191,11 +244,11 @@ main(void)
    glDepthFunc(GL_LESS);
    glDepthMask(GL_TRUE);
    for (unsigned index = 0; index < 4; ++index)
-      matching += test_target(targets[index], 2, &depths[index]);
+      matching += test_target(targets[index], layers[index], &depths[index]);
    draw_status = ps5_egl_current_draw_status(&draw_calls);
    passed = matching == 4 && draw_status == 0 && draw_calls == 4 &&
             glGetError() == GL_NO_ERROR;
-   printf("[ps5-egl-core33-depth-targets] matching=%u depths="
+   printf(TAG " matching=%u depths="
           "%.6f/%.6f/%.6f/%.6f draw=%d/%u result=%d\n",
           matching, depths[0], depths[1], depths[2], depths[3],
           draw_status, draw_calls, passed ? 0 : 1);
@@ -221,7 +274,7 @@ cleanup:
       cleanup_ok &= eglTerminate(display);
    cleanup_ok &= eglGetError() == EGL_SUCCESS;
    passed &= cleanup_ok;
-   printf("[ps5-egl-core33-depth-targets] cleanup=%u result=%d\n",
+   printf(TAG " cleanup=%u result=%d\n",
           cleanup_ok, passed ? 0 : 1);
    return passed ? 0 : 1;
 }

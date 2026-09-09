@@ -148,3 +148,82 @@ and `.local/g48-layer-xor-regression-apps/2160/cubes` (eboot
 `1a042b20a56cfa444a83a0e797d926119197a36c57b03311da761fd4cd3c2626`).
 Require native 2160p119.88/restoration evidence and the unchanged profile auditor.
 No performance extrapolation from 1440p, new long soak or whole-CTS rerun.
+
+## G50 offline completion (September 9)
+
+- Depth CPU regressions now exercise real map/unmap, mip staging and clear
+  callers with independent AMD-table addresses, allocation extents and clear
+  values. Nonzero layers, 1x/4x, packed padding, exact flush ranges, rejected
+  capacities and untouched neighbors pass ASan/UBSan. Five deliberately broken
+  helpers are rejected; cache/queue calls remain mocked, not hardware proof.
+- Corrected depth-array scalar sampling and depth-mip legality pass llvmpipe
+  pixel/error checks, including deliberate failures. Five legal mip targets
+  must render; 3D depth allocation must produce `GL_INVALID_OPERATION`.
+- `make test`, staging/initial two depth-target/layered-mip/ImGui/cube reference tests,
+  compiler/GLSL/multidraw checks pass. Historical CTS receipts are only audited,
+  not rerun or inherited by new binaries. See [host checks](testing.md#host-only).
+- Combined OpenGL candidates contain the clear/layer fixes and startup
+  diagnostics: five freshly compiled runtime objects per profile, 38 manifest
+  entries, all 344 exports and six Make/pkg-config/CMake consumer links pass.
+  The sixteen G47 dependency archives, import libraries and headers are reused
+  byte-for-byte, including the [documented ADDRSIG exception](sdk-path-free-derivative.md).
+  This is a clean **runtime** build, not a fresh dependency build or release.
+
+| Local candidate | SDK manifest SHA-256 |
+| --- | --- |
+| `build/g50-combined-1440-v1/gl` | `f9ee4c4221c30626e04fce0771e587c752e769e95775366b02fd29957e73c1ac` |
+| `build/g50-combined-2160-v1/gl` | `7c46afad98e16b7099c2a23fdf9d5e8c4de55d0929ab161fa6f0380c1ba43932` |
+
+Each sibling `candidate.json` records input hashes, flags and consumer evidence;
+runtime source is `5c4a43b`, prior to the separate Mesa-query successor below.
+Builds use prefix maps and pass the existing complete-file private-context scan.
+Corrected depth-array, depth-mip and 30-second ImGui startup folders are frozen
+under `.local/g50-combined-apps/{1440,2160}/`, each with hashes and native-link
+verification. None has been uploaded or run; G47 and prior G48/G49 artifacts
+remain unchanged. No console access, lock acquisition or publication in G50.
+
+The submission review identifies whole-descriptor snapshots as the next bounded
+optimization: 128 ordinary cube draws copy 10.5 MiB and initialize 14 MiB, derived
+from source, **not measured savings**. Consider live-inline-constant copies first,
+then bounded constant flushes, retaining ownership/fences. Native allocation
+reuse needs separate lifetime qualification. Details: `.local/g50-submission-review.md`.
+No production submission change or new PS5 speedup is claimed.
+
+When hardware is available, first qualify the corrected depth oracles and
+combined binary in short native cycles; preserve status/pixels/retirement checks.
+Then use the already frozen paired 4K cubes above after 2160p is selected.
+Native nonzero-layer stencil/4x coverage and combined release qualification are
+still pending; host success cannot close those gates.
+
+## G51 offline Mesa query fix
+
+Correcting the older attachment test exposed another issue: Mesa returned zero
+for a nonzero 1D-array attachment layer. [GL 3.3 core §6.1.13, printed p277](https://registry.khronos.org/OpenGL/specs/gl/glspec33.core.pdf)
+requires the selected layer. The existing Mesa patch now uses its shared array
+target helper in this query. An extracted-code regression covers 32 layers,
+plain/null/error cases and rejects the original predicate. The corrected GL
+oracle retains layer two, checks all 256 1D-array texels for routing/preservation,
+and replaces its illegal 3D-depth draw with a legal 2D-array draw.
+
+Unpatched system llvmpipe still fails the strict query (`selected=2`, `query=0`),
+although routing, pixels and the other attachments pass. Five deliberate GL
+faults are rejected. The host runner preserves **exit 1**, explicitly not a pass;
+the new PS5 Mesa object is separately CPU-tested and cross-compiled, not executed
+by that system renderer. No system-driver patch or hardware proof is claimed.
+
+Both `build/g51-layer-query-v1/{1440,2160}/gl` successors pass manifests, private
+context scans, 344 exports and six installed consumer links. Only
+`main_fbobject.c.o` in `libmesa.a` changes from G50; 219 other Mesa members,
+runtime objects and every other SDK file remain exact. The new object's debug
+strip is semantically checked with one explicitly recorded ADDRSIG-link
+invalidation (12 bytes); no ICF link option was introduced. G50 originals remain
+unchanged. Build/input/member/consumer hashes are in the sibling `candidate.json`.
+
+| G51 profile | SDK manifest SHA-256 |
+| --- | --- |
+| 1440p120 | `5444439c3f5f6fd50633c856de519ece4c8f36345e13642e48d4dca2538a14b2` |
+| 2160p120 | `1eb3f40dcd6334dcdcbb7133244fc8c91dd491567eb37a9482c3a7bb834fb777` |
+
+Qualify G51 with the strict corrected attachment gate before release. This fixes
+a CPU metadata-query bug, not draw speed or HDMI negotiation. The 4K paired
+performance and native nonzero-layer stencil/4x gates above remain pending.
