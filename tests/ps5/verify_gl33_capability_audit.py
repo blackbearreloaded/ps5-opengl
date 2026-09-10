@@ -648,8 +648,9 @@ require("PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE" in SCREEN and
         "proxy.last_level = 0" in SCREEN and
         "ps5_agc_gate2_set_color_target_extents" in SCREEN and
         "ps5_agc_mrt_attrib2" in BACKEND and
-        "(heights[target] - 1u) | ((widths[target] - 1u) << 14)" in
-        BACKEND and
+        "ps5_agc_color_target_extent(" in BACKEND and
+        "ps5_agc_mrt_pitches[target], ps5_agc_mrt_sizes[target]" in BACKEND and
+        "(height - 1u) | ((encoded_width - 1u) << 14)" in BACKEND and
         "ps5_tiled_rgba8_width(resource)" in SCREEN and
         "TARGET_WIDTH 128" in RTT and "TARGET_HEIGHT 96" in RTT and
         "UPLOAD_HASH UINT32_C(0xc38d1dc5)" in RTT,
@@ -672,7 +673,7 @@ require("templ->bind & PIPE_BIND_DISPLAY_TARGET" in SCREEN and
         "ps5_agc_gate2_set_scanout" in BACKEND and
         "sizes[0] >= PS5_AGC_FRAMEBUFFER_POOL_BYTES" in BACKEND and
         "records[color_base].value = (uint32_t)(address >> 8)" in BACKEND and
-        "ps5_agc_mrt_sizes[target] < required" in BACKEND,
+        "if (size < required)\n      return -1;" in BACKEND,
         "dynamic color allocation or scanout decoupling regressed")
 require("PS5_ENABLE_DEPTH_TEXTURE_CANDIDATE" in SCREEN and
         "PS5_ENABLE_DYNAMIC_DEPTH_TARGET_CANDIDATE" in SCREEN and
@@ -2254,7 +2255,7 @@ for override in ("MESA_GL_VERSION_OVERRIDE", "MESA_EXTENSION_OVERRIDE"):
 for heading in (
     "How Mesa computes the version", "Current PS5 Gallium envelope",
     "Mesa version predicates and present blockers",
-    "Gate 7 feature-family inventory", "Immediate acceptance contract",
+    "Feature-family inventory", "Immediate acceptance contract",
 ):
     require(heading in AUDIT, f"capability audit section missing: {heading}")
 

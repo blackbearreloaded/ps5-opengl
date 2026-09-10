@@ -2,173 +2,78 @@
 
 **OpenGL 3.3 Core and GLSL 3.30 for PlayStation 5 homebrew.**
 
-An experimental native graphics stack built on Mesa/Gallium, with runtime shader
-compilation, fullscreen EGL presentation, a relocatable static SDK, and practical
-examples. Application rendering code uses standard OpenGL—not private GPU types.
-
-Demo available by clicking the image below.
+A native graphics stack built on Mesa/Gallium, with runtime shader compilation,
+fullscreen EGL presentation, a relocatable static SDK and an SDL2 bridge.
+Applications use standard OpenGL; platform integration remains application-owned.
 
 [![PS5 OpenGL ImGui demo with animated shapes and controller controls](docs/images/ps5-opengl-imgui.png)](https://i.imgur.com/jwyvPhT.mp4)
 
-The project completed its defined Core 3.3 validation campaign on a PS5. It is
-**not a Khronos-certified implementation**, a stock-console installation method,
-or a guarantee that every desktop application will run unchanged.
+*Click the image to watch the demo.*
 
-**Validation baseline: September 7, 2026.** A frozen runtime completed the
-four-configuration campaign and installed-SDK renderer checks. Later performance
-changes have focused regressions, not a new full CTS campaign; see the
-[frozen identity](docs/validation.md#frozen-identity-and-defaults).
+This project is experimental and **not Khronos-certified**. It does not provide
+console enablement or guarantee that desktop applications run unchanged.
 
-## SDK downloads
+## Get started
 
-Choose a fixed display profile; do not mix libraries between SDKs. Each archive
-includes compiled GL/EGL and SDL2 libraries, headers, relocatable consumer metadata,
-complete sources, examples, licenses, checksums and exact-binary provenance.
+[Download SDK 0.2.0](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.2.0)
+or [build from source](docs/building.md).
 
-| SDK | Display profile | Acceptance for the downloaded binaries |
-| --- | --- | --- |
-| [SDK 0.2.0 — optimized release](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.2.0) | Separate **4K120** and **1440p120** archives | 4K: 202/202 sampled CTS executions, 82 GPU cases and bounded app/lifecycle checks; 1440p: host-checked only |
-| [G55 depth-fix preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g55-hfr-sdl2-focused) | Separate **4K120** and **1440p120** archives | 4K: six focused native checks; 1440p: host-checked only. Corrected depth/stencil mip blits and packed mip clears; no new CTS campaign |
-| [G47 HFR preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260909-g47-hfr-sdl2-focused) | Separate **1440p120** and **4K120** archives | Fresh ImGui timing/pixels, SDL functional checks and native HDMI logs; no new CTS campaign |
-| [G25 + SDL2 preview](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/sdk-0.1.0-perf20260908-g25-sdl2-sampled) | **1080p60** | 204/204 sampled executions, matched offscreen/3D profiles, bounded memory/lifecycle and SDL checks |
+The downloadable SDK includes GL/EGL and SDL2 static libraries, headers,
+Make/pkg-config/CMake integration, complete sources, examples, licenses and
+checksums. Choose one complete profile; do not mix its libraries with another SDK.
 
-**SDK 0.2.0, September 9:** eligible blits/resolves, clears, additional color
-formats and mip/layer paths now use GPU-native operations. The final 4K runtime
-passed **202/202 sampled CTS executions**, **82 focused GPU cases** and SDL
-checks. ImGui window/offscreen workloads reached **119.883/119.897 FPS**; the
-128-cube ordinary/instanced workloads reached **58.09/117.41 completed FPS**.
-These are short workload measurements, not arbitrary-game guarantees.
+| Profile | Qualification of SDK 0.2.0 downloads |
+| --- | --- |
+| **4K120** — 3840×2160 | 202 sampled CTS passes, 82 focused GPU cases and bounded application/lifecycle checks |
+| **1440p120** — 2560×1440 | Build, export and consumer checks; not separately hardware-qualified |
 
-A **two-minute** session showed no steady tracked memory growth; its first
-30-second window reached 113.6 FPS, then 119.83–119.87 FPS. Memory acceptance
-passes but startup-inclusive cadence remains a partial pass. Three paced
-launch/exit cycles passed nine EGL sessions and 54 pixel checks. The
-[0.2.0 release guide](docs/release-g62.md) records exact binary identities,
-sample deferrals, display qualification and remaining limits. No full CTS
-campaign, ten-minute test or duplicate 1440p console run is claimed for 0.2.0.
-Both archives passed all **246 file checksums**, GL/SDL manifests and five
-consumer builds after fresh extraction; the guide records their SHA-256 hashes.
+See the [release guide](docs/release-g62.md) for checksums and scope.
+[Older releases](https://github.com/blackbearreloaded/ps5-opengl/releases) retain
+their own evidence. Fresh [CI-built archives](docs/ci-releases.md) are
+host-checked, not automatically console-qualified.
 
-**Earlier G47 qualification, September 9:** the frozen G47 ImGui apps measured
-**119.880 FPS at 2560×1440** and **119.879 FPS at 3840×2160**, for 30 seconds
-each. Console logs confirmed matching native **119.88 Hz HDMI**, followed by
-same-resolution 59.94 Hz restoration. Each SDL app passed 180 frames/two exact
-pixel probes; SDL FPS was not measured. All four cycles closed cleanly.
+**Source update:** the [EGL lifecycle safeguard](docs/lifecycle-reopen.md)
+now enforces a five-second interval before reopening a closed high-refresh
+presenter. Applications no longer need their own delay. Six EGL sessions passed
+without logged HDMI reconnects; the 4K window benchmark retained 119.88 FPS.
+This fix is in source, **not in the existing 0.2.0 downloads**.
 
-Both archives passed all 242 file checksums, their GL/SDL manifests and five
-consumer compile/link checks after extraction. The [HFR bundle guide](docs/sdk-bundle-hfr.md)
-records exact identities, prerequisites and limits. Tests cover one firmware-6.02
-console and a Hisense 55U78N on HDMI4; native 1440p required the owner's matching
-output selection. HDMI negotiation is not an independent per-run TV measurement
-or a guarantee of full-game FPS. These releases remain experimental.
+## Features
 
-The [G25 guide](docs/sdk-bundle-g25.md) and
-[September 7 prerelease](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/v0.1.0-perf20260907-sampled)
-retain their separate historical acceptance. Older downloads are unchanged.
+- OpenGL 3.3 Core / GLSL 3.30 with Mesa state tracking and runtime shader compilation.
+- Native fullscreen EGL and fixed 1080p60, 1440p120 and 4K120 build profiles.
+- GPU-backed draws, batching and eligible transfer, clear and mip/layer paths.
+- An SDL2 bridge for one fixed window, one unshared Core context and input/events.
+- Public-API examples, pinned dependencies and reproducible host checks.
 
-**G55 release, September 9:** depth/stencil mip blits and packed
-mip clears are fixed, with the regressions required by CI. The final 4K GL/SDL
-pair passed six focused native checks, including the 112-case mip-blit batch,
-array/MSAA checks, ImGui and SDL with matching HDMI. **4K is now the hardware
-release gate; duplicate 1440p console runs are omitted by owner decision.** The
-1440p pair is built and host-checked, not separately console-validated. See the
-[G55 release guide](docs/sdk-g55-release.md). These results do not apply to the
-G47/G25 downloads or constitute a new full CTS campaign.
-Both published archives passed all 244 file checksums, GL/SDL manifests and five
-consumer builds after extraction; their identities are recorded in that guide.
+Some operations use CPU fallbacks. See [supported boundaries](docs/limitations.md)
+before choosing the SDK for an application.
 
-**Current-source SDK builds:** [GitHub Actions](.github/workflows/release.yml)
-produces compiled SDK archives with sources, notices, checksums and provenance.
-These fresh binaries are **host-checked, not console-validated**; see
-[downloads and release procedure](docs/ci-releases.md). These are separate from
-the frozen sample-validated archives and do not replace them.
+## Performance
 
-**Current boundaries:** the [SDL2 bridge](integration/SDL2/README.md) supports
-one fixed-size window and one Core 3.3 context. A separate
-[owner-confirmed controller/reconnect check](docs/sdl-input-validation.md) passed
-at 1440p; it is not blanket input qualification for every SDK/device.
-Some formats, mips and layers still use CPU staging. High-resolution soak
-startup cadence remains a partial pass; broader recovery and cross-firmware
-coverage remain unqualified. See [known limitations](docs/limitations.md).
+| SDK 0.2.0 workload at 4K | Completed frames/s |
+| --- | ---: |
+| Dear ImGui window | 119.88 |
+| Dear ImGui offscreen | 119.90 |
+| 128 textured cubes, ordinary draws | 58.09 |
+| 128 textured cubes, instanced draws | 117.41 |
 
-**Historical measurements:** the earlier 4K-render/1080p-HDMI mismatch is
-preserved in the [display audit](docs/performance.md#display-negotiation-audit-september-8-local).
-It is not the new G47 native-4K result. Earlier G13/G19/G25 performance and
-stability results remain in [Performance](docs/performance.md) and
-[Offscreen and stability](docs/offscreen-stability.md), tied to their own binaries.
-
-## Project Foundation
-
-> [!IMPORTANT]
-> **GPU research is documented in [PS5 GPU Research](https://github.com/blackbearreloaded/ps5-gpu-research).**
-> The companion repository records the shader toolchain, GPU-visible memory,
-> command submission, synchronization, and presentation findings that informed
-> this OpenGL implementation, alongside related general-purpose GPU compute
-> research.
-
-## What is included
-
-- **OpenGL 3.3 Core / GLSL 3.30:** Mesa state tracking, GLSL/NIR compilation,
-  the PS5 Gallium driver, and the native GPU/presentation backend.
-- **Native EGL:** fullscreen surfaces and the tested context/resource lifecycle.
-- **Developer SDK:** headers, static archives, import stubs, and Make,
-  pkg-config and CMake integration, plus optional SDL2. Build locally or download a scoped SDK archive.
-- **Examples:** a triangle, Dear ImGui, NanoVG, Sokol and a 3D cube benchmark using public APIs.
-- **Validation:** 39,544 individual results, exclusion reviews, provenance
-  hashes, and an offline evidence verifier.
-- **Pinned sources:** upstream revisions and complete local compiler/platform
-  patches; no dependency on unpublished research commits.
+These are 30-second workload measurements, not full-game FPS or perfect frame
+pacing. Console logs confirmed native 2160p119.88 output for the window test;
+offscreen throughput is not displayed FPS. See [performance and methodology](docs/performance.md).
 
 ## Examples
 
-| Example | Demonstrates | Validation |
-| --- | --- | --- |
-| [Triangle](examples/core33-triangle/README.md) | Minimal public EGL/OpenGL consumer | Installed SDK compile/link checks |
-| [Dear ImGui](examples/core33-imgui/README.md) | Widgets, textures, fonts and blending | Six-frame hardware oracle |
-| [ImGui TV demo](examples/core33-imgui/README.md#g10-visible-tv-demo) | Readable 1080p UI, animated shapes, gamepad navigation | 5,997 frames over five minutes; 11 readbacks; prior TV confirmation |
-| [NanoVG](examples/core33-nanovg/README.md) | Its upstream GL3 vector renderer | 45 pixel probes; zero dirty stencil pixels |
-| [Sokol](examples/core33-sokol/README.md) | Its GL backend through public OpenGL | 1,843,200 component comparisons; zero mismatches |
-| [Upstream Sokol cube](examples/core33-sokol-cube/README.md) | Adapted existing 3D sample: rotation, depth and culling | 180 native frames / 2,596 probes; full-image heap readback ([scope](examples/core33-sokol-cube/README.md)) |
-| [3D cubes benchmark](examples/core33-cubes/README.md) | Lit textured cubes, depth testing, ordinary versus instanced draws | Later 128-cube candidate: 59.94 FPS for both ordinary and instanced draws at 1080p; not a game benchmark ([scope](docs/performance.md#g7-256-entry-batches)) |
+| Example | Demonstrates |
+| --- | --- |
+| [Triangle](examples/core33-triangle/README.md) | Minimal EGL/OpenGL application |
+| [Dear ImGui](examples/core33-imgui/README.md) | Widgets, fonts, animated shapes and controller navigation |
+| [NanoVG](examples/core33-nanovg/README.md) | Upstream GL3 vector renderer |
+| [Sokol](examples/core33-sokol/README.md) | Existing OpenGL renderer integration |
+| [Sokol cube](examples/core33-sokol-cube/README.md) | Rotation, depth testing and culling |
+| [Textured cubes benchmark](examples/core33-cubes/README.md) | Ordinary versus instanced drawing |
 
-The frozen validation-baseline TV demo measured approximately **20 FPS** for
-five minutes. Its 30 FPS setting is a pacing ceiling, not achieved performance;
-the later 120 FPS measurements above use a separately built performance candidate.
-An earlier version was owner-confirmed on a TV; the baseline campaign used
-numerical readbacks and lifecycle records. Fresh hardware widget interaction
-was not recorded. Host navigation
-tests pass. These small examples do not predict full-game FPS.
-
-## Validation status
-
-The frozen campaign covers **9,886 cases across four configurations**:
-
-| Result | Per configuration | Total |
-| --- | ---: | ---: |
-| Pass | 9,351 | **37,404** |
-| Individually reviewed `NotSupported` | 535 | **2,140** |
-| Accounted | **9,886** | **39,544** |
-
-No gaps, duplicates, required-case failures, warnings, waivers, or incomplete
-results remain in the accepted set. Optional/inapplicable exclusions are reviewed
-individually: **39,544 accounted results does not mean 39,544 passes**. Full upstream
-swizzle and LOD-bias workloads ran in every configuration. The campaign includes
-15 uneventful CTS lifecycle cycles and three final external-renderer hardware checks.
-
-See the [validation report](docs/validation.md) for adaptations, exceptions and
-limits, and the [machine-readable evidence](validation/2026-09-07/README.md).
-
-```sh
-make test
-```
-
-This runs host checks and verifies the published export. **It does not rerun the
-PS5 campaign.** CI has no console access.
-
-## Build your first native app
-
-Use Linux/WSL and the pinned native-app boilerplate. Follow
-[Building](docs/building.md) for prerequisites and the initial checkout.
+After setting up the [build prerequisites](docs/building.md):
 
 ```sh
 make source-fetch
@@ -176,40 +81,44 @@ make sdk
 make imgui-demo
 ```
 
-Upload the generated **folder** `build/native-app/PPSA99005/dist/PPSA99005` to
-`/data/homebrew/PPSA99005` in an already configured native homebrew environment,
-then launch its registered title. Do not send the application executable to an
-ELF loader. Each TV-demo launch runs for five minutes.
+Deploy the generated folder `build/native-app/PPSA99005/dist/PPSA99005` to
+`/data/homebrew/PPSA99005` in an already configured native homebrew environment.
+Launch it as a registered title; do not send the graphics executable to an ELF
+loader. See [SDK integration](docs/consumer-build.md) for your own application.
 
-Existing projects still need PS5 entry-point, build, window/input and lifecycle
-integration. An experimental [SDL2 bridge](integration/SDL2/README.md) now supports standard
-SDL window/context/swap/event calls over a supplied verified SDK; its distributed
-G25 pair passed 180 native frames and two pixel checks at fixed 1080p. The G47
-downloads separately qualify fixed 1440p120 and 2160p120; one window
-and one Core 3.3 context remain the boundary, not a complete SDL platform port.
-GLX, WGL and GLFW integration remain absent.
+## Validation
+
+The frozen full campaign accounts for **39,544 results** across four configurations:
+
+| Classification | Results |
+| --- | ---: |
+| Pass | **37,404** |
+| Individually reviewed `NotSupported` | **2,140** |
+| Total accounted | **39,544** |
+
+No gaps, duplicates or required-case failures remain in that accepted set.
+**Accounted results are not all passes.** Later runtime changes have focused
+regressions; they do not inherit the full campaign's acceptance.
+
+The [validation report](docs/validation.md) identifies the tested binaries,
+adaptations and exclusions. [Machine-readable evidence](validation/2026-09-07/README.md)
+is included and checked by `make test`; that command does not rerun the PS5 campaign.
+
+## Project Foundation
+
+[PS5 GPU Research](https://github.com/blackbearreloaded/ps5-gpu-research)
+documents the shader toolchain, GPU-visible memory, command submission,
+synchronization and presentation findings that informed this implementation.
+Related video-decoding research is separate from OpenGL validation.
 
 ## Documentation
 
-| Document | Purpose |
-| --- | --- |
-| [Building](docs/building.md) | Dependencies, source setup, SDK and native apps |
-| [Using the SDK](docs/consumer-build.md) | Make, pkg-config and CMake integration |
-| [SDL2 integration](integration/SDL2/README.md) | Real SDL2 video bridge, standard consumer, native evidence and limits |
-| [G47 HFR + SDL2 SDKs](docs/sdk-bundle-hfr.md) | Native 1440p120/4K120 downloads, focused qualification, checksums and use |
-| [Physical SDL input](docs/sdl-input-validation.md) | Owner-confirmed button, stick, disconnect and reconnect; bounded scope |
-| [G25 + SDL2 SDK](docs/sdk-bundle-g25.md) | Consolidated 1080p60 distribution, fresh focused acceptance and consumer instructions |
-| [Sample-validated SDK bundle](docs/sdk-bundle.md) | Frozen 1080p60 package contents, verification and scope |
-| [Local G19 SDK bundles](docs/sdk-bundle-g19.md) | Copy fixes, focused sample, performance and bounded stability; not published |
-| [CI-built SDK archives](docs/ci-releases.md) | Current-source builds, checksums and draft-release workflow |
-| [Architecture](docs/architecture.md) | Frontend, shader compiler, driver and platform boundaries |
-| [Testing](docs/testing.md) | Host checks, bounded hardware cases and acceptance |
-| [Validation report](docs/validation.md) | Exact results, identity and exceptions |
-| [Limitations](docs/limitations.md) | Compatibility, performance and hardware scope |
-| [Performance](docs/performance.md) | Measured bottlenecks, GPU acceleration candidates and validation boundaries |
-| [Offscreen and stability](docs/offscreen-stability.md) | G13 native storage, bounded G15/G16 memory checks and historical G9/G10 results |
-| [Contributing](CONTRIBUTING.md) | Changes, regression selection and reporting |
-| [Third-party notices](THIRD_PARTY_NOTICES.md) | Upstream projects, licenses and source pins |
+- [Documentation index](docs/README.md)
+- [Building](docs/building.md) and [using the SDK](docs/consumer-build.md)
+- [SDL2 integration](integration/SDL2/README.md)
+- [Architecture](docs/architecture.md), [lifecycle](docs/lifecycle-reopen.md) and [limitations](docs/limitations.md)
+- [Performance](docs/performance.md), [testing](docs/testing.md) and [validation](docs/validation.md)
+- [Contributing](CONTRIBUTING.md) and [third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Project references
 
@@ -217,26 +126,22 @@ GLX, WGL and GLFW integration remain absent.
 | --- | --- |
 | [Mesa](https://www.mesa3d.org/) | OpenGL, Gallium, GLSL/NIR, ACO/RADV and AMD layout infrastructure |
 | [OpenGNM PSBC](https://github.com/PS4-OpenGNM/opengnm-psbc) / [OpenGNM](https://github.com/PS4-OpenGNM/opengnm) | Shader compiler foundation and reference declarations |
-| [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk) | Public homebrew build toolchain and import declarations |
-| [Native app boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate) | Native app assembly, runtime and folder packaging |
-| [Khronos VK-GL-CTS](https://github.com/KhronosGroup/VK-GL-CTS) | Pinned OpenGL inventory and runner |
-| [Dear ImGui](https://github.com/ocornut/imgui), [NanoVG](https://github.com/memononen/nanovg), [Sokol](https://github.com/floooh/sokol) | Existing renderer integrations |
-| [PS5 GPU research](https://github.com/blackbearreloaded/ps5-gpu-research) | Companion research notes; access may be required |
-| [Hardware video decoding research](https://github.com/blackbearreloaded/ps5-hardware-video-decoding-research) | Related presentation/lifecycle work; not OpenGL validation |
+| [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk) | Public homebrew toolchain and imports |
+| [Native app boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate) | Native app assembly and folder packaging |
+| [Khronos VK-GL-CTS](https://github.com/KhronosGroup/VK-GL-CTS) | Pinned OpenGL test inventory and runner |
+| [SDL2](https://github.com/libsdl-org/SDL) | Window, context and input integration |
+| [Dear ImGui](https://github.com/ocornut/imgui), [NanoVG](https://github.com/memononen/nanovg), [Sokol](https://github.com/floooh/sokol) | Existing renderer examples |
+| [Hardware video decoding research](https://github.com/blackbearreloaded/ps5-hardware-video-decoding-research) | Related presentation/lifecycle research, not OpenGL validation |
 
-## Maintainer
+## Maintainer and license
 
-PS5 OpenGL is maintained by [BlackBearReloaded](https://github.com/blackbearreloaded).
-Project-specific implementation, platform integration, examples and validation
-work are credited in the source headers. Upstream projects retain their own
-authorship and licenses; see [Third-party notices](THIRD_PARTY_NOTICES.md).
+Maintained by [BlackBearReloaded](https://github.com/blackbearreloaded).
+Project-specific implementation, integration and validation contributions are
+credited in source headers. Upstream projects retain their authorship and licenses.
 
-## License
-
-Project-owned code is provided under [GPL-3.0-or-later](LICENSE). Upstream components and
-derived patches retain their copyright and licenses; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [LICENSES](LICENSES).
+Project-owned code is [GPL-3.0-or-later](LICENSE). See
+[third-party notices](THIRD_PARTY_NOTICES.md) and [LICENSES](LICENSES) for dependencies.
 
 No vendor SDK, firmware modules, device keys, proprietary shader packages,
-console-enablement payloads, or raw device logs are distributed here. This
-independent project is not affiliated with Sony or The Khronos Group.
+console-enablement payloads or raw device logs are distributed here.
+This independent project is not affiliated with Sony or The Khronos Group.

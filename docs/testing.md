@@ -1,189 +1,140 @@
 # Testing
 
-Use risk-based checks during development and for the current optimized release
-candidate. The full 39,544-execution matrix is deferred at the owner's request;
-it is not a release blocker for this explicitly sample-validated candidate.
-Documentation/example edits do not justify repeating all CTS cases.
+Use risk-based regression selection. Documentation and example changes do not
+justify repeating the full CTS matrix; compiler, resource, ownership and
+synchronization changes require broader affected-family coverage.
 
-## Host-only
+## Host checks
 
 ```sh
 make test
-make test-imgui             # requires dependencies, installed SDK and host EGL/GL
-make test-staging           # actual CPU depth callers + software-GL staging oracles
-make test-depth-targets     # array/mip depth oracles + invalid 3D-depth rejection
-make test-compiler          # requires the built host PSBC library
-bash tools/verify-installed-sdk.sh  # rebuilds a fresh SDK; never use on frozen bytes
+make test-imgui
+make test-staging
+make test-depth-targets
+make test-compiler
 ```
 
-`make test` runs Python unit checks, strict-auditor self-tests and the published
-evidence verifier. It needs no SDK or PS5. CI runs this lane, not new GPU tests.
-The SDK verifier checks Make/pkg-config/CMake links and 344 Core exports;
-behavioral evidence comes from CTS and native renderer oracles.
-For a frozen SDK, use `tools/check-sdk-consumers.py` instead; the
-[bundle guide](sdk-bundle.md#verify-and-link-a-consumer) gives the non-rebuilding
-recipe. Verify an archive after extracting it to a new directory outside the
-source checkout, not only its staging directory.
+`make test` needs no SDK or console. It runs unit/structural checks, strict
+auditor self-tests and the published evidence verifier. Other targets need
+the dependencies documented by their scripts and the [build guide](building.md).
 
-`test-staging` also compiles the actual depth map/unmap, mip staging and clear
-helpers under ASan/UBSan. Expected addresses come independently from pinned AMD
-tables; checks cover nonzero layers, 1x/4x samples, masked/scissored clears and
-untouched allocation guards. Queue/cache operations are mocked, so this is not
-GPU execution or cache-coherency acceptance. Run
-`python3 tests/ps5/test_depth_subresources.py --fault-checks` to additionally
-reject broken tile sizes, clear bits, flush lengths, mip offsets and staging
-bounds. `test-depth-targets` runs the same GLSL/pixel/API oracles on llvmpipe,
-with explicitly host-issued draw counters: five legal depth-mip targets must
-pass and 3D depth storage must be rejected. Five deliberate faults must fail.
-Native builds retain their driver counters. It also executes the actual Mesa
-attachment-layer query arm against patched sources and rejects the original
-predicate bug. Applying the PS5 Mesa patch does not modify the system GL driver:
-unpatched llvmpipe may return zero for a selected 1D-array layer of two. The
-runner reports that exact known query discrepancy and **exits 1**, not PASS;
-routing, pixels and the query expectation stay strict. See the
-[G51 scope and successors](hfr-completion-plan.md#g51-offline-mesa-query-fix).
+`test-staging` runs production CPU helpers under ASan/UBSan and public GL
+oracles on software Mesa. It covers layout, depth/stencil preservation, mip
+generation, transfers, clears, array/sample addressing and deliberate-fault
+rejection. Mocked queue/cache operations do not establish GPU execution or
+cache coherence. Uniform per-sample data does not establish independent MSAA
+sample isolation.
 
-`test-staging` also runs the real CPU mip filter with Mesa's depth converters
-under ASan/UBSan, including packed-stencil preservation and rejection of the old
-depth-as-RGBA dispatch. `tools/test-depth-array-samples-host.sh` checks masked
-clears, depth/stencil-tested draws, resolves and untouched neighboring layers
-at 1x/4x. Its 24,576 pixel comparisons use uniform per-sample values; individual
-sample isolation and native execution are separate qualifications. An empty
-draw must fail even when the host-issued draw count matches.
+`test-depth-targets` retains a strict attachment-layer query oracle. Unpatched
+system Mesa can return layer zero for a 1D-array attachment selecting layer two;
+that known discrepancy exits with failure, not a waived pass. The PS5 Mesa
+patch and its production query-arm regression are checked separately.
 
-The depth staging-alignment, blit-layer and MSAA-array predicate/descriptor
-regressions also run in `test-staging`. They execute extracted production CPU
-code under sanitizers and reject deliberate regressions. Native depth/stencil
-copies, resolves and sampler-array reads still require their separate oracles;
-passing CPU tests does not qualify GPU execution.
-`tools/test-msaa-depth-array-host.sh` checks the standard-GL D32/D32S8 sampling
-oracle on software Mesa and rejects deliberately wrong shader expectations.
-It fetches all four samples in layers two and three, but initializes samples
-uniformly: this is not independent sample-isolation coverage.
+Compiler checks exercise real NIR/ACO paths and invalid-input rejection.
+They supplement, rather than replace, native shader/rendering checks.
+See [CI execution](ci-releases.md#cpu-and-software-opengl-ci-checks) for the
+software-renderer environment and required host packages.
 
-`test-compiler` runs existing real NIR/ACO regressions for framebuffer exports,
-vertex inputs and geometry descriptors, including invalid-input rejection.
-Compiler checks also cover implicit PrimitiveID export liveness,
-zero-stride constant inputs and byte-bounded buffer descriptors. These host checks
-do not replace the native draw/current-attribute/cube regressions or affected CTS.
-`make test-glsl` exercises math, texture fetch, live PrimitiveID/flat/smooth inputs
-and program restoration, including seven deliberate fault checks. It needs the
-installed Zink and software Vulkan renderer; direct software GL failures for this
-case are recorded in [the development history](performance-history.md), not accepted as passing.
-The historical upstream `tests/verify_sb.py` still asserts metadata ABI 6; the frozen
-historical PS5 compiler uses ABI 7; the validated September 7 compiler uses ABI 8.
-That stale suite is retained in the pinned source for
-provenance, not silently patched or reported as passing. It is not invoked by
-the publication build. Current compiler checks and the Core capability audit
-are explicit `make sdk` steps.
-
-## Native examples and targeted cases
+## SDK consumers
 
 ```sh
-make imgui-demo
-bash tools/build-native-test-app.sh --list
-bash tools/build-native-test-app.sh egl_public_core33_texture_rectangle
+bash tools/verify-installed-sdk.sh
+python3 tools/check-sdk-consumers.py --help
+python3 tools/test_sdl_sdk.py --help
 ```
 
-All cases reuse `PPSA99005`. Freeze source/executable/runtime/metadata hashes
-before deployment. Never send the application ELF to elfldr.
+The first command installs/rebuilds a fresh SDK. **Do not use it on a frozen
+candidate.** Use the existing-prefix consumer checker instead, with a new output
+directory. Verify GL exports and Make/pkg-config/CMake links; when distributing
+SDL, also verify its manifest/provenance and relocated consumers.
 
-Optional Windows/WSL runners use the separate
-[homebrew protocol](https://github.com/blackbearreloaded/ps5-homebrew-dev-protocol).
-That repository is access-controlled and is not required to build the SDK or
-examples. The managed wrappers require access to it; they are not a standalone
-console setup tool. Folder deployment can use the owner's existing app workflow.
-The reference layout is `workspace/dev/ps5-opengl`, its sibling boilerplate, and
-`workspace/docs/ps5-homebrew-dev-protocol`. Supply the console host explicitly.
-The final campaign's protocol `7195c969` uses small owner-approved title launch/close
-controllers on 9021; the actual graphics app remains a native folder title.
+Archive acceptance requires a fresh extraction, all file checksums, both
+applicable prefix manifests and consumer links using the extracted libraries.
+Host linkage does not execute the GPU.
 
-Each bounded cycle must own its exact lock token, establish idle foreground,
-verify uploaded bytes, observe the exact title, close it, check declared services,
-and release only its own token. Never change settings, approve updates, close
-another app or blindly retry a suspected panic. Use only owner-started services.
+## Native tests
 
-## CTS
+```sh
+bash tools/build-native-test-app.sh --list
+PS5_OPENGL_PREFIX=/path/to/frozen/sdk \
+  bash tools/build-native-test-app.sh egl_public_core33_texture_rectangle
+```
+
+Freeze source, executable, runtime and title-metadata hashes before deployment.
+Use the native folder app `PPSA99005`; never send the graphics executable to
+an ELF loader. The optional Windows/WSL wrappers use the separate
+[homebrew development protocol](https://github.com/blackbearreloaded/ps5-homebrew-dev-protocol),
+which is not required to build the SDK.
+
+Each cycle owns its exact lock token, establishes idle foreground, verifies
+uploaded bytes, observes the intended title, closes it, checks declared services
+and releases only its token. Use existing owner-started services. Do not change
+settings or blindly retry faults. Preserve failed and incomplete receipts.
+
+Batch compatible numerical checks in one launch, upload only changed verified
+files and stop observation at completion. Use 30-second performance samples and
+at most two-minute normal-session checks. Screenshots or physical interaction
+are needed only when the assertion concerns visible display or input behavior.
+
+The [lifecycle contract](lifecycle-reopen.md) requires runtime settling for
+reopened HFR presenters. Check ordered reopen/output events as well as rendering,
+memory ownership and final teardown.
+
+## CTS selection and acceptance
 
 ```sh
 make cts-fetch
 bash conformance/vk-gl-cts/prepare.sh
 ```
 
-See the [overlay guide](../conformance/vk-gl-cts/README.md) for its build. The
-runner contains six disclosed adaptations; full swizzle/LOD-bias bodies remain.
-Use `prepare-cts-shard.py --suite smoke` or affected case lists while developing.
-Measured timings and `--budget-seconds` support efficient bounded batches.
-Long cases need adequate independent windows. Never merge different binaries
-to fill coverage gaps.
+The [overlay guide](../conformance/vk-gl-cts/README.md) describes the pinned
+upstream inventory and six disclosed adaptations. Full swizzle/LOD-bias
+workloads are retained.
 
-### Current optimized candidate: sampled validation
+Use `prepare-cts-shard.py --suite smoke` or affected case lists during development.
+The smoke suite has 51 cases across four target configurations, 204 executions.
+A release may declare explicit exclusions before running, with reasons;
+[SDK 0.2.0](release-g62.md#final-4k-qualification) declares two slow extreme-axis
+executions deferred and therefore claims 202, not 204, passes.
 
-Reuse the existing `smoke` suite: 51 distinct cases in each of the four target
-configurations, **204 executions total**, on one frozen binary. This is a
-deterministic, risk-based sample, not a statistical confidence estimate or full
-Core 3.3 coverage. It exercises buffer objects, draw buffers, framebuffer blits,
-depth/stencil clears, texture addressing/LOD/swizzle, interpolation and transform
-feedback across small, non-square, tall and wide targets.
+Freeze selection and binary identities. Require every selected result, actual
+target dimensions, safe teardown and health. Do not merge different binaries,
+omit slow cases after the fact or count incomplete work as passing.
+Known frozen results need not be rerun without an affected change.
 
-Accept this sampled gate only when every selected case is Pass, all four actual
-render-target reports match, and all cycles have clean teardown/health/unlock.
-For G7/G8, retain their host lifetime/hazard checks, native 512-object batch
-boundary, 128-cube ordinary/instanced pixel checks, SDK links, Sokol renderer and
-repeated EGL-session results alongside CTS; the 51 cases alone do not exercise
-every optimized presentation path. Already verified frozen artifacts need not
-be rebuilt or rerun without an affected change.
+Use `verify-cts-candidate.py --allow-incomplete` for a strict sample audit.
+Its full-matrix `complete=false` remains false; sampled completion is a separate
+claim, not inherited full coverage. Widen coverage for unexplained failures or
+major compiler/resource/synchronization changes.
 
-The later frozen G13 SDK has its own 204/204 sample and G15/G16 memory,
-ten-minute soak, texture-copy and layered-mip evidence; see the
-[enhancement gates](enhancement-plan.md). Keep those identities separate from G7/G8.
+A full campaign still requires all 9,886 cases in each of four configurations,
+no required-case failures, reviewed optional exclusions and clean renderer/
+lifecycle checks. A timeout is incomplete, not an automatic kernel panic.
 
-Run one bounded batch per configuration, reuse remotely verified binaries/data,
-upload only changed selection files and stop observation at completion. No routine
-screenshots or five-minute repetitions. Release the console lock before offline
-analysis. After a change, rerun the affected named tests and add a regression for
-any new failure; widen to the affected CTS family for unexplained failures or
-major compiler/resource/synchronization changes. Do not silently expand to the
-full matrix or omit a slow selected case to obtain a pass.
+## Reporting and public evidence
 
-Continue using `verify-cts-candidate.py --allow-incomplete` for strict identity,
-ordered-result and lifecycle auditing. Its full-matrix `complete=false` must stay
-false for a sample; record sampled-gate completion separately. Keep historical
-baseline coverage separate and label any resulting SDK **sample-validated**.
-Remaining unsampled cases are untested on this candidate, not inherited passes.
+Report exact identities, selection, ordered results, rendering/ownership,
+lifecycle and health. Use explicit classifications: pass, partial-pass, failed,
+inconclusive, transport-failure or no-run.
 
-### Full matrix (deferred)
+Keep raw captures and dated development milestones locally. Public reports
+summarize supported behavior, results, identity and limits; do not turn them
+into running work diaries.
 
-A full-matrix claim still requires all 9,886 cases once in each configuration,
-no required-case failures and reviewed optional exclusions, with clean lifecycles
-and renderer oracles. A timeout is incomplete—not a pass or an automatic kernel
-panic. The historical baseline retains its original full-matrix evidence.
-
-## Reporting
-
-Report identities, selected/ordered results, lifecycle and health, with one of:
-pass, partial-pass, failed, inconclusive, transport-failure, or no-run. Keep raw
-captures local and milestones short.
-
-The [published results](validation.md) belong to one frozen candidate.
-`tools/export-published-validation.py` first reruns the strict raw audit, then
-exports allowlisted results/provenance without raw device logs or local paths.
-
-Export each accepted candidate into a **new** directory; do not replace historical
-evidence. Supply the exact audited manifest, result root, and three final renderer
-receipt prefixes (the common filename without `-opengl.log` / `-result.json`):
+The [published full-campaign export](validation.md) is immutable evidence for
+one candidate. Its exporter reruns the raw audit and includes allowlisted
+results/provenance, not raw device logs or private paths:
 
 ```sh
 python3 tools/export-published-validation.py candidate.json \
-  --results results/release --destination validation/YYYY-MM-DD \
+  --results results/release --destination validation/NEW-CAMPAIGN \
   --renderer imgui=results/final-imgui/PPSA99005-TIMESTAMP \
   --renderer nanovg=results/final-nanovg/PPSA99005-TIMESTAMP \
   --renderer sokol=results/final-sokol/PPSA99005-TIMESTAMP
-python3 tools/verify-published-validation.py validation/YYYY-MM-DD
+python3 tools/verify-published-validation.py validation/NEW-CAMPAIGN
 ```
 
-Record any eventful but otherwise accepted cycles in the manifest's
-`eventful_receipts` mapping, using exact receipt paths and concise review reasons.
-An empty mapping means no such incidents were observed. Export refuses incomplete
-coverage, damaged renderer oracles and existing destinations. Batch counts are
-derived from the receipts; test coverage and exclusion reviews remain strict.
+Never overwrite an earlier export. Eventful accepted cycles require explicit
+review in `eventful_receipts`; an empty mapping asserts none were observed.
+Incomplete coverage, damaged rendering oracles and existing destinations are
+rejected. Published evidence integrity is not independent hardware reproduction.

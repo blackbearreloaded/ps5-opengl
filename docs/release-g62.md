@@ -1,6 +1,6 @@
 # SDK 0.2.0 — optimized GL/SDL2 release
 
-September 9, 2026. G62 consolidates the GPU blit/resolve, clear, color-format
+SDK 0.2.0 consolidates the GPU blit/resolve, clear, color-format
 and mip/layer optimizations with a depth-only framebuffer bounds fix. It is a
 scoped experimental release, **not Khronos certification, a new full CTS
 campaign or a universal stability guarantee**.
@@ -93,15 +93,12 @@ owner's 120-second bound. These are two explicit unexecuted cases, not discarded
 failures. The historical 39,544-result campaign belongs to a different
 [frozen SDK](validation.md); its acceptance is not inherited.
 
-## Fixes and preserved failures
+## Lifecycle requirement and source updates
 
-The first G62 CTS attempt found two packed-depth/stencil blit failures before
-GPU submission. A depth-only framebuffer's write-disabled dummy color slot was
-incorrectly sized to full scanout, too large for its MSAA placeholder. Describing
-that unused slot as one texel preserves real depth/raster bounds, write disabling
-and allocation checks. The host regression failed before the fix and passed
-afterward. Two isolated regressions and the 202-execution sample then passed;
-all final GPU/application gates were rerun on the corrected runtime.
+The qualified runtime includes a depth-only framebuffer bounds fix. It sizes
+the unused, write-disabled dummy color slot independently of full scanout;
+real depth/raster bounds, write disabling and allocation checks remain intact.
+The final GPU/application gates and CTS sample use those corrected bytes.
 
 Two immediate-recreation lifecycle attempts passed rendering/memory/close but
 recorded HDMI reconnects and were not accepted for display qualification.
@@ -110,14 +107,9 @@ This supports a mode-switch timing explanation, not a proven minimum interval
 or device-loss recovery. The delay is in the lifecycle example, not the runtime
 or steady rendering. Rapid HFR mode churn remains unqualified.
 
-The later [local G63 successor](lifecycle-reopen.md) moves this conservative
+The newer [source lifecycle safeguard](lifecycle-reopen.md) moves this conservative
 interval into the shared runtime and has separate focused qualification.
 It does not change this release's binaries, evidence or lifecycle requirement.
-
-An offline blit report used its last case's height as the display height.
-The generator was corrected and rerun on the same raw receipt; original and
-corrected reports are preserved. Only metadata changed, not pixel results,
-executable identity or native acceptance criteria.
 
 ## Frozen identities
 

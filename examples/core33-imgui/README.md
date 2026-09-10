@@ -1,11 +1,8 @@
 # Installed-SDK Dear ImGui renderer check
 
-The September 7 final SDK passes the six-frame oracle below. Its separate
-five-minute 1080p demo produces 5,997 frames (~19.99 FPS), 11 passing readbacks
-and 5,997 successful two-draw batches. See [current validation](../../docs/validation.md).
-The later opt-in windowed candidate reaches ~119.88 FPS at 1080p, 1440p and 4K
-in 30-second runs; see [high-refresh builds](#high-refresh-window-benchmark-opt-in)
-and [measurement limits](../../docs/performance.md#g5d-verified-high-resolution-120-fps-candidate).
+This example provides a six-frame numerical renderer oracle, an interactive
+TV demo and window/offscreen benchmarks. See [high-refresh builds](#high-refresh-window-benchmark-opt-in)
+and the [SDK-specific measurements](../../docs/performance.md) for performance.
 
 Uses unmodified [Dear ImGui](https://github.com/ocornut/imgui/tree/v1.91.9b)
 v1.91.9b, commit `f5befd2d29e66809cd1110a152e375a7f1981f06` (MIT), including
@@ -65,7 +62,7 @@ teardown. Busy unregister remains. Stop observation only on
 `[ps5-imgui-lifecycle] finished`, not an inner session's completion marker.
 This is bounded recreation coverage, not exhaustive leak or device-loss testing.
 
-## G10: visible TV demo
+## Visible TV demo
 
 ```sh
 bash tools/test-imgui-host.sh --tv-demo
@@ -100,15 +97,13 @@ only the example is changed. The recorded run used firmware 6.02. Managed runs
 require an explicit `-Ps5Host` and the [testing prerequisites](../../docs/testing.md).
 Stop on any render/presentation error or uncertain console health.
 
-- 2026-09-06 | G10 | ca0dbf4 | 6.02 | pass: TV-confirmed animation, 2851 frames/300s (~9.5 FPS), clean teardown; controller connected, zero recorded widget changes.
-- 2026-09-07 | final SDK | 6.02 | pass: 5997 frames/300s, 11 readbacks, 5997 two-draw batches; clean teardown/health/unlock; no fresh visual or controller interaction claim.
+Benchmark and validation claims belong to the exact SDK identities documented
+in [Performance](../../docs/performance.md) and [Validation](../../docs/validation.md).
 
-The [validation report](../../docs/validation.md) distinguishes the frozen runs;
-raw device receipts remain local. Thirty FPS is a pacing ceiling, not measured
-throughput. The user confirmed the earlier TV demo worked; the final campaign
-used numeric rendering/lifecycle checks and recorded no widget changes. Host
-navigation checks passed. VideoOut still reports busy unregister followed by
-successful close and runtime-layer release.
+The demo's requested frame cap is not achieved throughput. Numerical readbacks,
+controller-driven widget changes and physical display observation establish
+different properties; record which were checked for the tested executable.
+Raw device receipts remain local.
 
 ## Matched windowed benchmark
 

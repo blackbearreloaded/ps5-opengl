@@ -239,12 +239,11 @@ hardware-unqualified. No new graphics device-loss recovery is supplied; failed E
 cleanup retains resources rather than freeing anything still current. Hardware
 qualification and any bounded native-folder launch belong to the parent.
 
-## Opt-in physical input and reconnect (G42; bounded hardware pass)
+## Physical input and reconnect
 
-On September 8, the owner confirmed the physical Cross/stick sequence,
-disconnect and reconnect on one controller/user. Fresh activity on a new
-instance completed in 38.336 seconds at native 1440p119.88, with restoration,
-cleanup and healthy teardown. See the [exact candidate and receipt](../../docs/sdl-input-validation.md).
+The physical Cross/stick sequence, disconnect and reconnect were confirmed on
+one controller/user at native 1440p119.88, with restoration, cleanup and healthy
+teardown. See the [qualified identity and scope](../../docs/sdl-input-validation.md).
 This does not qualify all buttons, multi-user behavior, 4K input or another
 runtime. The reproducible opt-in procedure below retains that boundary.
 
@@ -283,19 +282,10 @@ by this public API. Every end marker retains `hardware_accepted=0`. Parent must
 corroborate actual controller actions, collect fresh app logs, and verify native
 teardown/health. See [the parent recipe](../../docs/sdl-input-validation.md).
 
-## Historical G19 acceptance (September 8; not these new binaries)
+## Validation scope
 
-Source companion `9cf0daf` / agent source `f25a3a6`, unchanged frozen G19 SDK:
-**180 frames and two exact center-pixel checks passed** at a 1920×1080 drawable.
-Frame 0 read `(0,38,102,255)`; frame 179 read `(254,38,102,255)`. SDL cleanup,
-native-title teardown, service health and exact-token release passed.
-The bounded run used `egl_public_core33_sdl2.o`, `PPSA99005` and a 30-second
-observation cap with the existing native-folder runner; no screenshots were needed.
-
-The tested eboot SHA-256 is
-`ddd2b0b1acf16ef0772298a517b560349ef9929b205cfb4929e239e6b4ee861e`;
-hashed acceptance is retained in `results/g26-sdl2-20260908/acceptance.json`.
-This proves the small standard-SDL consumer, not physical controller events,
-HDMI timing, arbitrary SDL applications or G25 runtime qualification. The
-upstream event queue/virtual joystick and failure contracts passed host sanitizers;
-they do not establish console hotplug behavior. SDK bundles remain unchanged.
+The native smoke checks 180 frames and two exact pixels, not application FPS
+or physical input. See [SDK 0.2.0 qualification](../../docs/release-g62.md) for
+the current downloadable pair and [physical input](../../docs/sdl-input-validation.md)
+for the separately identified controller test. Host tests and another SDK's
+receipts do not qualify newly built binaries. Raw development receipts remain local.

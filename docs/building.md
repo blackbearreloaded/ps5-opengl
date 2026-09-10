@@ -1,6 +1,6 @@
 # Building
 
-Build on x86-64 Linux or WSL. A [frozen sample-validated SDK](sdk-bundle.md)
+Build on x86-64 Linux or WSL. A [prebuilt SDK](release-g62.md)
 is available separately. [GitHub Actions](ci-releases.md) can also build fresh
 SDK archives; those binaries are host-checked, not console-validated. Neither
 package includes ready-to-launch applications.

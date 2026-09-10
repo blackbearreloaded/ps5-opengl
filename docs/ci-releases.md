@@ -109,15 +109,7 @@ permission and no console access. Only the separate draft-release job can write
 release assets. The older sample-validated bundle remains a separate frozen
 artifact, documented in `docs/sdk-bundle.md`.
 
-The separately tested [G25 + SDL2 prerelease](sdk-bundle-g25.md) uses an `sdk-*`
-tag and exact preverified assets; it does not invoke this fresh-build workflow.
-Its compiled SDL2 payload and native acceptance are not inherited by CI builds.
-The [G47 native 1440p120/4K120 release](sdk-bundle-hfr.md) follows the same
-frozen-asset `sdk-*` process, with two separately qualified GL/SDL2 archives.
-Its release tag identifies the publication source; each archive's provenance
-retains its original packaging and runtime-build commits.
-
-The [G55 release](sdk-g55-release.md) also uses the frozen-asset `sdk-*` process:
-4K has six focused native checks, while 1440p is explicitly host-checked only
-under the owner's 4K-only hardware gate. Its published binaries were not rebuilt
-by the SDK workflow; the host and staging workflow passed on publication source.
+Frozen releases such as [SDK 0.2.0](release-g62.md) use `sdk-*` tags and
+preverified assets rather than this fresh-build workflow. Their archives retain
+their original runtime/build provenance and exact-binary acceptance.
+A source push or CI pass does not replace those downloads or qualify a new binary.

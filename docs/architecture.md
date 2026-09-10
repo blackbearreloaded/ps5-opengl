@@ -27,6 +27,6 @@ by successful no-ops. See [Limitations](limitations.md).
 `conformance/vk-gl-cts/` holds the disclosed CTS overlay. `validation/` contains
 portable evidence, not firmware or raw device captures.
 
-The [development capability audit](development/capability-audit.md) retains
-historical assertions used by source checks. Its old gate notes are not the
-current status; [the final report](validation.md) is authoritative.
+The [capability audit](development/capability-audit.md) documents version
+reporting and source contracts. Behavioral qualification belongs to the
+frozen identities in the [validation report](validation.md).
