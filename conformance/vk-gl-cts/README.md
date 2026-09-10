@@ -124,6 +124,10 @@ for an affected regression. `summarize-cts-qpa.py --inventory <results> --output
 reserve startup margin and obtain approval before exceeding the native run bound.
 The complete four-configuration matrix is a release gate, not a per-fix loop.
 
+Custom case lists select names; the generator writes them in pinned must-pass
+order because CTS traverses its registered test tree, not the input-file order.
+The strict receipt checker still requires exact ordered completion.
+
 Use `tools/summarize-cts-qpa.py receipt.qpa --expected-list cts-shard.txt` to
 verify ordered completion and list any failing case names. The command returns
 nonzero for an incomplete log or any CTS failure/device-loss status.
