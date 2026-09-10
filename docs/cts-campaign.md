@@ -1,8 +1,11 @@
 # CTS campaign
 
-The objective is a fresh, reproducible GL33 result on the shipping implementation,
-followed by a submission that satisfies Khronos requirements. An engineering
-matrix and a Khronos-approved submission are separate milestones.
+The objective is one fresh, reproducible GL33 baseline, followed by development
+toward OpenGL 4.6 Core. Audit the 4.6 requirements offline in parallel; do not
+wait for formal 3.3 certification before starting that work. Use targeted CTS
+and 3.3 regressions during feature development, then a complete campaign on the
+frozen 4.6 candidate. An engineering matrix and a Khronos-approved submission
+are separate milestones.
 
 ## G1: establish the right target before a full run
 
@@ -52,6 +55,11 @@ start with `info`, then the bounded regression smoke and the unchanged
 Record them as release-port qualification, not submission acceptance. Stop on
 the first functional failure and preserve it. Do not start the full matrix
 while the required configuration/runner inventory remains unresolved.
+The current adapter requires `--deqp-surface-type=pbuffer` for its native
+offscreen profiles. Omitting it requests a window and fails before case
+execution. The two FBO profiles remain explicitly `fbo`; they are not window
+configuration coverage. Generate new hashed selections after changing this
+contract; preserve older plans and receipts unchanged.
 
 ## G2: freeze once, qualify cheaply
 

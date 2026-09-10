@@ -17,6 +17,15 @@ PLANNER = importlib.import_module("plan-cts-campaign")
 
 
 class CampaignTests(unittest.TestCase):
+    def test_every_profile_selects_its_surface_explicitly(self):
+        for config, surface in enumerate(("pbuffer", "pbuffer", "fbo", "fbo")):
+            args = PLANNER.PREPARE.encode_arguments(config).decode().splitlines()
+            self.assertEqual([arg for arg in args if arg.startswith("--deqp-surface-type=")],
+                             [f"--deqp-surface-type={surface}"])
+        root = Path(__file__).resolve().parent.parent
+        self.assertIn("--deqp-surface-type=pbuffer",
+                      (root / "conformance/vk-gl-cts/native/cts-args.txt").read_text().splitlines())
+
     def test_release_shard_uses_selected_inventory(self):
         with tempfile.TemporaryDirectory() as tmp:
             mustpass = Path(tmp) / "release.txt"

@@ -68,7 +68,7 @@ def summarize(text: str, expected: list[str] | None = None) -> dict:
 def inventory(directory: Path, current_eboot: str | None) -> dict:
     # Development evidence only: never turn an old binary's pass into a new pass.
     import importlib
-    configurations = importlib.import_module("prepare-cts-shard").CONFIGURATIONS
+    prepare = importlib.import_module("prepare-cts-shard")
     latest, receipts, rejected = {}, {}, []
     for path in sorted((p for p in directory.rglob("*.qpa") if p.name.endswith(CTS_QPA_SUFFIXES)), key=lambda p: p.name):
         try:
@@ -82,9 +82,8 @@ def inventory(directory: Path, current_eboot: str | None) -> dict:
                          int(options["--deqp-base-seed"]),
                          options.get("--deqp-surface-type", "default"),
                          options.get("--deqp-gl-config-name", "default"))
-            config = next(i for i, (w, h, seed, extra) in enumerate(configurations)
-                          if signature == (w, h, seed, "fbo" if extra else "default",
-                                           "rgba8888d24s8" if extra else "default"))
+            # Timing history is not acceptance; retain the actual requested surface.
+            config = prepare.configuration_index(signature, allow_implicit_pbuffer=True)
             prefix, _ = cts_receipt_parts(path)
             case_list = Path(prefix + "-cts-shard.txt")
             expected = [s.strip() for s in case_list.read_text().splitlines() if s.strip()] if case_list.is_file() else None
@@ -98,7 +97,8 @@ def inventory(directory: Path, current_eboot: str | None) -> dict:
             receipt_id = path.relative_to(directory).as_posix()
             receipts[receipt_id] = dict(
                 eboot_sha256=eboot, libc_sha256=lifecycle.get("libcSha256", "").lower(),
-                configuration=config, complete=summary["complete"], ordered_inputs=expected is not None,
+                configuration=int(config), requested_surface=signature[3],
+                complete=summary["complete"], ordered_inputs=expected is not None,
                 teardown=lifecycle.get("teardownSignal"),
                 entered=lifecycle.get("outcome") == "entered-eboot",
                 current_binary=bool(current_eboot and eboot == current_eboot.lower()),

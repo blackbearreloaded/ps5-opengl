@@ -16,11 +16,23 @@ from pathlib import Path
 
 
 CONFIGURATIONS = (
-    (64, 64, 1, ()),
-    (113, 47, 2, ()),
+    (64, 64, 1, ("--deqp-surface-type=pbuffer",)),
+    (113, 47, 2, ("--deqp-surface-type=pbuffer",)),
     (64, -1, 3, ("--deqp-gl-config-name=rgba8888d24s8", "--deqp-surface-type=fbo")),
     (-1, 64, 3, ("--deqp-gl-config-name=rgba8888d24s8", "--deqp-surface-type=fbo")),
 )
+
+
+def configuration_index(signature, allow_implicit_pbuffer=False):
+    for i, (w, h, seed, extra) in enumerate(CONFIGURATIONS):
+        profile = dict(arg.split("=", 1) for arg in extra)
+        surface = profile.get("--deqp-surface-type", "default")
+        if i < 2 and signature[3] == "default" and allow_implicit_pbuffer:
+            surface = "default"
+        if signature == (w, h, seed, surface,
+                         profile.get("--deqp-gl-config-name", "default")):
+            return str(i)
+    raise ValueError(f"unknown or implicit release configuration: {signature}")
 
 
 def select_cases(cases, patterns):

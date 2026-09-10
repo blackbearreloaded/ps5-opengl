@@ -21,6 +21,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReceiptNamingTests(unittest.TestCase):
+    def test_cts_surface_contract_and_historical_default(self):
+        prepare = importlib.import_module("prepare-cts-shard")
+        release = "067e8832315e79817ede1c4863804e440f5d1c80"
+        development = "cf7edb26d3be2d8763595ed08fdc41f3c1b1966f"
+        for i in range(4):
+            options = dict(arg.split("=", 1) for arg in
+                           prepare.encode_arguments(i).decode().splitlines() if arg.startswith("--"))
+            signature = (int(options["--deqp-surface-width"]), int(options["--deqp-surface-height"]),
+                         int(options["--deqp-base-seed"]), options["--deqp-surface-type"],
+                         options.get("--deqp-gl-config-name", "default"))
+            self.assertEqual(CTS.configuration_index(signature, release, True), str(i))
+        implicit = (64, 64, 1, "default", "default")
+        self.assertEqual(CTS.configuration_index(implicit, development), "0")
+        for signature, commit, tagged in ((implicit, release, True), (implicit, development, True),
+                                         ((64, 64, 1, "window", "default"), release, True)):
+            with self.assertRaises(ValueError):
+                CTS.configuration_index(signature, commit, tagged)
+
     def test_current_project_names(self):
         names = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
         pattern = re.compile(r"\b" + LEGACY_NAME.split("-")[0] + r"(?:[-_ ]|OPENGL)", re.I)
@@ -62,7 +80,8 @@ class ReceiptNamingTests(unittest.TestCase):
                     qpa = Path(f"{prefix}-{namespace}-cts.qpa")
                     self.assertEqual(cts_receipt_parts(qpa), (str(prefix), namespace))
                     args = ["--deqp-surface-width=64", "--deqp-surface-height=64",
-                            "--deqp-base-seed=1", f"--deqp-log-filename=/download0/{namespace}-cts.qpa"]
+                            "--deqp-base-seed=1", "--deqp-surface-type=pbuffer",
+                            f"--deqp-log-filename=/download0/{namespace}-cts.qpa"]
                     inputs = {"-cts-args.txt": "\n".join(args) + "\n",
                               "-cts-shard.txt": "KHR-GL33.a\n",
                               f"-{namespace}-cts.qpa": '#sessionInfo commandLineParameters "' + " ".join(args) +

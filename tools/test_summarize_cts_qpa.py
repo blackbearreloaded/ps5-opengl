@@ -121,7 +121,9 @@ class QpaSummaryTest(unittest.TestCase):
                 text = qpa([("KHR-GL33.a", status), ("KHR-GL33.optional", "NotSupported")]).replace(
                     '<Result', '<Number Name="TestDuration" Unit="us">2000</Number>\n<Result')
                 namespace = LEGACY_NAME if index == 0 else "ps5-opengl"
-                Path(f"{prefix}-{namespace}-cts.qpa").write_text(command + text)
+                selected_command = command if index == 0 else command.replace(
+                    '--deqp-base-seed=1', '--deqp-base-seed=1 --deqp-surface-type=pbuffer')
+                Path(f"{prefix}-{namespace}-cts.qpa").write_text(selected_command + text)
                 Path(f"{prefix}-cts-shard.txt").write_text("KHR-GL33.a\nKHR-GL33.optional\n")
                 Path(f"{prefix}-result.json").write_text(json.dumps(dict(
                     ebootSha256=str(index)*64, outcome="entered-eboot",
@@ -139,6 +141,8 @@ class QpaSummaryTest(unittest.TestCase):
             self.assertEqual(ledger["cases"]["0"]["KHR-GL33.optional"]["status"], "NotSupported")
             self.assertTrue(ledger["receipts"][case["receipt"]]["current_binary"])
             self.assertIsNone(ledger["receipts"][case["receipt"]]["post_health"])
+            self.assertEqual({row["requested_surface"] for row in ledger["receipts"].values()},
+                             {"default", "pbuffer"})
 
 
 if __name__ == "__main__":

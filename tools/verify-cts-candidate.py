@@ -17,7 +17,7 @@ import shlex
 import xml.etree.ElementTree as ET
 
 QPA = importlib.import_module("summarize-cts-qpa")
-CONFIGURATIONS = importlib.import_module("prepare-cts-shard").CONFIGURATIONS
+PREPARE = importlib.import_module("prepare-cts-shard")
 
 
 def require(condition, message):
@@ -27,6 +27,12 @@ def require(condition, message):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def configuration_index(signature, cts_commit, tagged_release=False):
+    # Only the historical adapter silently substituted a pbuffer for default.
+    legacy = not tagged_release and cts_commit == "cf7edb26d3be2d8763595ed08fdc41f3c1b1966f"
+    return PREPARE.configuration_index(signature, allow_implicit_pbuffer=legacy)
 
 
 def require_completion(klog, app_log, executed):
@@ -109,9 +115,7 @@ def audit(root, manifest, official):
         signature = (int(options["--deqp-surface-width"]), int(options["--deqp-surface-height"]),
                      int(options["--deqp-base-seed"]), options.get("--deqp-surface-type", "default"),
                      options.get("--deqp-gl-config-name", "default"))
-        config = next((str(i) for i, (w, h, seed, extra) in enumerate(CONFIGURATIONS)
-                       if signature == (w, h, seed, "fbo" if extra else "default",
-                                        "rgba8888d24s8" if extra else "default")), None)
+        config = configuration_index(signature, manifest["cts_commit"], "cts_release_name" in manifest)
         summary = QPA.summarize(text, expected)
         require(summary["complete"] and not summary["failed"], f"incomplete or failed QPA: {relative}")
         status = dict(field.split("=", 1) for field in
