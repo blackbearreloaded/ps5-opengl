@@ -25,7 +25,7 @@ void snapshot(const char *phase, unsigned sample) {
     assert(calls == 15 && !strcmp(phase, "end") && sample == 0);
     ++snapshots;
 }
-void (*pss_opengl_heap_snapshot)(const char *, unsigned);
+void (*ps5_opengl_heap_snapshot)(const char *, unsigned);
 int failure;
 EGLBoolean step(int id) { calls |= 1u << (id - 1); return failure != id; }
 EGLBoolean eglMakeCurrent(int, int, int, int) { return step(1); }
@@ -38,7 +38,7 @@ int probe(int injected, int result, bool observer) {
     failure = injected;
     calls = 0;
     snapshots = 0;
-    pss_opengl_heap_snapshot = observer ? snapshot : nullptr;
+    ps5_opengl_heap_snapshot = observer ? snapshot : nullptr;
     int display = 1, context = 1, surface = 1;
     EGLBoolean cleanup = EGL_TRUE;
     (void)cleanup;

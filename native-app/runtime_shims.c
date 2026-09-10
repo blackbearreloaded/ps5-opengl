@@ -9,29 +9,29 @@
 
 extern int sceKernelUsleep(uint32_t microseconds);
 
-__attribute__((constructor)) static void pss_opengl_open_log(void) {
-  FILE *stream = freopen("/download0/pss-opengl.log", "w", stdout);
+__attribute__((constructor)) static void ps5_opengl_open_log(void) {
+  FILE *stream = freopen("/download0/ps5-opengl.log", "w", stdout);
   /* Start a fresh receipt, then make both independent streams append-only. */
   if (stream != NULL)
-    stream = freopen("/download0/pss-opengl.log", "a", stdout);
+    stream = freopen("/download0/ps5-opengl.log", "a", stdout);
   if (stream != NULL)
     setvbuf(stream, NULL, _IONBF, 0);
-  stream = freopen("/download0/pss-opengl.log", "a", stderr);
+  stream = freopen("/download0/ps5-opengl.log", "a", stderr);
   if (stream != NULL)
     setvbuf(stream, NULL, _IONBF, 0);
 }
 
 __attribute__((noreturn)) void catchReturnFromMain(int status) {
-  printf("[pss-opengl-native] gate completed status=%d\n", status);
+  printf("[ps5-opengl-native] gate completed status=%d\n", status);
   fflush(NULL);
   for (;;)
     sceKernelUsleep(100000);
 }
 
-void pss_opengl_glapi_tls_context_init(void) __asm__(
+void ps5_opengl_glapi_tls_context_init(void) __asm__(
     "_ZTH23_mesa_glapi_tls_Context");
 
-void pss_opengl_glapi_tls_context_init(void) {}
+void ps5_opengl_glapi_tls_context_init(void) {}
 
 __attribute__((noreturn)) void __assert(const char *function, const char *file,
                                         int line, const char *expression) {

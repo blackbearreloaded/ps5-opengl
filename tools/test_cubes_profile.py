@@ -31,7 +31,7 @@ def receipt(host=False, completion=1, gpu_clear=False, height=1080):
         lines += [f"[ps5-cubes-profile] mode mode={mode} objects=128 frames=100 measured_ns=1000000000 native_draws={draws}"]
     lines += ["[ps5-cubes-profile] completed=2 cleanup=1 result=0"]
     if not host:
-        lines += ["[pss-opengl-native] gate completed status=0"]
+        lines += ["[ps5-opengl-native] gate completed status=0"]
     return "\n".join(lines) + "\n"
 
 
@@ -127,7 +127,7 @@ def main():
                 text.replace("measured_ns=1000000000", "measured_ns=999999999", 1),
                 text.replace("native_draws=16896", "native_draws=16895"),
                 text.replace("gate completed status=0", "gate completed status=-1"),
-                text.replace("[pss-opengl-native] gate completed status=0", ""),
+                text.replace("[ps5-opengl-native] gate completed status=0", ""),
                 text + "[ps5-gallium] draw-rejected error=1\n"):
         rejected(bad)
     rejected(receipt(host=True))

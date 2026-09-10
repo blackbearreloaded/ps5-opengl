@@ -30,7 +30,7 @@ def receipt(case=-1):
                      "[ps5-deferred-batch] draws=3 result=0"])
     count = 12 if case < 0 else 1
     rows.extend([f"[ps5-imgui-bench] finished cases={count} status=0", "[ps5-imgui] finished status=0",
-                 "[pss-opengl-native] gate completed status=0",
+                 "[ps5-opengl-native] gate completed status=0",
                  f"[ps5-agc] present-shutdown unregister=80290009 close=00000000 frames={count}",
                  f"[ps5-gpu-present] frames={count}"])
     return "\n".join(rows)
@@ -146,7 +146,7 @@ int main() {
 [ps5-imgui-perf] frames=1800 warmup=30 ui_ms=1 clear_ms=2 draw_ms=3 readback_ms=0 swap_ms=10 cpu_wall_ms=16 status=0
 [ps5-imgui-tv] finished frames=1830 changes=0 status=0
 [ps5-imgui] finished status=0
-[pss-opengl-native] gate completed status=0
+[ps5-opengl-native] gate completed status=0
 [ps5-present-perf] calls=1800 failures=0 warmup_frames=30 idle_ms=0 flip_ms=0 vblank_ms=0 total_ms=0
 [ps5-batch-perf] calls=1800 failures=0 warmup_frames=30 sleeps=1800 submit_ms=0.1 suspend_ms=0.2 poll_ms=2.4 cleanup_ms=0.3 total_ms=3
 [ps5-gpu-present] frames=1828

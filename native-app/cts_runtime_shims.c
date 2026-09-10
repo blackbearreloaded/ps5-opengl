@@ -19,60 +19,60 @@
 #include <wctype.h>
 #include <xlocale.h>
 
-static _RuneLocale pss_cts_runes;
-static int pss_cts_runes_ready;
+static _RuneLocale ps5_cts_runes;
+static int ps5_cts_runes_ready;
 
-static void pss_cts_init_runes(void) {
-  if (pss_cts_runes_ready)
+static void ps5_cts_init_runes(void) {
+  if (ps5_cts_runes_ready)
     return;
 
-  memcpy(pss_cts_runes.__magic, _RUNE_MAGIC_1, 8);
-  memcpy(pss_cts_runes.__encoding, "NONE", 5);
+  memcpy(ps5_cts_runes.__magic, _RUNE_MAGIC_1, 8);
+  memcpy(ps5_cts_runes.__encoding, "NONE", 5);
   for (int value = 0; value < _CACHED_RUNES; ++value) {
-    pss_cts_runes.__maplower[value] = value;
-    pss_cts_runes.__mapupper[value] = value;
+    ps5_cts_runes.__maplower[value] = value;
+    ps5_cts_runes.__mapupper[value] = value;
     if (value < 32 || value == 127)
-      pss_cts_runes.__runetype[value] = _CTYPE_C;
+      ps5_cts_runes.__runetype[value] = _CTYPE_C;
     else if (value >= 33 && value <= 126)
-      pss_cts_runes.__runetype[value] =
+      ps5_cts_runes.__runetype[value] =
           _CTYPE_G | _CTYPE_R | _CTYPE_P | _CTYPE_SW1;
   }
 
-  pss_cts_runes.__runetype[' '] = _CTYPE_S | _CTYPE_B | _CTYPE_R | _CTYPE_SW1;
-  pss_cts_runes.__runetype['\t'] |= _CTYPE_S | _CTYPE_B;
+  ps5_cts_runes.__runetype[' '] = _CTYPE_S | _CTYPE_B | _CTYPE_R | _CTYPE_SW1;
+  ps5_cts_runes.__runetype['\t'] |= _CTYPE_S | _CTYPE_B;
   for (int value = '\n'; value <= '\r'; ++value)
-    pss_cts_runes.__runetype[value] |= _CTYPE_S;
+    ps5_cts_runes.__runetype[value] |= _CTYPE_S;
 
   for (int value = '0'; value <= '9'; ++value)
-    pss_cts_runes.__runetype[value] = _CTYPE_D | _CTYPE_N | _CTYPE_G |
+    ps5_cts_runes.__runetype[value] = _CTYPE_D | _CTYPE_N | _CTYPE_G |
                                       _CTYPE_R | _CTYPE_SW1 |
                                       (unsigned long)(value - '0');
   for (int value = 'A'; value <= 'Z'; ++value) {
-    pss_cts_runes.__runetype[value] =
+    ps5_cts_runes.__runetype[value] =
         _CTYPE_A | _CTYPE_U | _CTYPE_G | _CTYPE_R | _CTYPE_SW1;
-    pss_cts_runes.__maplower[value] = value - 'A' + 'a';
+    ps5_cts_runes.__maplower[value] = value - 'A' + 'a';
   }
   for (int value = 'a'; value <= 'z'; ++value) {
-    pss_cts_runes.__runetype[value] =
+    ps5_cts_runes.__runetype[value] =
         _CTYPE_A | _CTYPE_L | _CTYPE_G | _CTYPE_R | _CTYPE_SW1;
-    pss_cts_runes.__mapupper[value] = value - 'a' + 'A';
+    ps5_cts_runes.__mapupper[value] = value - 'a' + 'A';
   }
   for (int value = 'A'; value <= 'F'; ++value)
-    pss_cts_runes.__runetype[value] |= _CTYPE_X;
+    ps5_cts_runes.__runetype[value] |= _CTYPE_X;
   for (int value = 'a'; value <= 'f'; ++value)
-    pss_cts_runes.__runetype[value] |= _CTYPE_X;
+    ps5_cts_runes.__runetype[value] |= _CTYPE_X;
   for (int value = '0'; value <= '9'; ++value)
-    pss_cts_runes.__runetype[value] |= _CTYPE_X;
+    ps5_cts_runes.__runetype[value] |= _CTYPE_X;
 
-  pss_cts_runes_ready = 1;
+  ps5_cts_runes_ready = 1;
 }
 
 _RuneLocale *__runes_for_locale(locale_t locale, int *limit) {
   (void)locale;
-  pss_cts_init_runes();
+  ps5_cts_init_runes();
   if (limit != NULL)
     *limit = _CACHED_RUNES;
-  return &pss_cts_runes;
+  return &ps5_cts_runes;
 }
 
 locale_t newlocale(int mask, const char *name, locale_t base) {
@@ -116,22 +116,22 @@ int iswctype_l(wint_t value, wctype_t type, locale_t locale) {
 
 unsigned long ___runetype_l(__ct_rune_t value, locale_t locale) {
   (void)locale;
-  pss_cts_init_runes();
-  return value >= 0 && value < _CACHED_RUNES ? pss_cts_runes.__runetype[value]
+  ps5_cts_init_runes();
+  return value >= 0 && value < _CACHED_RUNES ? ps5_cts_runes.__runetype[value]
                                              : 0;
 }
 
 __ct_rune_t ___toupper_l(__ct_rune_t value, locale_t locale) {
   (void)locale;
-  pss_cts_init_runes();
-  return value >= 0 && value < _CACHED_RUNES ? pss_cts_runes.__mapupper[value]
+  ps5_cts_init_runes();
+  return value >= 0 && value < _CACHED_RUNES ? ps5_cts_runes.__mapupper[value]
                                              : value;
 }
 
 __ct_rune_t ___tolower_l(__ct_rune_t value, locale_t locale) {
   (void)locale;
-  pss_cts_init_runes();
-  return value >= 0 && value < _CACHED_RUNES ? pss_cts_runes.__maplower[value]
+  ps5_cts_init_runes();
+  return value >= 0 && value < _CACHED_RUNES ? ps5_cts_runes.__maplower[value]
                                              : value;
 }
 

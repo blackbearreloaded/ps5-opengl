@@ -106,7 +106,7 @@ libc. The folder uses the existing gate identity **PPSA99005** and its main-retu
 hold for parent-controlled teardown; it is never installed or launched here.
 The assembler writes stage-root `selected-test.txt` as `egl_public_core33_sdl2.o`
 and runs the existing `tools/verify-native-test-app.sh`. Unchanged runtime shims
-supply `pss-opengl.log` and the gate-return marker for the shared native runner.
+supply `ps5-opengl.log` and the gate-return marker for the shared native runner.
 The verified SDK profile sets `attribute3=0x80040` for nominal refresh above
 60 Hz; 60 Hz retains the ordinary template metadata. `candidate.json` records
 `display_profile` with `width`, `height` and `fps` from that same verified SDK.

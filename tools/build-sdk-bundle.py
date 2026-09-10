@@ -12,6 +12,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+from opengl_receipts import normalize_log_tags, cts_receipt_parts
 import re
 import shutil
 import subprocess
@@ -300,7 +301,7 @@ def hfr_report(results, profile, sdl, private_hosts=None, window_candidate=None)
             if derivative:
                 require(runner["gate"] == candidate["gate"], "G47 window workload mismatch")
                 text = paths["app"].read_text()
-                require(text.count("[pss-opengl-native] gate completed status=0") == 1, "G47 window gate failed")
+                require(normalize_log_tags(text).count("[ps5-opengl-native] gate completed status=0") == 1, "G47 window gate failed")
                 audited = importlib.import_module("summarize-imgui-profile").summarize(
                     text, window_target=120, window_height=expected["height"], output_status=True, prepare_profile=True)
                 hdmi = DISPLAY.hdmi_report(paths["klog"].read_text(encoding="utf-8-sig"),
@@ -327,7 +328,7 @@ def hfr_report(results, profile, sdl, private_hosts=None, window_candidate=None)
                                ("179", "254,38,102,255", "254,38,102,255")] and
                     text.count("[sdl2-g19] probe ") == 2 and
                     text.count("[sdl2-g19] frames=180 probes=2 status=0") == 1 and
-                    text.count("[pss-opengl-native] gate completed status=0") == 1,
+                    normalize_log_tags(text).count("[ps5-opengl-native] gate completed status=0") == 1,
                     "HFR SDL frame/pixel checks failed")
             hdmi = DISPLAY.hdmi_report(paths["klog"].read_text(encoding="utf-8-sig"),
                                        "PPSA99005", expected["width"], expected["height"], 119.88)
@@ -429,7 +430,7 @@ def targeted_report(candidate, results):
             "conversion=R16F-RGBA32F error=0x0 result=0" in log and
             "[ps5-egl-render-blit] matching=18 result=0" in log and
             "[ps5-egl-transfer-regressions] gates=2 result=0" in log and
-            "[pss-opengl-native] gate completed status=0" in log,
+            "[ps5-opengl-native] gate completed status=0" in normalize_log_tags(log),
             "targeted batch is incomplete or failed")
     lifecycle = json.loads(paths["-result.json"].read_text())
     runner = json.loads(paths["-runner.json"].read_text())
@@ -500,7 +501,7 @@ def sample_report(repo, candidate, results, profile, third_party=None):
     # This exact four-receipt manifest is hash-pinned in configuration order.
     for index, relative in enumerate(manifest["receipts"]):
         path = results / relative
-        prefix = str(path).removesuffix("-pss-opengl-cts.qpa")
+        prefix, namespace = cts_receipt_parts(path)
         selected = Path(prefix + "-cts-shard.txt")
         require(digest(selected) == SAMPLE_HASH, "selected sample changed")
         summary = AUDIT.QPA.summarize(path.read_text(), selected.read_text().splitlines())
@@ -510,8 +511,8 @@ def sample_report(repo, candidate, results, profile, third_party=None):
             seconds=summary["seconds"], teardown="runtime-layers-released",
             post_health=True, lock_released=True,
             raw_sha256={suffix: digest(Path(prefix + suffix)) for suffix in
-                        ("-pss-opengl-cts.qpa", "-pss-opengl-cts.status", "-result.json",
-                         "-runner.json", "-klog.log", "-pss-opengl.log",
+                        (f"-{namespace}-cts.qpa", f"-{namespace}-cts.status", "-result.json",
+                         "-runner.json", "-klog.log", f"-{namespace}.log",
                          "-cts-args.txt", "-cts-shard.txt")})
     return dict(scope="sample-validated; not full Core 3.3 coverage or certification",
                 sample_complete=True, full_matrix_complete=False,

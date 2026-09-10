@@ -2165,13 +2165,13 @@ require("ps5_tiled_stencil_surface_size_samples" in SCREEN and
         "GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT |" in MSAA4_DEPTH,
         "Core 3.3 4x packed depth/stencil candidate route is incomplete")
 
-require("[pss-opengl-cts] finished" in CTS_MAIN and
+require("[ps5-opengl-cts] finished" in CTS_MAIN and
         "sceKernelDebugOutText" in CTS_MAIN and
         "std::fflush(stdout)" in CTS_MAIN and
         'return finish("argument_error", 2)' in CTS_MAIN and
         'return finish("fatal", 3)' in CTS_MAIN and
         'return finish(passed ? "passed" : "failed"' in CTS_MAIN and
-        "ObservationStopText = '[pss-opengl-cts] finished'" in CTS_RUNNER,
+        "ObservationStopText = '[ps5-opengl-cts] finished'" in CTS_RUNNER,
         "native CTS completion-marker observation contract regressed")
 
 require("$cycleArguments.UploadRelativePaths = @(" in CTS_RUNNER and

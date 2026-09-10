@@ -8,6 +8,7 @@ import argparse
 import json
 import math
 from pathlib import Path
+from opengl_receipts import normalize_log_tags
 import re
 
 
@@ -53,7 +54,7 @@ def summarize(text, host=False, submit_profile=False, deferred_batches=False, pr
     require(finished == [(str(frames + warmup), "0")], "frame count or cleanup mismatch")
     require(re.findall(r"\[ps5-imgui\] finished status=(\d+)", text) == ["0"], "EGL cleanup failed")
     if not host:
-        require(re.findall(r"\[pss-opengl-native\] gate completed status=(\d+)", text) == ["0"],
+        require(re.findall(r"\[ps5-opengl-native\] gate completed status=(\d+)", normalize_log_tags(text)) == ["0"],
                 "native gate incomplete")
     report = dict(mode="host-reference" if host else "PS5", frames=frames, warmup=warmup, **values)
     if soak:
@@ -311,7 +312,7 @@ def self_test():
 [ps5-imgui-perf] frames=100 warmup=30 ui_ms=1 clear_ms=2 draw_ms=3 readback_ms=0 swap_ms=4 cpu_wall_ms=10 status=0
 [ps5-imgui-tv] finished frames=130 changes=0 status=0
 [ps5-imgui] finished status=0
-[pss-opengl-native] gate completed status=0
+[ps5-opengl-native] gate completed status=0
 """
     assert summarize(text)["cpu_wall_ms"] == 10
     preparation = ("[ps5-prepare-perf] calls=300 failures=0 warmup_frames=30 "

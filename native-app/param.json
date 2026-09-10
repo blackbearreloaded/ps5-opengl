@@ -14,7 +14,7 @@
   "attribute3": 0,
   "conceptId": "99005",
   "contentBadgeType": 1,
-  "contentId": "UP9000-PPSA99005_00-PSSOPENGLTEST001",
+  "contentId": "UP9000-PPSA99005_00-PS5OPENGLTEST001",
   "contentVersion": "01.000.000",
   "downloadDataSize": 256,
   "gameIntent": {
@@ -31,7 +31,7 @@
   "localizedParameters": {
     "defaultLanguage": "en-US",
     "en-US": {
-      "titleName": "PSS OpenGL 3.3 Tests"
+      "titleName": "PS5 OpenGL 3.3 Tests"
     }
   },
   "masterVersion": "01.00",

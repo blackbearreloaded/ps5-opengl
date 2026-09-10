@@ -8,6 +8,7 @@ import argparse
 import json
 import math
 from pathlib import Path
+from opengl_receipts import normalize_log_tags
 import re
 
 
@@ -78,7 +79,7 @@ def summarize(text, host=False, case=-1):
     require(not re.search(r"^\[ps5-imgui\] FAIL|^\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))",
                           text, re.M), "failed rendering operation")
     if not host:
-        require(re.findall(r"^\[pss-opengl-native\] gate completed status=(\d+)$", text, re.M) == ["0"],
+        require(re.findall(r"^\[ps5-opengl-native\] gate completed status=(\d+)$", normalize_log_tags(text), re.M) == ["0"],
                 "native gate incomplete")
         native = re.findall(r"\[ps5-multidraw-batch\] draws=(\d+) attempted=(\d+) waits=(\d+) result=0", text)
         deferred = re.findall(r"\[ps5-deferred-batch\] draws=(\d+) result=0", text)

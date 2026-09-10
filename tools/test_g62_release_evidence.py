@@ -69,7 +69,7 @@ class G62EvidenceTests(unittest.TestCase):
             E.load_evidence(link, self.profile)
 
     def test_gpu_completion_count_and_driver_failure(self):
-        text = "[pss-opengl-native] gate completed status=0\n"
+        text = "[ps5-opengl-native] gate completed status=0\n"
         accepted = dict(classification="pass", workload=dict(cases=[{}] * 8))
         self.assertEqual(E.workload("gpu-mipmap", text, self.profile["display"], accepted, {}), accepted["workload"])
         for bad in ("", text + text, text.replace("status=0", "status=1"), text + "[ps5-gallium] draw-rejected\n"):
@@ -105,7 +105,7 @@ class G62EvidenceTests(unittest.TestCase):
         heap = dict(post_session_growth_bytes=0)
         row = dict(begin_bytes=0, end_bytes=0, end_blocks=0)
         gpu = dict(direct=[row] * 3, mapped=[row] * 3)
-        text = "[pss-opengl-native] gate completed status=0\n"
+        text = "[ps5-opengl-native] gate completed status=0\n"
         for n in range(3):
             text += f"[ps5-imgui-lifecycle] session={n} begin\n"
             text += "".join(f"[ps5-imgui] frame={f} pixel PASS\n" for f in range(6))

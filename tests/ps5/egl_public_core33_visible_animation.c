@@ -140,7 +140,7 @@ main(void)
          printf("[ps5-egl-visible] ready egl=%d.%d gl=%s glsl=%s\n",
                 major, minor, glGetString(GL_VERSION),
                 glGetString(GL_SHADING_LANGUAGE_VERSION));
-         printf("[pss-opengl-native] gate completed status=0\n");
+         printf("[ps5-opengl-native] gate completed status=0\n");
       }
       ++frame;
       sceKernelUsleep(UINT32_C(1000000));

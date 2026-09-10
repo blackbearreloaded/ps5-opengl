@@ -12,6 +12,7 @@ import importlib
 import io
 import json
 from pathlib import Path
+from opengl_receipts import normalize_log_tags, cts_receipt_parts
 import shutil
 import tempfile
 import xml.etree.ElementTree as ET
@@ -55,7 +56,7 @@ def main():
     rows, receipts = [], []
     for relative in manifest["receipts"]:
         path = raw / relative
-        prefix = str(path).removesuffix("-pss-opengl-cts.qpa")
+        prefix, namespace = cts_receipt_parts(path)
         config = relative.split("/")[0].removeprefix("config-")
         text = path.read_text(errors="replace")
         count = 0
@@ -76,8 +77,8 @@ def main():
             post_health=runner["postHealthChecked"], lock_released=runner["lockReleased"],
             uneventful=relative not in eventful,
             raw_sha256={suffix: sha(Path(prefix + suffix)) for suffix in
-                        ("-pss-opengl-cts.qpa", "-pss-opengl-cts.status", "-result.json",
-                         "-runner.json", "-klog.log", "-pss-opengl.log", "-cts-args.txt", "-cts-shard.txt")}))
+                        (f"-{namespace}-cts.qpa", f"-{namespace}-cts.status", "-result.json",
+                         "-runner.json", "-klog.log", f"-{namespace}.log", "-cts-args.txt", "-cts-shard.txt")}))
     # These allowlisted prefixes contain renderer results, not raw kernel or device state.
     examples = {}
     for name, prefix in renderer_paths.items():
@@ -95,8 +96,8 @@ def main():
         examples[name] = dict(eboot_sha256=lifecycle["ebootSha256"].lower(),
                              raw_log_sha256=sha(log), teardown=lifecycle["teardownSignal"],
                              post_health=True, lock_released=True,
-                             output=[line for line in text.splitlines() if line.startswith(
-                                 (f"[ps5-{name}]", "[ps5-agc] present-shutdown", "[pss-opengl-native] gate completed"))])
+                             output=[line for line in text.splitlines() if normalize_log_tags(line).startswith(
+                                 (f"[ps5-{name}]", "[ps5-agc] present-shutdown", "[ps5-opengl-native] gate completed"))])
     names = ("candidate.json", "audit.json", "mustpass-gl33.txt", "cases.csv.gz", "receipts.json", "renderers.json")
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".validation-", dir=destination.parent) as temporary:

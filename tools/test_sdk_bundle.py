@@ -334,7 +334,7 @@ class SampleGateTests(unittest.TestCase):
             "[ps5-egl-render-blit] matching=18 result=0",
             "[ps5-egl-render-blit] cleanup=1 result=0",
             "[ps5-egl-transfer-regressions] gates=2 result=0",
-            "[pss-opengl-native] gate completed status=0"])
+            "[ps5-opengl-native] gate completed status=0"])
         heap = dict(post_session_growth_bytes=0)
         gpu = {kind: [dict(begin_bytes=0, end_bytes=0, end_blocks=0)] * 2
                for kind in ("direct", "mapped")}
@@ -445,7 +445,7 @@ class HFRBundleTests(unittest.TestCase):
                 "[sdl2-g19] GL=3.3 (Core Profile) Mesa 26.2.0 drawable=2560x1440 nominal_refresh=120Hz (not negotiated HDMI)",
                 "[sdl2-g19] probe frame=0 rgba=0,38,102,255 expected=0,38,102,255 pass=1",
                 "[sdl2-g19] probe frame=179 rgba=254,38,102,255 expected=254,38,102,255 pass=1",
-                "[sdl2-g19] frames=180 probes=2 status=0", "[pss-opengl-native] gate completed status=0"])
+                "[sdl2-g19] frames=180 probes=2 status=0", "[ps5-opengl-native] gate completed status=0"])
             klog = "launchApp(PPSA99005)\nEXEC /app0/eboot.bin\n" + "".join(
                 "[AvControl] video: port:HDMI " + mode + "\n" for mode in ("1440P_11988", "1440P_5994"))
             cycle = dict(titleId="PPSA99005", outcome="entered-eboot", teardownSignal="runtime-layers-released",
@@ -892,7 +892,7 @@ class G55BundleTests(unittest.TestCase):
 
     @staticmethod
     def log(kind):
-        gate = "[pss-opengl-native] gate completed status=0\n"
+        gate = "[ps5-opengl-native] gate completed status=0\n"
         if kind == "mip-blit":
             stages = [item.split(",") for item in (
                 "mip0-mip1,0:0:2,1:1:3;mip1-mip2,0:1:3,1:2:2;mip2-mip0,0:2:2,1:0:3;"

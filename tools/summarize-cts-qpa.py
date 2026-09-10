@@ -13,6 +13,7 @@ import json
 import re
 import shlex
 from pathlib import Path
+from opengl_receipts import CTS_QPA_SUFFIXES, cts_receipt_parts
 
 
 CASE = re.compile(
@@ -69,7 +70,7 @@ def inventory(directory: Path, current_eboot: str | None) -> dict:
     import importlib
     configurations = importlib.import_module("prepare-cts-shard").CONFIGURATIONS
     latest, receipts, rejected = {}, {}, []
-    for path in sorted(directory.rglob("*-pss-opengl-cts.qpa"), key=lambda p: p.name):
+    for path in sorted((p for p in directory.rglob("*.qpa") if p.name.endswith(CTS_QPA_SUFFIXES)), key=lambda p: p.name):
         try:
             text = path.read_text(errors="replace")
             command = re.search(r'^#sessionInfo commandLineParameters "(.*)"$', text, re.M)
@@ -84,7 +85,7 @@ def inventory(directory: Path, current_eboot: str | None) -> dict:
             config = next(i for i, (w, h, seed, extra) in enumerate(configurations)
                           if signature == (w, h, seed, "fbo" if extra else "default",
                                            "rgba8888d24s8" if extra else "default"))
-            prefix = str(path).removesuffix("-pss-opengl-cts.qpa")
+            prefix, _ = cts_receipt_parts(path)
             case_list = Path(prefix + "-cts-shard.txt")
             expected = [s.strip() for s in case_list.read_text().splitlines() if s.strip()] if case_list.is_file() else None
             summary = summarize(text, expected)

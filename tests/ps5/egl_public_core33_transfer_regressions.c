@@ -17,9 +17,9 @@ main(void)
    int result = transfer_workload_main();
    if (result)
       return result;
-   if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("begin", 0);
+   if (ps5_opengl_heap_snapshot) ps5_opengl_heap_snapshot("begin", 0);
    result = render_format_blit_main();
-   if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("end", 0);
+   if (ps5_opengl_heap_snapshot) ps5_opengl_heap_snapshot("end", 0);
    printf("[ps5-egl-transfer-regressions] gates=2 result=%d\n", result);
    return result;
 }

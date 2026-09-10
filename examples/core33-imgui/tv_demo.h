@@ -369,7 +369,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
 #ifdef PS5_IMGUI_PROFILE
             const double log_start = startup.window_complete ? -1.0 : demo_seconds();
 #endif
-            if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("steady", frame);
+            if (ps5_opengl_heap_snapshot) ps5_opengl_heap_snapshot("steady", frame);
             printf("[ps5-imgui-tv] visible frame=%u elapsed=%.1f pad=%d changes=%d vertices=%d\n",
                    frame, elapsed, connected, changes, ImGui::GetDrawData()->TotalVtxCount);
             next_log += 30.0;

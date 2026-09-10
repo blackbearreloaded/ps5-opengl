@@ -41,20 +41,20 @@ static int test_unmap(void *p,size_t n) { assert(p == pool); ++unmaps; return mu
 void *__real_malloc(size_t n) { ++real_calls[0]; return malloc(n); }
 void *__real_calloc(size_t n,size_t s) { ++real_calls[1]; return calloc(n,s); }
 void *__real_realloc(void *p,size_t n) { ++real_calls[2]; return realloc(p,n); }
-void __real_free(void *p) { ++real_calls[3]; assert(!pss_heap_owns(p)); free(p); }
+void __real_free(void *p) { ++real_calls[3]; assert(!ps5_heap_owns(p)); free(p); }
 int __real_posix_memalign(void **p,size_t a,size_t n) { ++real_calls[4]; return posix_memalign(p,a,n); }
-size_t __real_malloc_usable_size(const void *p) { assert(p && !pss_heap_owns(p)); ++real_calls[5]; return 16; }
+size_t __real_malloc_usable_size(const void *p) { assert(p && !ps5_heap_owns(p)); ++real_calls[5]; return 16; }
 void *sceLibcMspaceCreate(const char *name,void *base,size_t n,unsigned flags) {
-    assert(!strcmp(name,"PSS-OpenGL") && base == pool && n == PSS_OPENGL_HEAP_SIZE && !flags);
+    assert(!strcmp(name,"PS5-OpenGL") && base == pool && n == PS5_OPENGL_HEAP_SIZE && !flags);
     ++creates;
     /* Reentrant allocation during initialization must stay on the real heap. */
-    void *p=__wrap_malloc(7); assert(p && !pss_heap_owns(p)); __wrap_free(p);
+    void *p=__wrap_malloc(7); assert(p && !ps5_heap_owns(p)); __wrap_free(p);
     return mode == 2 ? NULL : base;
 }
 static void *allocate(size_t n,size_t alignment) {
-    if (allocation_failure || n > PSS_OPENGL_HEAP_SIZE) return NULL;
+    if (allocation_failure || n > PS5_OPENGL_HEAP_SIZE) return NULL;
     used=(used+sizeof(size_t)+alignment-1)&~(alignment-1);
-    assert(used <= PSS_OPENGL_HEAP_SIZE-n);
+    assert(used <= PS5_OPENGL_HEAP_SIZE-n);
     void *p=(char *)pool+used; used += n ? n : 1;
     memcpy((char *)p-sizeof(size_t),&n,sizeof(n));
     return p;
@@ -66,7 +66,7 @@ void *sceLibcMspaceCalloc(void *space,size_t n,size_t s) {
     void *p=allocate(n*s,16); if (p) memset(p,0,n*s); return p;
 }
 void *sceLibcMspaceRealloc(void *space,void *p,size_t n) {
-    assert(space == pool && pss_heap_owns(p)); ++owned_calls[2];
+    assert(space == pool && ps5_heap_owns(p)); ++owned_calls[2];
     if (allocation_failure || !n) return NULL;
     void *q=allocate(n,16);
     if (q) {
@@ -75,27 +75,27 @@ void *sceLibcMspaceRealloc(void *space,void *p,size_t n) {
     }
     return q;
 }
-void sceLibcMspaceFree(void *space,void *p) { assert(space == pool && pss_heap_owns(p)); ++owned_calls[3]; }
+void sceLibcMspaceFree(void *space,void *p) { assert(space == pool && ps5_heap_owns(p)); ++owned_calls[3]; }
 int sceLibcMspacePosixMemalign(void *space,void **p,size_t a,size_t n) {
     assert(space == pool); ++owned_calls[4];
     if (a < sizeof(void *) || (a&(a-1))) return EINVAL;
     void *q=allocate(n,a); if (!q) return ENOMEM; *p=q; return 0;
 }
 size_t sceLibcMspaceMallocUsableSize(const void *p) {
-    assert(pss_heap_owns(p)); ++owned_calls[5];
+    assert(ps5_heap_owns(p)); ++owned_calls[5];
     size_t n; memcpy(&n,(const char *)p-sizeof(size_t),sizeof(n)); return n;
 }
 int main(int argc,char **argv) {
     assert(argc == 2); mode=atoi(argv[1]);
     void *p=__wrap_malloc(16); assert(p);
-    assert(pss_heap_owns(p) == (mode == 0));
+    assert(ps5_heap_owns(p) == (mode == 0));
     assert(maps == 1 && creates == (mode != 1) && unmaps == (mode == 2));
     memset(p,0xa5,16);
     void *q=__wrap_realloc(p,32); assert(q);
     if (!mode) {
-        assert(q != p && atomic_load(&pss_heap_live_bytes) == 32);
+        assert(q != p && atomic_load(&ps5_heap_live_bytes) == 32);
         for (unsigned i=0;i<16;++i) assert(((unsigned char *)q)[i] == 0xa5);
-        q=__wrap_realloc(q,8); assert(q && atomic_load(&pss_heap_live_bytes) == 8);
+        q=__wrap_realloc(q,8); assert(q && atomic_load(&ps5_heap_live_bytes) == 8);
     }
     __wrap_free(q);
     q=__wrap_calloc(4,4); assert(q);
@@ -105,12 +105,12 @@ int main(int argc,char **argv) {
     assert(__wrap_malloc_usable_size(q) == 16); __wrap_free(q);
     q=__wrap_realloc(NULL,8); assert(q); __wrap_free(q); __wrap_free(NULL);
     /* Foreign allocations keep their original realloc/free/usable-size owner. */
-    p=__real_malloc(16); assert(p && !pss_heap_owns(p));
+    p=__real_malloc(16); assert(p && !ps5_heap_owns(p));
     assert(__wrap_malloc_usable_size(p) == 16);
     p=__wrap_realloc(p,32); assert(p); __wrap_free(p);
     if (!mode) {
-        assert(!atomic_load(&pss_heap_live_bytes) && !atomic_load(&pss_heap_blocks));
-        assert(atomic_load(&pss_heap_peak_bytes) == 32);
+        assert(!atomic_load(&ps5_heap_live_bytes) && !atomic_load(&ps5_heap_blocks));
+        assert(atomic_load(&ps5_heap_peak_bytes) == 32);
         for (unsigned i=0;i<6;++i) assert(owned_calls[i]);
         unsigned real_malloc=real_calls[0];
         p=__wrap_malloc(16); assert(p); allocation_failure=1;
@@ -118,23 +118,23 @@ int main(int argc,char **argv) {
         q=(void *)(uintptr_t)1;
         assert(__wrap_posix_memalign(&q,64,16) == ENOMEM && q == (void *)(uintptr_t)1);
         assert(real_calls[0] == real_malloc); /* No cross-heap fallback on owned-heap OOM. */
-        assert(atomic_load(&pss_heap_live_bytes) == 16 && atomic_load(&pss_heap_blocks) == 1);
-        assert(atomic_load(&pss_heap_failures) == 3);
+        assert(atomic_load(&ps5_heap_live_bytes) == 16 && atomic_load(&ps5_heap_blocks) == 1);
+        assert(atomic_load(&ps5_heap_failures) == 3);
         __wrap_free(p);
-        assert(!atomic_load(&pss_heap_live_bytes) && !atomic_load(&pss_heap_blocks));
+        assert(!atomic_load(&ps5_heap_live_bytes) && !atomic_load(&ps5_heap_blocks));
         allocation_failure=0;
         p=__wrap_malloc(16); assert(p && !__wrap_realloc(p,0));
-        assert(atomic_load(&pss_heap_ambiguous_zero_reallocs) == 1);
+        assert(atomic_load(&ps5_heap_ambiguous_zero_reallocs) == 1);
         __wrap_free(p); /* This mock's realloc(p,0) leaves p alive. */
-        pss_opengl_heap_snapshot("host",0);
-        assert(!pss_heap_owns(NULL));
-        assert(!pss_heap_owns((void *)((uintptr_t)pool-1)));
-        assert(!pss_heap_owns((void *)((uintptr_t)pool+PSS_OPENGL_HEAP_SIZE)));
-        assert(munmap(pool,PSS_OPENGL_HEAP_SIZE) == 0); /* Host-only teardown. */
+        ps5_opengl_heap_snapshot("host",0);
+        assert(!ps5_heap_owns(NULL));
+        assert(!ps5_heap_owns((void *)((uintptr_t)pool-1)));
+        assert(!ps5_heap_owns((void *)((uintptr_t)pool+PS5_OPENGL_HEAP_SIZE)));
+        assert(munmap(pool,PS5_OPENGL_HEAP_SIZE) == 0); /* Host-only teardown. */
     } else {
         for (unsigned i=0;i<6;++i) assert(!owned_calls[i] && real_calls[i]);
-        assert(atomic_load(&pss_heap_state) == -1 && !pss_heap_base);
-        assert(!atomic_load(&pss_heap_live_bytes) && !atomic_load(&pss_heap_blocks));
+        assert(atomic_load(&ps5_heap_state) == -1 && !ps5_heap_base);
+        assert(!atomic_load(&ps5_heap_live_bytes) && !atomic_load(&ps5_heap_blocks));
     }
     assert(maps == 1); /* Failure is not repeatedly retried by every allocation. */
     puts("app-heap: PASS wrapper routing, initialization/reentrancy/failure, owned and foreign allocations");

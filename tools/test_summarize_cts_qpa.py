@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import unittest
 import runpy
+from opengl_receipts import LEGACY_NAME
 
 
 ROOT = Path(__file__).resolve().parent
@@ -119,7 +120,8 @@ class QpaSummaryTest(unittest.TestCase):
                 prefix = work / f"PPSA99005-{index}"
                 text = qpa([("KHR-GL33.a", status), ("KHR-GL33.optional", "NotSupported")]).replace(
                     '<Result', '<Number Name="TestDuration" Unit="us">2000</Number>\n<Result')
-                Path(f"{prefix}-pss-opengl-cts.qpa").write_text(command + text)
+                namespace = LEGACY_NAME if index == 0 else "ps5-opengl"
+                Path(f"{prefix}-{namespace}-cts.qpa").write_text(command + text)
                 Path(f"{prefix}-cts-shard.txt").write_text("KHR-GL33.a\nKHR-GL33.optional\n")
                 Path(f"{prefix}-result.json").write_text(json.dumps(dict(
                     ebootSha256=str(index)*64, outcome="entered-eboot",
@@ -130,6 +132,7 @@ class QpaSummaryTest(unittest.TestCase):
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             ledger = json.loads(output.read_text())
+            self.assertEqual(len(ledger["receipts"]), 2)
             case = ledger["cases"]["0"]["KHR-GL33.a"]
             self.assertEqual(case["status"], "Fail")
             self.assertEqual(ledger["timings"], {"KHR-GL33.optional": .002})

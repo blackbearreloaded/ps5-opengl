@@ -7,15 +7,17 @@
 import argparse
 import json
 from pathlib import Path
+from opengl_receipts import normalize_log_tags
 import re
 
 
 def summarize(text, sessions=1, steady_samples=0):
-    pattern = (r"^\[pss-opengl-heap\] phase=(begin|steady|end) sample=(\d+) state=(-?\d+) "
+    text = normalize_log_tags(text)
+    pattern = (r"^\[ps5-opengl-heap\] phase=(begin|steady|end) sample=(\d+) state=(-?\d+) "
                r"live_bytes=(\d+) peak_bytes=(\d+) blocks=(\d+) failures=(\d+) "
                r"ambiguous_zero_reallocs=(\d+)$")
     rows = [(phase, *map(int, values)) for phase, *values in re.findall(pattern, text, re.M)]
-    if len(rows) != text.count("[pss-opengl-heap]") or not rows:
+    if len(rows) != text.count("[ps5-opengl-heap]") or not rows:
         raise ValueError("missing or malformed heap samples")
     groups, current = [], None
     peak = 0
@@ -59,7 +61,7 @@ def summarize(text, sessions=1, steady_samples=0):
 
 def self_test():
     def row(phase, sample=0, live=16, blocks=1):
-        return (f"[pss-opengl-heap] phase={phase} sample={sample} state=2 live_bytes={live} "
+        return (f"[ps5-opengl-heap] phase={phase} sample={sample} state=2 live_bytes={live} "
                 f"peak_bytes=64 blocks={blocks} failures=0 ambiguous_zero_reallocs=0\n")
     text = row("begin") + row("steady") + row("steady", 1800) + row("steady", 3600) + row("end")
     assert summarize(text, steady_samples=3)["sessions"][0]["steady_growth_bytes"] == 0
@@ -79,11 +81,12 @@ def self_test():
 
 
 def summarize_gpu(text, sessions=1, steady_samples=0):
-    pattern = (r"^\[pss-opengl-gpu-memory\] phase=(begin|steady|end) sample=(\d+) "
+    text = normalize_log_tags(text)
+    pattern = (r"^\[ps5-opengl-gpu-memory\] phase=(begin|steady|end) sample=(\d+) "
                r"direct_bytes=(\d+) direct_peak=(\d+) allocations=(\d+) "
                r"mapped_bytes=(\d+) mapped_peak=(\d+) mappings=(\d+) failures=(\d+) invalid=(\d+)$")
     rows = [(phase, *map(int, values)) for phase, *values in re.findall(pattern, text, re.M)]
-    if not rows or len(rows) != text.count("[pss-opengl-gpu-memory]"):
+    if not rows or len(rows) != text.count("[ps5-opengl-gpu-memory]"):
         raise ValueError("missing or malformed GPU samples")
     reports = {}
     for name, offset in (("direct", 2), ("mapped", 5)):
@@ -98,7 +101,7 @@ def summarize_gpu(text, sessions=1, steady_samples=0):
                 balance = (live, count)
             if phase == "end" and (live, count) != balance:
                 raise ValueError(f"{name} GPU allocations did not return to session baseline")
-            normalized.append(f"[pss-opengl-heap] phase={phase} sample={sample} state=2 "
+            normalized.append(f"[ps5-opengl-heap] phase={phase} sample={sample} state=2 "
                               f"live_bytes={live} peak_bytes={peak} blocks={count} "
                               f"failures={row[8]} ambiguous_zero_reallocs={row[9]}")
         # Reuse the existing strict ordering, high-water, failure and sample checks.
@@ -111,7 +114,7 @@ def summarize_gpu(text, sessions=1, steady_samples=0):
 
 def gpu_self_test():
     def row(phase, live=0, sample=0):
-        return (f"[pss-opengl-gpu-memory] phase={phase} sample={sample} direct_bytes={live} "
+        return (f"[ps5-opengl-gpu-memory] phase={phase} sample={sample} direct_bytes={live} "
                 f"direct_peak=16384 allocations={int(bool(live))} mapped_bytes={live} "
                 f"mapped_peak=16384 mappings={int(bool(live))} failures=0 invalid=0\n")
     text = row("begin") + row("steady", 16384) + row("steady", 16384, 1800) + row("end")

@@ -11,6 +11,7 @@ import hashlib
 import importlib
 import json
 from pathlib import Path
+from opengl_receipts import normalize_log_tags, cts_receipt_parts
 import re
 import shlex
 import xml.etree.ElementTree as ET
@@ -29,9 +30,10 @@ def digest(path):
 
 
 def require_completion(klog, app_log, executed):
-    finished = f"[pss-opengl-cts] finished state=passed executed={executed} failed=0 device_lost=0"
-    require("[pss-opengl-cts] finished" in klog.splitlines() and
-            "[pss-opengl-cts] starting GL33 CTS runner" in app_log.splitlines() and
+    klog, app_log = normalize_log_tags(klog), normalize_log_tags(app_log)
+    finished = f"[ps5-opengl-cts] finished state=passed executed={executed} failed=0 device_lost=0"
+    require("[ps5-opengl-cts] finished" in klog.splitlines() and
+            "[ps5-opengl-cts] starting GL33 CTS runner" in app_log.splitlines() and
             finished in app_log.splitlines(), "missing fresh completion evidence")
 
 
@@ -74,8 +76,8 @@ def audit(root, manifest, official):
     for relative in receipts:
         path = (root / relative).resolve()
         require(path.is_relative_to(root.resolve()) and
-                path.name.endswith("-pss-opengl-cts.qpa"), "unsafe receipt path")
-        prefix = str(path).removesuffix("-pss-opengl-cts.qpa")
+                path.name.endswith(QPA.CTS_QPA_SUFFIXES), "unsafe receipt path")
+        prefix, namespace = cts_receipt_parts(path)
         lifecycle = json.loads(Path(prefix + "-result.json").read_text(encoding="utf-8-sig"))
         runner = json.loads(Path(prefix + "-runner.json").read_text(encoding="utf-8-sig"))
         require(lifecycle.get("ebootSha256", "").lower() == manifest["eboot_sha256"]
@@ -97,7 +99,11 @@ def audit(root, manifest, official):
         text = path.read_text(errors="replace")
         command = re.search(r'^#sessionInfo commandLineParameters "(.*)"$', text, re.M)
         require(command and shlex.split(command[1]) == args, f"QPA argument mismatch: {relative}")
-        require(f"#sessionInfo releaseName {manifest['cts_commit']}\n" in text,
+        release_name = manifest.get("cts_release_name", manifest["cts_commit"])
+        require(release_name == manifest["cts_commit"] or
+                release_name.endswith("-g" + manifest["cts_commit"]),
+                "CTS release name does not identify the frozen commit")
+        require(f"#sessionInfo releaseName {release_name}\n" in text,
                 f"CTS revision mismatch: {relative}")
         options = dict(arg.split("=", 1) for arg in args if "=" in arg)
         signature = (int(options["--deqp-surface-width"]), int(options["--deqp-surface-height"]),
@@ -109,14 +115,14 @@ def audit(root, manifest, official):
         summary = QPA.summarize(text, expected)
         require(summary["complete"] and not summary["failed"], f"incomplete or failed QPA: {relative}")
         status = dict(field.split("=", 1) for field in
-                      Path(prefix + "-pss-opengl-cts.status").read_text().split())
+                      Path(prefix + f"-{namespace}-cts.status").read_text().split())
         wanted = dict(state="passed", complete="1", executed=str(len(expected)),
                       passed=str(summary["counts"].get("Pass", 0)),
                       not_supported=str(summary["counts"].get("NotSupported", 0)),
                       failed="0", warnings="0", waived="0", device_lost="0")
         require(status == wanted, f"status/QPA mismatch: {relative}")
         require_completion(Path(prefix + "-klog.log").read_text(errors="replace"),
-                           Path(prefix + "-pss-opengl.log").read_text(errors="replace"), len(expected))
+                           Path(prefix + f"-{namespace}.log").read_text(errors="replace"), len(expected))
         cases = []
         for match in QPA.CASE.finditer(text):
             node = ET.fromstring(match["body"])
@@ -157,8 +163,8 @@ def self_test():
         except ValueError:
             continue
         raise AssertionError("wrong/missing/duplicate render-target field was accepted")
-    klog = "[pss-opengl-cts] finished\n"
-    app = "[pss-opengl-cts] starting GL33 CTS runner\n[pss-opengl-cts] finished state=passed executed=2 failed=0 device_lost=0\n"
+    klog = "[ps5-opengl-cts] finished\n"
+    app = "[ps5-opengl-cts] starting GL33 CTS runner\n[ps5-opengl-cts] finished state=passed executed=2 failed=0 device_lost=0\n"
     require_completion(klog, app, 2)
     for bad_klog, bad_app, count in [("", app, 2), (klog, "", 2), (klog, app, 3)]:
         try:
@@ -189,7 +195,7 @@ def self_test():
         raise AssertionError("bad status was accepted")
     with tempfile.TemporaryDirectory() as directory:
         try:
-            audit(Path(directory), dict(receipts=["../outside-pss-opengl-cts.qpa"]), official)
+            audit(Path(directory), dict(receipts=["../outside-ps5-opengl-cts.qpa"]), official)
         except ValueError:
             pass
         else:
@@ -204,6 +210,7 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--allow-incomplete", action="store_true")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--mustpass", type=Path, help="exact selected CTS release's must-pass list")
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -211,7 +218,7 @@ def main():
     if not args.manifest or not args.output:
         parser.error("manifest and --output are required")
     root = Path(__file__).resolve().parent.parent
-    mustpass = root / "third_party/VK-GL-CTS/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass/main/gl33-main.txt"
+    mustpass = args.mustpass or root / "third_party/VK-GL-CTS/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass/main/gl33-main.txt"
     try:
         manifest = json.loads(args.manifest.read_text())
         require(digest(mustpass) == manifest["mustpass_sha256"], "must-pass identity mismatch")

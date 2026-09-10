@@ -91,7 +91,7 @@ class PublishedValidationTest(unittest.TestCase):
             receipts = json.loads((evidence / "receipts.json").read_text())
             selected = [next(dict(r) for r in receipts if r["configuration"] == str(i)) for i in range(4)]
             for receipt in selected:
-                receipt["receipt"] = f"config-{receipt['configuration']}/fixture-pss-opengl-cts.qpa"
+                receipt["receipt"] = f"config-{receipt['configuration']}/fixture-ps5-opengl-cts.qpa"
                 receipt["cases"] = 9886
                 receipt["uneventful"] = True
             for row in rows:

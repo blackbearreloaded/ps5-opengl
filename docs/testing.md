@@ -82,6 +82,10 @@ memory ownership and final teardown.
 
 ## CTS selection and acceptance
 
+For a fresh complete campaign and the additional submission prerequisites, use
+the [CTS campaign workflow](cts-campaign.md). Its offline planner batches the
+existing inventory without promoting historical results to new acceptance.
+
 ```sh
 make cts-fetch
 bash conformance/vk-gl-cts/prepare.sh

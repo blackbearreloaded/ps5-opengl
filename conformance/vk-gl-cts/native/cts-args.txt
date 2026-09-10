@@ -1,6 +1,6 @@
 # One argument per line. Keep every hardware launch explicitly bounded.
 --deqp-archive-dir=/app0
---deqp-log-filename=/download0/pss-opengl-cts.qpa
+--deqp-log-filename=/download0/ps5-opengl-cts.qpa
 --deqp-case=KHR-GL33.info.*
 --deqp-surface-width=64
 --deqp-surface-height=64

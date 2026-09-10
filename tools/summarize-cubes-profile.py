@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+from opengl_receipts import normalize_log_tags
 import re
 import statistics
 
@@ -102,7 +103,7 @@ def summarize(text, host=False, objects=128, seconds=30, swap_completed=1, budge
     require(not re.search(r"\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))", text),
             "Driver error")
     if not host:
-        require(re.findall(r"\[pss-opengl-native\] gate completed status=(-?\d+)", text) == ["0"],
+        require(re.findall(r"\[ps5-opengl-native\] gate completed status=(-?\d+)", normalize_log_tags(text)) == ["0"],
                 "Native gate incomplete or failed")
     return dict(version=2, mode="host-reference" if host else "PS5", width=width, height=height,
                 objects=objects, triangles=12 * objects, textures=2, texture_size=2,

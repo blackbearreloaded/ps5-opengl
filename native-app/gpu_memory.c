@@ -105,7 +105,7 @@ int __wrap_munmap(void *address, size_t bytes) {
     return result;
 }
 
-void pss_opengl_gpu_snapshot(const char *phase, unsigned sample) {
+void ps5_opengl_gpu_snapshot(const char *phase, unsigned sample) {
     size_t direct, direct_peak, allocations, mapped, mapped_peak, mappings, failed, inconclusive;
     lock();
     direct = totals[DIRECT].bytes; direct_peak = totals[DIRECT].peak;
@@ -113,7 +113,7 @@ void pss_opengl_gpu_snapshot(const char *phase, unsigned sample) {
     mapped = totals[MAPPING].bytes; mapped_peak = totals[MAPPING].peak;
     mappings = totals[MAPPING].count; failed = failures; inconclusive = invalid;
     unlock();
-    printf("[pss-opengl-gpu-memory] phase=%s sample=%u direct_bytes=%zu direct_peak=%zu "
+    printf("[ps5-opengl-gpu-memory] phase=%s sample=%u direct_bytes=%zu direct_peak=%zu "
            "allocations=%zu mapped_bytes=%zu mapped_peak=%zu mappings=%zu failures=%zu invalid=%zu\n",
            phase, sample, direct, direct_peak, allocations, mapped, mapped_peak, mappings,
            failed, inconclusive);

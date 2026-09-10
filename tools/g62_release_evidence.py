@@ -6,6 +6,7 @@
 import importlib
 import json
 from pathlib import Path
+from opengl_receipts import normalize_log_tags, cts_receipt_parts
 import re
 import g55_release_evidence as BASE
 
@@ -59,7 +60,7 @@ def load_evidence(path, profile):
 
 
 def workload(kind, text, display, accepted, flags):
-    require(re.findall(r"\[pss-opengl-native\] gate completed status=(-?\d+)", text) == ["0"] and
+    require(re.findall(r"\[ps5-opengl-native\] gate completed status=(-?\d+)", normalize_log_tags(text)) == ["0"] and
             not re.search(r"^\[ps5-imgui\] FAIL|^\[ps5-gallium\] (?:draw-rejected|reject-)", text, re.M),
             "G62 native operation failed")
     if kind in GPU_CASES:
@@ -189,18 +190,18 @@ def report(root, profile, sdl, evidence, private_hosts):
     compact = {}
     for n, relative in enumerate(manifest["receipts"]):
         qpa = evidence_path(cts_root, relative)
-        prefix = str(qpa).removesuffix("-pss-opengl-cts.qpa")
+        prefix, namespace = cts_receipt_parts(qpa)
         runner = json.loads(Path(prefix + "-runner.json").read_text(encoding="utf-8-sig"))
         require(runner["checkoutCommit"] == manifest["source_commit"], "G62 CTS source differs")
         private_hosts.add(runner["ps5Host"])
         wanted = [name for name in smoke if n < 2 or name != DEFERRED]
-        selected = evidence_path(cts_root, relative.removesuffix("-pss-opengl-cts.qpa") + "-cts-shard.txt")
+        selected = evidence_path(cts_root, cts_receipt_parts(relative)[0] + "-cts-shard.txt")
         require(selected.read_text().splitlines() == wanted and summary["configurations"][str(n)]["counts"] == {"Pass": len(wanted)},
                 "G62 CTS selected cases/results differ")
         row = CTS.QPA.summarize(qpa.read_text(), wanted)
         compact[str(n)] = dict(target=summary["render_targets"][str(n)], executed=len(wanted), counts=row["counts"],
             seconds=row["seconds"], cases=row["cases"], raw_sha256={suffix: digest(Path(prefix + suffix)) for suffix in
-            ("-pss-opengl-cts.qpa", "-pss-opengl-cts.status", "-cts-shard.txt", "-cts-args.txt", "-result.json", "-runner.json", "-pss-opengl.log", "-klog.log")})
+            (f"-{namespace}-cts.qpa", f"-{namespace}-cts.status", "-cts-shard.txt", "-cts-args.txt", "-result.json", "-runner.json", f"-{namespace}.log", "-klog.log")})
     result.update(hardware_validation=True, sample_complete=True, sample_executions=202, clean_cycles=len(cycles) + 4,
                   stability_seconds=120, sample_deferred=[dict(configuration=n, case=DEFERRED, reason="prior execution exceeded 120 seconds") for n in (2, 3)])
     result["runs"]["cts"] = compact

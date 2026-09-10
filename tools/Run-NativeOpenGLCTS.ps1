@@ -73,9 +73,9 @@ $eboot = Join-Path $app 'eboot.bin'
 $arguments = Join-Path $app 'cts-args.txt'
 $caseList = Join-Path $app 'cts-shard.txt'
 $downloadData = Join-Path ([IO.Path]::GetTempPath()) `
-    "pss-opengl-cts-download0-$PID-$([Guid]::NewGuid().ToString('N')).dat"
+    "ps5-opengl-cts-download0-$PID-$([Guid]::NewGuid().ToString('N')).dat"
 $extractDirectory = Join-Path ([IO.Path]::GetTempPath()) `
-    "pss-opengl-cts-receipt-$PID-$([Guid]::NewGuid().ToString('N'))"
+    "ps5-opengl-cts-receipt-$PID-$([Guid]::NewGuid().ToString('N'))"
 $resultFile = $null
 $postHealthChecked = $false
 $lockReleased = $false
@@ -185,7 +185,7 @@ if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) {
 }
 
 $ps5Lock = [IO.Path]::GetFullPath($LockPath)
-$lockToken = 'pss-opengl-cts-pid{0}-{1}' -f $PID,
+$lockToken = 'ps5-opengl-cts-pid{0}-{1}' -f $PID,
     [Guid]::NewGuid().ToString('N').Substring(0, 8)
 $handle = $null
 for ($attempt = 0; $attempt -lt 4; ++$attempt) {
@@ -238,7 +238,7 @@ try {
         ElfPort = 9021
         ResultsDirectory = [IO.Path]::GetFullPath($ResultsDirectory)
         ObservationSeconds = $ObservationSeconds
-        ObservationStopText = '[pss-opengl-cts] finished'
+        ObservationStopText = '[ps5-opengl-cts] finished'
         FtpCredential = $FtpCredential
         SkipVideoReadiness = $true
         SkipRoutineScreenshots = $true
@@ -317,8 +317,8 @@ try {
     $dotnet = (Get-Command dotnet).Source
     $ufs2Runner = & (Join-Path $boilerplate 'tools\setup-ffpkg-tooling.ps1') `
         -Dotnet $dotnet
-    foreach ($remotePath in @('/pss-opengl-cts.status',
-            '/pss-opengl-cts.qpa', '/pss-opengl.log')) {
+    foreach ($remotePath in @('/ps5-opengl-cts.status',
+            '/ps5-opengl-cts.qpa', '/ps5-opengl.log')) {
         if ($ufs2Runner -match '^/mnt/') {
             $downloadWsl = (wsl.exe wslpath -a -- `
                 ($downloadData -replace '\\', '/')).Trim()
@@ -349,8 +349,8 @@ try {
         Copy-Item -LiteralPath $caseList -Destination $archivedCaseList
         Assert-Hash $archivedCaseList $ExpectedCaseListSha256
     }
-    foreach ($name in @('pss-opengl-cts.status', 'pss-opengl-cts.qpa',
-            'pss-opengl.log')) {
+    foreach ($name in @('ps5-opengl-cts.status', 'ps5-opengl-cts.qpa',
+            'ps5-opengl.log')) {
         $source = Join-Path $extractDirectory $name
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
             throw "PPSA99005 produced no $name receipt."
@@ -369,7 +369,7 @@ try {
         installedBinariesVerified = [bool]$ReuseInstalledBinaries
     } | ConvertTo-Json | Set-Content -LiteralPath "$prefix-runner.json" -Encoding UTF8
 
-    $statusPath = "$prefix-pss-opengl-cts.status"
+    $statusPath = "$prefix-ps5-opengl-cts.status"
     $status = (Get-Content -LiteralPath $statusPath -Raw).Trim()
     if ($status -notmatch '^state=passed complete=1 executed=(\d+) passed=(\d+) failed=0 not_supported=(\d+) warnings=\d+ waived=\d+ device_lost=0$') {
         throw "CTS shard failed; inspect $statusPath`: $status"
@@ -383,7 +383,7 @@ try {
         throw "CTS shard count mismatch in $statusPath`: $status"
     }
 
-    $qpaPath = "$prefix-pss-opengl-cts.qpa"
+    $qpaPath = "$prefix-ps5-opengl-cts.qpa"
     $qpaParser = Join-Path $repo 'tools\summarize-cts-qpa.py'
     $qpaWsl = (wsl.exe wslpath -a -- ($qpaPath -replace '\\', '/')).Trim()
     $parserWsl = (wsl.exe wslpath -a -- ($qpaParser -replace '\\', '/')).Trim()
@@ -410,7 +410,7 @@ try {
         -not $postHealthChecked -or -not $lockReleased) {
         throw 'CTS lifecycle did not complete cleanly.'
     }
-    Write-Host "OPENGL_CTS_PASSED executed=$ExpectedExecuted qpa=$prefix-pss-opengl-cts.qpa"
+    Write-Host "OPENGL_CTS_PASSED executed=$ExpectedExecuted qpa=$prefix-ps5-opengl-cts.qpa"
 } finally {
     if (Test-Path -LiteralPath $downloadData) {
         Remove-Item -LiteralPath $downloadData -Force

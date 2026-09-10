@@ -7,6 +7,7 @@
 import argparse
 import json
 from pathlib import Path
+from opengl_receipts import normalize_log_tags
 import re
 import statistics
 
@@ -45,7 +46,7 @@ def summarize(text, host=False, uv=False, deferred_batches=False):
     require(lines == [f"[ps5-cubes] completed={3 * modes} cleanup=1 result=0"], "Incomplete benchmark or cleanup failure")
     require(not re.search(r"\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))", text), "Driver error")
     if not host:
-        require(re.findall(r"\[pss-opengl-native\] gate completed status=(\d+)", text) == ["0"], "Native gate incomplete")
+        require(re.findall(r"\[ps5-opengl-native\] gate completed status=(\d+)", normalize_log_tags(text)) == ["0"], "Native gate incomplete")
     result = dict(mode="host-reference" if host else "PS5", width=1920, height=1080,
                 oracle="UV/material coordinates" if uv else "depth/texture pixels",
                 note="Low-poly draw-call benchmark; full-frame CPU wall time with one glFinish and swap per frame. Not a GPU-throughput or full-game benchmark.", workloads=report)
@@ -74,7 +75,7 @@ def self_test():
             text += oracle
             text += "".join(f"[ps5-cubes] {prefix}objects={objects} frame={f} clear_ns=1000000 draw_ns=2000000 swap_ns=1000000 total_ns=4000000\n" for f in range(8))
             text += oracle
-        text += f"[ps5-cubes] completed={3 * modes} cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
+        text += f"[ps5-cubes] completed={3 * modes} cleanup=1 result=0\n[ps5-opengl-native] gate completed status=0\n"
         result = summarize(text)["workloads"]
         assert len(result) == modes * 3 and result[0]["throughput_fps"] == 250
         assert result[-1]["path"] == ("instanced" if modes == 2 else "ordinary")

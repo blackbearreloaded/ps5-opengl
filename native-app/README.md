@@ -47,7 +47,11 @@ stops on its first failure. Host check: `python3 tests/ps5/test_color_target_lim
 that all gate-level imports are supplied by the native OpenGL runtime or PS5
 SDK stubs.
 
-Each run writes an unbuffered `/download0/pss-opengl.log` receipt. The managed
+Rebuild the folder app and use the matching runner after updating: current
+receipts use the `ps5-opengl` prefix. Offline auditors also accept the previous
+prefix in frozen evidence; historical logs, filenames and checksums are preserved.
+
+Each run writes an unbuffered `/download0/ps5-opengl.log` receipt. The managed
 runner retrieves it after teardown and accepts only `gate completed status=0`.
 Ordinary failed gates remain in safe idle. A native GPU submission/suspend error
 or unconfirmed completion instead terminates the application before buffer
@@ -62,5 +66,5 @@ bash tools/build-native-cts-app.sh
 
 Its default `/app0/cts-args.txt` runs only `KHR-GL33.info.*`. Later bounded
 shards replace that file in `/data/homebrew/PPSA99005`, then relaunch the
-folder app. Results are written to `/download0/pss-opengl-cts.qpa` and
-`/download0/pss-opengl-cts.status`.
+folder app. Results are written to `/download0/ps5-opengl-cts.qpa` and
+`/download0/ps5-opengl-cts.status`.

@@ -12,8 +12,12 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+from opengl_receipts import LEGACY_NAME, normalize_log_tags
+
 
 def audit(text):
+    text = normalize_log_tags(text)
     rows = re.findall(r"^\[ps5-batch-probe\] repeats=(\d+) wait_ns=(-?\d+) result=(\d+)$", text, re.M)
     assert len(rows) == text.count("[ps5-batch-probe]") == 36, "Missing/extra/malformed GPU records"
     for i, (count, ns, result) in enumerate(rows):
@@ -23,7 +27,7 @@ def audit(text):
     assert sweeps in (["73728"], ["589824"]), "Missing/duplicate/wrong-size pixel oracle"
     for marker in (
         "[ps5-gpu-clear] completed=36 cleanup=1 result=0",
-        "[pss-opengl-native] gate completed status=0",
+        "[ps5-opengl-native] gate completed status=0",
     ):
         assert text.count(marker) == 1, f"Missing/duplicate oracle: {marker}"
     # Discard three complete warm-up cycles, preserving nine samples per size.
@@ -97,8 +101,9 @@ with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags, str(c), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
 sample = "\n".join(f"[ps5-batch-probe] repeats={c} wait_ns=1000000 result=0" for c in (1, 2, 8) * 12)
-sample += "\n[ps5-gpu-clear] rgba8-sweep=36 pixels=73728 PASS\n[ps5-gpu-clear] completed=36 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
+sample += "\n[ps5-gpu-clear] rgba8-sweep=36 pixels=73728 PASS\n[ps5-gpu-clear] completed=36 cleanup=1 result=0\n[ps5-opengl-native] gate completed status=0\n"
 assert audit(sample)[8]["median_wait_ms"] == 1
+assert audit(sample.replace("ps5-opengl", LEGACY_NAME)) == audit(sample)
 assert audit(sample.replace("pixels=73728", "pixels=589824"))[8]["median_wait_ms"] == 1
 for bad in (sample.replace("wait_ns=1000000", "wait_ns=0", 1), sample.replace("repeats=8", "repeats=1", 1),
             sample.replace("result=0", "result=1", 1), sample.replace("cleanup=1", "cleanup=0"),

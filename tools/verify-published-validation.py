@@ -12,6 +12,7 @@ import hashlib
 import importlib
 import json
 from pathlib import Path
+from opengl_receipts import normalize_log_tags
 import re
 
 AUDITOR = importlib.import_module("verify-cts-candidate")
@@ -106,7 +107,7 @@ def verify(evidence):
         AUDITOR.require(renderer["teardown"] == "runtime-layers-released" and
                         renderer["post_health"] is True and renderer["lock_released"] is True and
                         f"[ps5-{name}] finished status=0" in renderer["output"] and
-                        "[pss-opengl-native] gate completed status=0" in renderer["output"],
+                        "[ps5-opengl-native] gate completed status=0" in map(normalize_log_tags, renderer["output"]),
                         "renderer completion mismatch")
         verify_renderer(name, renderer["output"])
     totals = collections.Counter(row["status"] for row in rows)

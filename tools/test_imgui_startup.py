@@ -132,7 +132,7 @@ legacy = """[ps5-imgui-tv] readback frame=0 rgba=45,215,245,255 PASS
 [ps5-imgui-perf] frames=6930 warmup=30 ui_ms=1 clear_ms=1 draw_ms=1 readback_ms=0 swap_ms=5.34 cpu_wall_ms=8.34 status=0
 [ps5-imgui-tv] finished frames=6960 changes=0 status=0
 [ps5-imgui] finished status=0
-[pss-opengl-native] gate completed status=0
+[ps5-opengl-native] gate completed status=0
 """
 options = dict(soak=True, soak_seconds=60, soak_target=120)
 before = summarize(legacy, strict_soak_fps=False, **options)

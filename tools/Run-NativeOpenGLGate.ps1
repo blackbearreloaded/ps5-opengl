@@ -64,9 +64,9 @@ $cycle = [IO.Path]::GetFullPath((Join-Path $repo `
     '..\..\docs\ps5-homebrew-dev-protocol\scripts\Invoke-Ps5Cycle.ps1'))
 $protocol = Split-Path (Split-Path $cycle -Parent) -Parent
 $downloadData = Join-Path ([IO.Path]::GetTempPath()) `
-    "pss-opengl-download0-$PID-$([Guid]::NewGuid().ToString('N')).dat"
+    "ps5-opengl-download0-$PID-$([Guid]::NewGuid().ToString('N')).dat"
 $receiptDirectory = Join-Path ([IO.Path]::GetTempPath()) `
-    "pss-opengl-receipt-$PID-$([Guid]::NewGuid().ToString('N'))"
+    "ps5-opengl-receipt-$PID-$([Guid]::NewGuid().ToString('N'))"
 $resultFile = $null
 $postHealthChecked = $false
 $lockReleased = $false
@@ -131,7 +131,7 @@ if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) {
 }
 
 $ps5Lock = [IO.Path]::GetFullPath($LockPath)
-$lockToken = 'pss-opengl-native-{0}-pid{1}-{2}' -f `
+$lockToken = 'ps5-opengl-native-{0}-pid{1}-{2}' -f `
     $ExpectedGate.Replace('_', '-').Replace('.o', ''), $PID, `
     [Guid]::NewGuid().ToString('N').Substring(0, 8)
 $handle = $null
@@ -254,13 +254,13 @@ try {
         $receiptDirectoryWsl = (wsl.exe wslpath -a -- `
             ($receiptDirectory -replace '\\', '/')).Trim()
         & wsl.exe sh $ufs2Runner extract $downloadDataWsl `
-            $receiptDirectoryWsl /pss-opengl.log
+            $receiptDirectoryWsl /ps5-opengl.log
     } else {
         $previousRollForward = $env:DOTNET_ROLL_FORWARD
         try {
             $env:DOTNET_ROLL_FORWARD = 'Major'
             & $dotnet $ufs2Runner extract $downloadData `
-                $receiptDirectory /pss-opengl.log
+                $receiptDirectory /ps5-opengl.log
         } finally {
             $env:DOTNET_ROLL_FORWARD = $previousRollForward
         }
@@ -268,14 +268,14 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not extract the PPSA99005 OpenGL receipt.'
     }
-    $extracted = Join-Path $receiptDirectory 'pss-opengl.log'
+    $extracted = Join-Path $receiptDirectory 'ps5-opengl.log'
     if (-not (Test-Path -LiteralPath $extracted -PathType Leaf)) {
-        throw 'PPSA99005 produced no pss-opengl.log receipt.'
+        throw 'PPSA99005 produced no ps5-opengl.log receipt.'
     }
     $receipt = $resultFile.FullName -replace '-result\.json$', '-opengl.log'
     Copy-Item -LiteralPath $extracted -Destination $receipt
     $receiptText = Get-Content -LiteralPath $receipt -Raw
-    if ($receiptText -notmatch '\[pss-opengl-native\] gate completed status=0') {
+    if ($receiptText -notmatch '\[ps5-opengl-native\] gate completed status=0') {
         throw "OpenGL gate did not report success; inspect $receipt"
     }
     $result = Get-Content -LiteralPath $resultFile.FullName -Raw |

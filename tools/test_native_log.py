@@ -33,7 +33,7 @@ class NativeLogTest(unittest.TestCase):
     def test_interleaved_streams(self):
         source = (Path(__file__).resolve().parents[1] / "native-app/runtime_shims.c").read_text()
         start = source.index("__attribute__((constructor))")
-        function = source[start:source.index("\n}", start) + 2].replace("/download0/pss-opengl.log", "receipt.log")
+        function = source[start:source.index("\n}", start) + 2].replace("/download0/ps5-opengl.log", "receipt.log")
         program = '\nint main(void) { puts("out1"); fputs("diagnostic-long-line\\n", stderr); puts("out2"); fputs("error2\\n", stderr); return 0; }\n'
         expected = "out1\ndiagnostic-long-line\nout2\nerror2\n"
         with tempfile.TemporaryDirectory() as tmp:

@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 from pathlib import Path, PurePosixPath
+from opengl_receipts import normalize_log_tags
 import re
 
 CHECK = importlib.import_module("check-sdk-consumers")
@@ -146,7 +147,7 @@ def summarize_mip_blit(text):
 def summarize_workload(kind, text, display, mode=None):
     """Numerical contract shared with the maintainer's offline raw auditor."""
     require(kind in GATES, "unknown G55 workload")
-    require(re.findall(r"\[pss-opengl-native\] gate completed status=(-?\d+)", text) == ["0"],
+    require(re.findall(r"\[ps5-opengl-native\] gate completed status=(-?\d+)", normalize_log_tags(text)) == ["0"],
             "G55 native gate missing, duplicated or failed")
     require(not re.search(r"^\[ps5-imgui\] FAIL|^\[ps5-gallium\] (?:draw-rejected|reject-|clear-gpu-color status=(?!0\b))",
                           text, re.M), "G55 driver reported a failed operation")

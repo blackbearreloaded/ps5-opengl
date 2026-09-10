@@ -13,7 +13,7 @@
 #include "imgui_impl_opengl3.h"
 
 // Optional native-folder instrumentation; standalone/host consumers need none.
-extern "C" void pss_opengl_heap_snapshot(const char*, unsigned) __attribute__((weak));
+extern "C" void ps5_opengl_heap_snapshot(const char*, unsigned) __attribute__((weak));
 
 static bool check(bool ok, const char* stage)
 {
@@ -230,7 +230,7 @@ static bool render_frames(EGLDisplay display, EGLSurface surface)
 
 int main()
 {
-    if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("begin", 0);
+    if (ps5_opengl_heap_snapshot) ps5_opengl_heap_snapshot("begin", 0);
 #ifdef PS5_IMGUI_HOST_REFERENCE
     const EGLint surface_type = EGL_PBUFFER_BIT;
 #else
@@ -296,7 +296,7 @@ int main()
         cleanup &= eglTerminate(display);
     }
     if (!check(cleanup && eglGetError() == EGL_SUCCESS, "EGL cleanup")) result = 1;
-    if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("end", 0);
+    if (ps5_opengl_heap_snapshot) ps5_opengl_heap_snapshot("end", 0);
     printf("[ps5-imgui] finished status=%d\n", result);
     return result;
 }

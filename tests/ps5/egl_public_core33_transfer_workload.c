@@ -13,7 +13,7 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/gl.h>
 
-extern void pss_opengl_heap_snapshot(const char *, unsigned) __attribute__((weak));
+extern void ps5_opengl_heap_snapshot(const char *, unsigned) __attribute__((weak));
 
 #define TAG "[ps5-egl-transfer-workload]"
 #define ITERATIONS 8
@@ -253,7 +253,7 @@ main(void)
    EGLBoolean cleanup_ok = EGL_TRUE;
 
    printf(TAG " begin cases=3 cycles_per_case=8 timing=cpu-wall exact=rgba8\n");
-   if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("begin", 0);
+   if (ps5_opengl_heap_snapshot) ps5_opengl_heap_snapshot("begin", 0);
    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
    if (display == EGL_NO_DISPLAY || !eglInitialize(display, NULL, NULL) ||
        !eglBindAPI(EGL_OPENGL_API) ||
@@ -349,7 +349,7 @@ cleanup:
    if (display != EGL_NO_DISPLAY) cleanup_ok &= eglTerminate(display);
    cleanup_ok &= eglGetError() == EGL_SUCCESS;
    passed &= cleanup_ok;
-   if (pss_opengl_heap_snapshot) pss_opengl_heap_snapshot("end", 0);
+   if (ps5_opengl_heap_snapshot) ps5_opengl_heap_snapshot("end", 0);
    printf(TAG " cleanup=%u result=%d\n", cleanup_ok, passed ? 0 : 1);
    printf(TAG " finished cases=%u cycles=%u result=%d\n",
           completed, cycles, passed ? 0 : 1);

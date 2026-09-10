@@ -31,23 +31,23 @@ struct LibcMallocManagedSize {
 };
 extern "C" void malloc_stats_fast(LibcMallocManagedSize *stats);
 extern "C" void psbc_glsl_type_cache_print_stats(unsigned iteration);
-extern "C" void pss_opengl_heap_stats_print(unsigned iteration);
+extern "C" void ps5_opengl_heap_stats_print(unsigned iteration);
 
 tcu::Platform *createPlatform(void);
 
 namespace {
 
 constexpr const char *kArgumentsPath = "/app0/cts-args.txt";
-constexpr const char *kStatusPath = "/download0/pss-opengl-cts.status";
+constexpr const char *kStatusPath = "/download0/ps5-opengl-cts.status";
 constexpr int kMaxArguments = 64;
 constexpr int kMaxArgumentLength = 512;
 
 void printHeapStats(unsigned iteration) {
-  pss_opengl_heap_stats_print(iteration);
+  ps5_opengl_heap_stats_print(iteration);
   if (iteration == 14) {
     LibcMallocManagedSize stats = {sizeof(stats), 1, 0, 0, 0, 0, 0};
     malloc_stats_fast(&stats);
-    std::printf("[pss-opengl-cts] libc-heap max-system=%zu current-system=%zu "
+    std::printf("[ps5-opengl-cts] libc-heap max-system=%zu current-system=%zu "
                 "max-inuse=%zu current-inuse=%zu\n",
                 stats.maxSystemSize, stats.currentSystemSize,
                 stats.maxInuseSize, stats.currentInuseSize);
@@ -65,7 +65,7 @@ void printHeapStats(unsigned iteration) {
   size_t allocatedSize = sizeof(allocated);
   if (mallctl("epoch", &epoch, &epochSize, &epoch, sizeof(epoch)) == 0 &&
       mallctl("stats.allocated", &allocated, &allocatedSize, nullptr, 0) == 0)
-    std::printf("[pss-opengl-cts] heap iteration=%u allocated=%zu\n",
+    std::printf("[ps5-opengl-cts] heap iteration=%u allocated=%zu\n",
                 iteration, allocated);
 }
 
@@ -96,13 +96,13 @@ void writeStatus(const char *state, const tcu::TestRunStatus *result) {
 int finish(const char *state, int exitCode,
            const tcu::TestRunStatus *result = nullptr) {
   writeStatus(state, result);
-  std::printf("[pss-opengl-cts] finished state=%s", state);
+  std::printf("[ps5-opengl-cts] finished state=%s", state);
   if (result != nullptr)
     std::printf(" executed=%d failed=%d device_lost=%d", result->numExecuted,
                 result->numFailed, result->numDeviceLost);
   std::printf("\n");
   std::fflush(stdout);
-  sceKernelDebugOutText(0, "[pss-opengl-cts] finished\n");
+  sceKernelDebugOutText(0, "[ps5-opengl-cts] finished\n");
   return exitCode;
 }
 
@@ -175,7 +175,7 @@ bool loadArguments(Arguments &arguments) {
 
 int main(void) {
   writeStatus("starting", nullptr);
-  std::printf("[pss-opengl-cts] starting GL33 CTS runner\n");
+  std::printf("[ps5-opengl-cts] starting GL33 CTS runner\n");
   // Negative tests intentionally raise millions of GL errors. Suppress only
   // Mesa's stderr duplicates; glGetError, debug callbacks and QPA stay enabled.
   if (setenv("MESA_DEBUG", "silent", 1) != 0)
@@ -188,7 +188,7 @@ int main(void) {
     }
 
     for (int index = 1; index < arguments.count; ++index)
-      std::printf("[pss-opengl-cts] arg %s\n", arguments.values[index]);
+      std::printf("[ps5-opengl-cts] arg %s\n", arguments.values[index]);
 
     glctsRegisterPS5GL33Package();
     tcu::CommandLine commandLine(arguments.count, arguments.values);
@@ -208,7 +208,7 @@ int main(void) {
                         result.numFailed == 0 && result.numDeviceLost == 0;
     return finish(passed ? "passed" : "failed", passed ? 0 : 1, &result);
   } catch (const std::exception &error) {
-    std::fprintf(stderr, "[pss-opengl-cts] fatal: %s\n", error.what());
+    std::fprintf(stderr, "[ps5-opengl-cts] fatal: %s\n", error.what());
     return finish("fatal", 3);
   }
 }

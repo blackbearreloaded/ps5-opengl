@@ -53,8 +53,8 @@ gate=$(tr -d '\r\n' < "$selected")
     printf 'invalid selected gate: %s\n' "$gate" >&2
     exit 1
 }
-grep -aFq '[pss-opengl-native] gate completed status=%d' "$linked"
-grep -aFq '/download0/pss-opengl.log' "$linked"
+grep -aFq '[ps5-opengl-native] gate completed status=%d' "$linked"
+grep -aFq '/download0/ps5-opengl.log' "$linked"
 # Drain producers under pipefail: grep -q can otherwise make nm/readelf SIGPIPE.
 nm -u "$linked" | grep -F 'sceAgcDcbSetNumInstances' >/dev/null
 for wrapper in __wrap_malloc __wrap_free; do

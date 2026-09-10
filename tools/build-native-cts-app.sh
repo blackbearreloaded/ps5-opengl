@@ -11,6 +11,18 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 template=${PS5_NATIVE_APP_TEMPLATE:-"$root/../ps5-native-app-boilerplate"}
 cts=${VK_GL_CTS_ROOT:-"$root/third_party/VK-GL-CTS"}
 cts_build=${VK_GL_CTS_BUILD:-"$cts/build-ps5-gl33"}
+app=$(realpath -m -- "${PS5_CTS_APP_STAGE:-$root/build/native-app/PPSA99005-cts}")
+case "$app" in
+    "$root"/build/*) ;;
+    *) printf 'CTS app stage must be a subdirectory of %s/build\n' "$root" >&2; exit 2 ;;
+esac
+# Only generated source subdirectories may be replaced during a rebuild.
+for directory in src include vendor; do
+    [[ $(realpath -m -- "$app/$directory") == "$app/$directory" ]] || {
+        printf 'Refusing a redirected CTS stage directory: %s\n' "$app/$directory" >&2
+        exit 2
+    }
+done
 
 [[ -f "$template/Makefile" && -d "$template/.deps/native" ]] || {
     printf 'native-app boilerplate or dependencies are missing: %s\n' \
@@ -22,6 +34,7 @@ sdk="$template/.deps/native/ps5-payload-sdk"
 export PS5_PAYLOAD_SDK="$sdk"
 bash "$root/toolchain/build-opengnm-psbc-ps5.sh" --if-needed
 "$root/conformance/vk-gl-cts/prepare.sh" "$cts"
+bash "$root/conformance/vk-gl-cts/verify-source.sh" "$cts"
 if [[ ! -f "$cts_build/build.ninja" ]]; then
     cmake -S "$cts" -B "$cts_build" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
@@ -68,7 +81,6 @@ for library in "${static_libraries[@]}"; do
     test -s "$library"
 done
 
-app="$root/build/native-app/PPSA99005-cts"
 mkdir -p "$app"
 cp "$template/Makefile" "$app/Makefile"
 for directory in assets runtime sce_sys tooling tools; do

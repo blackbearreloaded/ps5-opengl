@@ -9,11 +9,16 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+from opengl_receipts import LEGACY_NAME, normalize_log_tags
 
 
 def audit(text, require_postchecks=False, require_textures=False, capacity=8):
     """Pixel success alone cannot prove that the optimized path ran."""
+    text = normalize_log_tags(text)
     matches = list(re.finditer(r"\[ps5-multidraw\] mode=(\d+) serial_ns=(\d+) batch_ns=(\d+) pixels=6912 PASS", text))
     assert len(matches) == text.count("[ps5-multidraw] mode=") == 4, "Missing/duplicate mode results"
     result, start = [], 0
@@ -41,7 +46,7 @@ def audit(text, require_postchecks=False, require_textures=False, capacity=8):
         assert text.count("[ps5-multidraw-texture] upload-after-batch=1 units=0,7") == 1
         assert text.count("[ps5-multidraw-texture] sampled=2 uploads=1 pixels=32256 PASS") == 1
     for marker in ("[ps5-multidraw] completed=4 cleanup=1 result=0",
-                   "[pss-opengl-native] gate completed status=0"):
+                   "[ps5-opengl-native] gate completed status=0"):
         assert text.count(marker) == 1, "Missing/duplicate completion"
     return result
 
@@ -71,7 +76,7 @@ def audit_deferred(text, control=False, require_uploads=False, capacity=8):
     for marker in (
         "[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=9216 PASS",
         "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS",
-        "[ps5-multidraw] completed=4 cleanup=1 result=0", "[pss-opengl-native] gate completed status=0",
+        "[ps5-multidraw] completed=4 cleanup=1 result=0", "[ps5-opengl-native] gate completed status=0",
     ):
         assert text.count(marker) == 1, marker
     if require_uploads or "[ps5-deferred] unrelated-buffer" in text:
@@ -107,8 +112,9 @@ sample = "".join(
     "[ps5-gallium] multi-draw-batched draws=11 result=0\n"
     f"[ps5-multidraw] mode={mode} serial_ns=2000000 batch_ns=1000000 pixels=6912 PASS\n"
     for mode in range(4))
-sample += "[ps5-multidraw] completed=4 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
+sample += "[ps5-multidraw] completed=4 cleanup=1 result=0\n[ps5-opengl-native] gate completed status=0\n"
 assert len(audit(sample)) == 4
+assert audit(sample.replace("ps5-opengl", LEGACY_NAME)) == audit(sample)
 assert len(audit(sample + "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS\n", True)) == 4
 texture_markers = "[ps5-multidraw-texture] upload-after-batch=1 units=0,7\n" \
                   "[ps5-multidraw-texture] sampled=2 uploads=1 pixels=32256 PASS\n"
@@ -159,7 +165,7 @@ for receipt_capacity, control in ((8, False), (8, True), (capacity, False), (cap
         deferred_sample += "".join(batch_receipt(n) for n in group * 4 + [1])
     deferred_sample += "[ps5-deferred] state=uniform,scissor texture-upload=1 buffer-subdata=1 map-write=1 pending-fence=1 pixels=9216 PASS\n" \
         "[ps5-multidraw] query_samples=2560 fence=1 orphan=1 pixels=4608 PASS\n" \
-        "[ps5-multidraw] completed=4 cleanup=1 result=0\n[pss-opengl-native] gate completed status=0\n"
+        "[ps5-multidraw] completed=4 cleanup=1 result=0\n[ps5-opengl-native] gate completed status=0\n"
     assert len(audit_deferred(deferred_sample, control, capacity=receipt_capacity)) == 4
     upload_marker = "[ps5-deferred] unrelated-buffer subdata=1 map=1 explicit-flush=1 unmap=1 read=1 PASS\n"
     assert len(audit_deferred(deferred_sample + upload_marker, control, True, receipt_capacity)) == 4
