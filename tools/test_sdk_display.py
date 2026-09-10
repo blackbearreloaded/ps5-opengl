@@ -2,16 +2,41 @@
 # Copyright (C) 2026 BlackBearReloaded
 # SPDX-License-Identifier: GPL-3.0-or-later
 import importlib
+import json
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 
 CHECK = importlib.import_module('check-sdk-consumers')
+METADATA = importlib.import_module('native-display-metadata')
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class DisplayProfileTests(unittest.TestCase):
+    def test_native_metadata_uses_sdk_rate_and_preserves_other_fields(self):
+        original = dict(titleId="PPSA99005", attribute3=8, attribute2=17)
+        high = METADATA.with_display_profile(original, 120)
+        self.assertEqual(high, dict(original, attribute3=8 | 0x80040))
+        self.assertEqual(METADATA.with_display_profile(high, 60), original)
+        self.assertEqual(original["attribute3"], 8)
+        for bad in (None, True, -1, 2**32, "0"):
+            with self.assertRaises(ValueError):
+                METADATA.with_display_profile(dict(original, attribute3=bad), 120)
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk = Path(tmp)
+            (sdk / "include").mkdir()
+            (sdk / "include/ps5_opengl_display.h").write_text(
+                "#pragma once\n#define PS5_OPENGL_NATIVE_WIDTH 3840\n"
+                "#define PS5_OPENGL_NATIVE_HEIGHT 2160\n#define PS5_OPENGL_NATIVE_FPS 120\n")
+            path = sdk / "param.json"
+            path.write_text(json.dumps(original))
+            subprocess.run(["python3", str(ROOT / "tools/native-display-metadata.py"),
+                            str(path), "--sdk-prefix", str(sdk)], check=True)
+            self.assertEqual(json.loads(path.read_text()), high)
+        for name in ("build-native-cts-app.sh", "build-native-test-app.sh"):
+            self.assertIn('tools/native-display-metadata.py', (ROOT / "tools" / name).read_text())
+
     def test_installed_header_matches_compiled_native_mode(self):
         installer = (ROOT / 'toolchain/install-ps5-opengl-core33.sh').read_text()
         start = installer.index('display_height=${PS5_SCANOUT_HEIGHT:-1080}')

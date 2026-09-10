@@ -742,7 +742,8 @@ def main():
                 if kind == "cts":
                     continue  # CTS revision and exact executable are checked by its receipt audit.
                 app_paths = G62_EVIDENCE.app_source_paths(kind) if args.g62_profile else [
-                    "native-app", "tests/ps5", "examples", "integration/SDL2", "tools/build-native-test-app.sh"]
+                    "native-app", "tests/ps5", "examples", "integration/SDL2", "tools/build-native-test-app.sh",
+                    "tools/native-display-metadata.py"]
                 subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", row["source_companion"],
                                 args.source_commit, "--", *app_paths], check=True)
         else:

@@ -194,11 +194,12 @@ int main(void) {
 
     def test_high_refresh_metadata(self):
         builder = (ROOT / "tools/build-native-test-app.sh").read_text()
-        body = builder.split("<<'HFR_METADATA'\n", 1)[1].split("\nHFR_METADATA", 1)[0]
+        self.assertIn('tools/native-display-metadata.py', builder)
         original = json.loads((ROOT / "native-app/param.json").read_text())
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "param.json"
             path.write_text(json.dumps(original))
-            subprocess.run([sys.executable, "-", str(path)], input=body, text=True, check=True)
+            subprocess.run([sys.executable, str(ROOT / "tools/native-display-metadata.py"),
+                            str(path), "--fps", "120"], check=True)
             actual = json.loads(path.read_text())
         self.assertEqual(actual, original | {"attribute3": 0x80040})

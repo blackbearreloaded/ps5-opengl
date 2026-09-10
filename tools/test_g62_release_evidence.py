@@ -93,6 +93,7 @@ class G62EvidenceTests(unittest.TestCase):
                              "commit", "-qm", "initial").returncode, 0)
         (example / "lifecycle.cpp").write_text("// paced lifecycle\n")
         for kind in E.GATES:
+            self.assertIn("tools/native-display-metadata.py", E.app_source_paths(kind))
             self.assertEqual(git("diff", "--quiet", "HEAD", "--", *E.app_source_paths(kind)).returncode,
                              int(kind.startswith("lifecycle-")))
         (example / "main.cpp").write_text("// changed shared renderer\n")

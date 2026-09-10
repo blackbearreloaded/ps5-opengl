@@ -30,7 +30,8 @@ DEFERRED = "KHR-GL33.framebuffer_blit.multisampled_to_singlesampled_blit_color_c
 
 def app_source_paths(kind):
     require(kind in GATES, "unknown G62 app gate")
-    paths = ["native-app", "tests/ps5", "examples", "integration/SDL2", "tools/build-native-test-app.sh"]
+    paths = ["native-app", "tests/ps5", "examples", "integration/SDL2", "tools/build-native-test-app.sh",
+             "tools/native-display-metadata.py"]
     if not kind.startswith("lifecycle-"):
         # Only the lifecycle target compiles this standalone translation unit.
         # Its paced successor does not change the other frozen applications.

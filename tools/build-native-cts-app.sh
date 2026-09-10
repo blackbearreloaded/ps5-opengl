@@ -114,6 +114,11 @@ for headers in EGL GL KHR; do
     cp -a "$root/third_party/mesa-26.2.0/include/$headers" "$app/include/"
 done
 cp "$root/native-app/param.json" "$app/sce_sys/param.json"
+display_args=(--fps "${PS5_SCANOUT_FPS:-60}")
+if [[ -n ${prefix:-} ]]; then
+    display_args+=(--sdk-prefix "$prefix")
+fi
+python3 "$root/tools/native-display-metadata.py" "$app/sce_sys/param.json" "${display_args[@]}"
 
 group="$app/vendor/libps5_opengl_cts_group.a"
 {
