@@ -110,6 +110,10 @@ This supports a mode-switch timing explanation, not a proven minimum interval
 or device-loss recovery. The delay is in the lifecycle example, not the runtime
 or steady rendering. Rapid HFR mode churn remains unqualified.
 
+The later [local G63 successor](lifecycle-reopen.md) moves this conservative
+interval into the shared runtime and has separate focused qualification.
+It does not change this release's binaries, evidence or lifecycle requirement.
+
 An offline blit report used its last case's height as the display height.
 The generator was corrected and rerun on the same raw receipt; original and
 corrected reports are preserved. Only metadata changed, not pixel results,

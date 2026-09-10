@@ -1,5 +1,13 @@
 # Known limitations
 
+## Post-0.2.0 source: guarded HFR recreation
+
+The local [G63 successor](lifecycle-reopen.md) enforces the five-second reopen
+interval in the runtime, not the example. Two immediate-application-recreation
+runs passed six sessions with no logged HDMI reconnect; the 30-second 4K window
+check retained 119.88 FPS. The conservative process-local wait is not hotplug
+or device-loss recovery. Published 0.2.0 downloads below remain unchanged.
+
 ## Current SDK 0.2.0 — September 9, 2026
 
 The [0.2.0 release](release-g62.md) has 202 sampled CTS passes, 82 focused GPU
