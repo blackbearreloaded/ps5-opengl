@@ -24,6 +24,7 @@ GL/EGL interfaces and the platform integration appropriate to your application.
 
 - [Testing](testing.md): risk-based host and bounded native checks.
 - [CTS campaign](cts-campaign.md): efficient batching and submission prerequisites.
+- [CTS release qualification](cts-qualification.md): measured prerequisite results and current blockers.
 - [Validation](validation.md): frozen full-campaign results and evidence boundaries.
 - [Capability audit](development/capability-audit.md): version reporting and source checks.
 - [SDK build provenance](sdk-path-free-derivative.md): retained linker-metadata exception.

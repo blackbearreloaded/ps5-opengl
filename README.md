@@ -88,6 +88,12 @@ loader. See [SDK integration](docs/consumer-build.md) for your own application.
 
 ## Validation
 
+**Current official-release CTS qualification is blocked:** a 12-case rendering
+regression passed, but the native configuration inventory and one unchanged
+negative-shader test remain unresolved. See the
+[qualification report](docs/cts-qualification.md). The new full campaign has
+not started; these results are separate from the historical matrix below.
+
 The frozen full campaign accounts for **39,544 results** across four configurations:
 
 | Classification | Results |

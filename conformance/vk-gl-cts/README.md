@@ -62,8 +62,8 @@ cmake --build third_party/VK-GL-CTS/build-ps5-gl33 \
   --target ps5-gl33-runner -j8
 ```
 
-`ps5-gl33-package` registers only `KHR-GL33`; it deliberately excludes the
-upstream monolithic GLES/EGL package registry from the PS5 application.
+`ps5-gl33-package` registers `KHR-GL33` and the upstream `CTS-Configs`
+diagnostic; it excludes the monolithic GLES/EGL test registry from the app.
 `ps5-gl33-runner` adds the native-title entry point. It reads one bounded CTS
 argument per line from `/app0/cts-args.txt`, writes the full QPA log to
 `/download0/ps5-opengl-cts.qpa`, and writes a compact machine-readable status
@@ -120,7 +120,8 @@ so hashes cover the original container bytes, not a reconstructed ELF view.
 During development, use `prepare-cts-shard.py --suite smoke` or `--case-list`
 for an affected regression. `summarize-cts-qpa.py --inventory <results> --output
 <ledger.json>` preserves historical build identities and extracts timings;
-`--timings <ledger.json> --budget-seconds 180` selects a measured prefix.
+`--timings <ledger.json> --budget-seconds 120` selects a measured prefix;
+reserve startup margin and obtain approval before exceeding the native run bound.
 The complete four-configuration matrix is a release gate, not a per-fix loop.
 
 Use `tools/summarize-cts-qpa.py receipt.qpa --expected-list cts-shard.txt` to

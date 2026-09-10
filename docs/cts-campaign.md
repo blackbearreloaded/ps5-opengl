@@ -1,5 +1,9 @@
 # CTS campaign
 
+Current execution status and exact-result evidence are in the
+[release qualification report](cts-qualification.md). G1 is not yet satisfied;
+the bulk acceptance campaign remains blocked.
+
 The objective is one fresh, reproducible GL33 baseline, followed by development
 toward OpenGL 4.6 Core. Audit the 4.6 requirements offline in parallel; do not
 wait for formal 3.3 certification before starting that work. Use targeted CTS

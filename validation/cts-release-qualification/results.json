@@ -1,0 +1,377 @@
+{
+  "format": "ps5-opengl-cts-prerequisites-v1",
+  "status": "blocked",
+  "full_matrix_complete": false,
+  "khronos_certified": false,
+  "inherited_acceptance": false,
+  "scope": "GL33 release-port prerequisites on one firmware-6.02 console",
+  "qualification_date": "2026-09-10",
+  "candidate": {
+    "cts_commit": "067e8832315e79817ede1c4863804e440f5d1c80",
+    "cts_release_name": "opengl-cts-4.6.8.1-0-g067e8832315e79817ede1c4863804e440f5d1c80",
+    "binary_source_commit": "a89e6680ab20b54c0a8abb87033453a1e0246ce5",
+    "sdk_manifest_sha256": "9cf474d97409c49dda1c3e7dc78d23d172e623e13a27556ad14bddbf155346c1",
+    "runtime_archive_sha256": "7401865977da3c7c3eb1e60a2c79c9fe774cd386d6eda68e5cf467a1723145fa",
+    "eboot_sha256": "1489652fd5466a21b69ee6f932c7a1430030e0aaa0f21145b7130c92246ace6c",
+    "libc_sha256": "e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036",
+    "mustpass_sha256": "0ad9a8264f6df7413adc966ccf3ecebefad5c29efeb6ddfc2f2559fa9ebebeec",
+    "applied_patch_sha256": {
+      "0001-ps5-gl33-package.patch": "a5b46fd12a3788d82bf4d52d0f1549ddfb394efb34152e03d2d2131825a6f4c9",
+      "0002-ps5-gl33-runner.patch": "a068226365e244a2b82c0862b6d27045a943043cc50c06865256f1c533bb8896",
+      "0003-ps5-gl-only-platform.patch": "413eb4c540bb479ac34874c9e9702246b4af1c14e15a3d2c968be1d8cf1b75d8",
+      "0004-ps5-gl33-support.patch": "04e1755b05a0acdab825e7b69f54762e6bc0951440e432e598bed17a239f5fdc",
+      "0006-opaque-file-diagnostics.patch": "f45e92d33c8b6038f0ccb0645cc055d45110581c8392d90e3a07f68a49dbee62"
+    }
+  },
+  "test_body_changes_applied": false,
+  "local_compute_guard_patch_applied": false,
+  "accepted_upstream_correction_or_waiver_established": false,
+  "configuration": {
+    "surface": "pbuffer",
+    "width": 64,
+    "height": 64,
+    "seed": 1,
+    "rgba": [
+      8,
+      8,
+      8,
+      8
+    ],
+    "depth": 32,
+    "stencil": 8,
+    "samples": 0,
+    "egl_config_id": 1,
+    "egl_conformant": 0,
+    "egl_caveat": "EGL_NON_CONFORMANT_CONFIG"
+  },
+  "attempts": {
+    "configuration_inventory": {
+      "disposition": "blocked: synthetic default is not eligible EGL coverage",
+      "selection": [
+        "CTS-Configs.gl33"
+      ],
+      "upstream": {
+        "complete": true,
+        "executed": 1,
+        "expected": 1,
+        "counts": {
+          "Pass": 1
+        },
+        "failed": [],
+        "seconds": 0.003808,
+        "cases": [
+          {
+            "name": "CTS-Configs.gl33",
+            "status": "Pass",
+            "seconds": 0.003808
+          }
+        ]
+      },
+      "native_status": {
+        "state": "passed",
+        "complete": "1",
+        "executed": "1",
+        "passed": "1",
+        "failed": "0",
+        "not_supported": "0",
+        "warnings": "0",
+        "waived": "0",
+        "device_lost": "0"
+      },
+      "incomplete_qpa_has_invalid_utf8": false,
+      "checkout_commit": "a89e6680ab20b54c0a8abb87033453a1e0246ce5",
+      "observation_bound_seconds": 120,
+      "teardown": "runtime-layers-released",
+      "post_health": true,
+      "lock_released": true,
+      "raw_sha256": {
+        "ps5-opengl-cts.qpa": "12145d2e7a561bbde431983eed213f861bc793f9feda64a3aa20a8b6087f2602",
+        "ps5-opengl-cts.status": "fe20e1c1e65bd23188a384bfd03b4b28cc0b4937ec98e91a10085d2c49f4aed8",
+        "ps5-opengl.log": "2bb0cb1ca21729884b22a07070b817d18b02d2b2bb72ddc84da5d5ca76e7e07d",
+        "result.json": "94dda28e28f4a0b70586ab68da117d311ef9f43c782879da5cd7def0178bb864",
+        "runner.json": "a971783f33afb441e12a824ac1912fb5827e77a5e841b5aaf0427415d6436ef0",
+        "klog.log": "0ac8edfb2a3a7ea9e30864f6eb624162030d270f357bead320bc2f1466bf1c13",
+        "cts-args.txt": "69c1895d3260737926960ad8855b03a2e55236efc9fbffd64bf12d0ed521373e"
+      },
+      "egl_inventory": {
+        "eligible": [],
+        "excluded": [
+          "EGL(1): Not conformant"
+        ],
+        "errors": [
+          "not a real EGL configuration: default(0): window",
+          "no eligible real EGL configurations"
+        ]
+      }
+    },
+    "metadata_mismatch": {
+      "disposition": "failed: incomplete batch; native metadata refused the 120 Hz request",
+      "selection": [
+        "KHR-GL33.info.vendor",
+        "KHR-GL33.info.renderer",
+        "KHR-GL33.info.version",
+        "KHR-GL33.info.shading_language_version",
+        "KHR-GL33.info.extensions",
+        "KHR-GL33.info.render_target",
+        "KHR-GL33.buffer_objects.triangles",
+        "KHR-GL33.draw_buffers.draw_buffers_1",
+        "KHR-GL33.packed_depth_stencil.clear_buffer.depth24_stencil8",
+        "KHR-GL33.packed_depth_stencil.clear_buffer.depth32f_stencil8",
+        "KHR-GL33.nearest_edge.offset_left",
+        "KHR-GL33.nearest_edge.offset_right"
+      ],
+      "upstream": {
+        "complete": false,
+        "executed": 8,
+        "expected": 12,
+        "counts": {
+          "Fail": 2,
+          "Pass": 6
+        },
+        "failed": [
+          "KHR-GL33.buffer_objects.triangles",
+          "KHR-GL33.draw_buffers.draw_buffers_1"
+        ],
+        "seconds": 5.1646279999999996,
+        "cases": [
+          {
+            "name": "KHR-GL33.info.vendor",
+            "status": "Pass",
+            "seconds": 0.001462
+          },
+          {
+            "name": "KHR-GL33.info.renderer",
+            "status": "Pass",
+            "seconds": 0.001362
+          },
+          {
+            "name": "KHR-GL33.info.version",
+            "status": "Pass",
+            "seconds": 0.001338
+          },
+          {
+            "name": "KHR-GL33.info.shading_language_version",
+            "status": "Pass",
+            "seconds": 0.001344
+          },
+          {
+            "name": "KHR-GL33.info.extensions",
+            "status": "Pass",
+            "seconds": 0.001825
+          },
+          {
+            "name": "KHR-GL33.info.render_target",
+            "status": "Pass",
+            "seconds": 0.001412
+          },
+          {
+            "name": "KHR-GL33.buffer_objects.triangles",
+            "status": "Fail",
+            "seconds": 0.034247
+          },
+          {
+            "name": "KHR-GL33.draw_buffers.draw_buffers_1",
+            "status": "Fail",
+            "seconds": 5.121638
+          }
+        ]
+      },
+      "native_status": {
+        "state": "starting"
+      },
+      "incomplete_qpa_has_invalid_utf8": true,
+      "checkout_commit": "a89e6680ab20b54c0a8abb87033453a1e0246ce5",
+      "observation_bound_seconds": 120,
+      "teardown": "runtime-layers-released",
+      "post_health": true,
+      "lock_released": true,
+      "raw_sha256": {
+        "ps5-opengl-cts.qpa": "9c93800a1c4ba795962745a12dc0400219c16909eeb8a6ed4b4798968d792da8",
+        "ps5-opengl-cts.status": "07e9ba0755eb6d58f0e506f7206f3e70731f18df24be4697973d421267837b64",
+        "ps5-opengl.log": "a4f5caf71aed0d9477244ea72074625b8b2b33e90a1d3460e0aefc4b4df7b696",
+        "result.json": "5854c260f0550eaf09c8fa3460f01374e53b817213a17321641f3b194e73e334",
+        "runner.json": "1a738a19b30f472d3823c65417e14431480e98ce01a44e1990777019578be001",
+        "klog.log": "78eed8c9ade807433ab94d5f51047a8c90f72beb481c1347bef8de2da54602dd",
+        "cts-args.txt": "21556c51ed7859a982c6ca6869dbbc3979f8d138d2c52fedc58aa59072cdbb9b",
+        "cts-shard.txt": "469959296613dd59280d1d8712d26923d10879ece801127682836e60fc13373d"
+      }
+    },
+    "rendering_regression": {
+      "disposition": "pass: complete 12-case selection, not a full CTS baseline",
+      "selection": [
+        "KHR-GL33.info.vendor",
+        "KHR-GL33.info.renderer",
+        "KHR-GL33.info.version",
+        "KHR-GL33.info.shading_language_version",
+        "KHR-GL33.info.extensions",
+        "KHR-GL33.info.render_target",
+        "KHR-GL33.buffer_objects.triangles",
+        "KHR-GL33.draw_buffers.draw_buffers_1",
+        "KHR-GL33.packed_depth_stencil.clear_buffer.depth24_stencil8",
+        "KHR-GL33.packed_depth_stencil.clear_buffer.depth32f_stencil8",
+        "KHR-GL33.nearest_edge.offset_left",
+        "KHR-GL33.nearest_edge.offset_right"
+      ],
+      "upstream": {
+        "complete": true,
+        "executed": 12,
+        "expected": 12,
+        "counts": {
+          "Pass": 12
+        },
+        "failed": [],
+        "seconds": 5.615332,
+        "cases": [
+          {
+            "name": "KHR-GL33.info.vendor",
+            "status": "Pass",
+            "seconds": 0.001445
+          },
+          {
+            "name": "KHR-GL33.info.renderer",
+            "status": "Pass",
+            "seconds": 0.00136
+          },
+          {
+            "name": "KHR-GL33.info.version",
+            "status": "Pass",
+            "seconds": 0.001333
+          },
+          {
+            "name": "KHR-GL33.info.shading_language_version",
+            "status": "Pass",
+            "seconds": 0.001327
+          },
+          {
+            "name": "KHR-GL33.info.extensions",
+            "status": "Pass",
+            "seconds": 0.001843
+          },
+          {
+            "name": "KHR-GL33.info.render_target",
+            "status": "Pass",
+            "seconds": 0.001425
+          },
+          {
+            "name": "KHR-GL33.buffer_objects.triangles",
+            "status": "Pass",
+            "seconds": 1.01926
+          },
+          {
+            "name": "KHR-GL33.draw_buffers.draw_buffers_1",
+            "status": "Pass",
+            "seconds": 0.016494
+          },
+          {
+            "name": "KHR-GL33.packed_depth_stencil.clear_buffer.depth24_stencil8",
+            "status": "Pass",
+            "seconds": 2.272035
+          },
+          {
+            "name": "KHR-GL33.packed_depth_stencil.clear_buffer.depth32f_stencil8",
+            "status": "Pass",
+            "seconds": 2.268524
+          },
+          {
+            "name": "KHR-GL33.nearest_edge.offset_left",
+            "status": "Pass",
+            "seconds": 0.013144
+          },
+          {
+            "name": "KHR-GL33.nearest_edge.offset_right",
+            "status": "Pass",
+            "seconds": 0.017142
+          }
+        ]
+      },
+      "native_status": {
+        "state": "passed",
+        "complete": "1",
+        "executed": "12",
+        "passed": "12",
+        "failed": "0",
+        "not_supported": "0",
+        "warnings": "0",
+        "waived": "0",
+        "device_lost": "0"
+      },
+      "incomplete_qpa_has_invalid_utf8": false,
+      "checkout_commit": "b12bd18694c65696bc936df4b1c37deb41e34f72",
+      "observation_bound_seconds": 120,
+      "teardown": "runtime-layers-released",
+      "post_health": true,
+      "lock_released": true,
+      "raw_sha256": {
+        "ps5-opengl-cts.qpa": "ddbc79367a5922fbf9df67d9d93bf210b8decec5a8f518d09cb0560ff2cb59fd",
+        "ps5-opengl-cts.status": "bcf2b33a157ab3c1c256c610725787e8aa15f0c0e280ba7d0253ad32cfb43e83",
+        "ps5-opengl.log": "09322d1ab9cd1fd47e01e0d488d72909683ac7386a2b826dbc80c2583cc35e94",
+        "result.json": "6017c02f0b180ecb9a85899bbf542a7d008767e783854a45075e25798775851b",
+        "runner.json": "4b797488111d6f3514bd77098855aec09a7a1d1dd15c0d794114411c739b6b90",
+        "klog.log": "2798c82c096e188ea6a74aa08d02b27b2d0e5327efe27f51ac4c70c998e96aef",
+        "cts-args.txt": "21556c51ed7859a982c6ca6869dbbc3979f8d138d2c52fedc58aa59072cdbb9b",
+        "cts-shard.txt": "469959296613dd59280d1d8712d26923d10879ece801127682836e60fc13373d"
+      }
+    },
+    "negative_shader": {
+      "disposition": "failed: unchanged release case requests an unsupported compute stage",
+      "selection": [
+        "KHR-GL33.shaders.negative.non_precision_qualifiers_in_struct_members"
+      ],
+      "upstream": {
+        "complete": true,
+        "executed": 1,
+        "expected": 1,
+        "counts": {
+          "Fail": 1
+        },
+        "failed": [
+          "KHR-GL33.shaders.negative.non_precision_qualifiers_in_struct_members"
+        ],
+        "seconds": 0.007094,
+        "cases": [
+          {
+            "name": "KHR-GL33.shaders.negative.non_precision_qualifiers_in_struct_members",
+            "status": "Fail",
+            "seconds": 0.007094
+          }
+        ]
+      },
+      "native_status": {
+        "state": "failed",
+        "complete": "1",
+        "executed": "1",
+        "passed": "0",
+        "failed": "1",
+        "not_supported": "0",
+        "warnings": "0",
+        "waived": "0",
+        "device_lost": "0"
+      },
+      "incomplete_qpa_has_invalid_utf8": false,
+      "checkout_commit": "b12bd18694c65696bc936df4b1c37deb41e34f72",
+      "observation_bound_seconds": 120,
+      "teardown": "runtime-layers-released",
+      "post_health": true,
+      "lock_released": true,
+      "raw_sha256": {
+        "ps5-opengl-cts.qpa": "0da327a68270055284615dc8d5c101a97533d3741ed91b784a71f423c225c47b",
+        "ps5-opengl-cts.status": "b9493456e38ae0d945e001dbbb200f603caa9ca01ad5c5f0db9b6e87a31aae7c",
+        "ps5-opengl.log": "04cd04a9347069c706f859efd3e57e39db17c4c97440ed49c7bcd2a8c258471b",
+        "result.json": "7b20af86d1daa984ccbd66f4cda828fc0277266d62b695011df272a044946c27",
+        "runner.json": "030b0bdff766d9e024d2092272bdd770c7466e249f499671da7fb8df54f1b1ab",
+        "klog.log": "88658b11f75d899bf86e3b006b76fe62ee21ccac1e70716cd6109430f137d12a",
+        "cts-args.txt": "21556c51ed7859a982c6ca6869dbbc3979f8d138d2c52fedc58aa59072cdbb9b",
+        "cts-shard.txt": "cb720323642eb2dc362d855dce212866fe8d747511811dadb8f40101d909716d"
+      }
+    }
+  },
+  "metadata_successor": {
+    "source_commit": "b12bd18694c65696bc936df4b1c37deb41e34f72",
+    "changed_files": [
+      "sce_sys/param.json"
+    ],
+    "before_sha256": "987f6fdc3bbc2c48a44c72bab37eea27bd8c1dd1c42673c0b460981dbc9ab38a",
+    "after_sha256": "15cdb0a3a16975efbdefafd6c187bfbe325294333e0907c0557217411b96055b",
+    "executable_modules_and_12_case_selection_unchanged": true
+  }
+}
