@@ -205,11 +205,12 @@ ps5_validate_drawable(struct st_context *st,
    struct ps5_egl_surface *surface = (struct ps5_egl_surface *)drawable;
 
    (void)st;
+   /* Mesa provides one resolve output, not one entry per attachment. */
+   if (resolve)
+      *resolve = NULL;
    for (unsigned i = 0; i < count; ++i) {
       struct pipe_resource *resource;
 
-      if (resolve)
-         resolve[i] = NULL;
       if (attachments[i] == ST_ATTACHMENT_FRONT_LEFT)
          resource = surface->targets[surface->buffer_index];
       else if (attachments[i] == ST_ATTACHMENT_DEPTH_STENCIL)
