@@ -135,7 +135,10 @@ def main() -> int:
                      if line.strip() and not line.lstrip().startswith('#')]
         if len(requested) != len(set(requested)) or set(requested) - set(cases):
             parser.error("case list contains duplicates or names outside the pinned must-pass list")
-        cases = requested
+        # CTS traverses its registered tree, not the order of a selection file.
+        # Freeze the pinned inventory order so the strict receipt audit agrees.
+        requested = set(requested)
+        cases = [name for name in cases if name in requested]
     end = arguments.offset + arguments.count if arguments.count else len(cases)
     selected = cases[arguments.offset:end]
     if not selected or (arguments.count and len(selected) != arguments.count):

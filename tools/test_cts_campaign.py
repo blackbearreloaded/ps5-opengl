@@ -69,6 +69,22 @@ class CampaignTests(unittest.TestCase):
             with patch("sys.argv", argv), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 PLANNER.PREPARE.main()
 
+    def test_custom_case_list_uses_inventory_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mustpass, selected = Path(tmp) / "mustpass.txt", Path(tmp) / "selection.txt"
+            mustpass.write_text("KHR-GL33.c\nKHR-GL33.a\nKHR-GL33.b\n")
+            selected.write_text("KHR-GL33.b\nKHR-GL33.c\n")
+            argv = ["prepare", "--mustpass", str(mustpass), "--case-list", str(selected), "--dry-run"]
+            output = io.StringIO()
+            with patch("sys.argv", argv), contextlib.redirect_stdout(output):
+                self.assertEqual(PLANNER.PREPARE.main(), 0)
+            self.assertIn("count=2\n", output.getvalue())
+            self.assertIn("first=KHR-GL33.c\nlast=KHR-GL33.b\n", output.getvalue())
+            for invalid in ("KHR-GL33.b\nKHR-GL33.b\n", "KHR-GL33.missing\n"):
+                selected.write_text(invalid)
+                with patch("sys.argv", argv), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    PLANNER.PREPARE.main()
+
     def test_coverage_budgets_order_and_config_specific_timings(self):
         cases = ["KHR-GL33.info.version", "KHR-GL33.a", "KHR-GL33.b", "KHR-GL33.slow"]
         history = {str(c): {name: dict(status="Pass", seconds=1) for name in cases} for c in range(4)}
