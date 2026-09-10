@@ -144,6 +144,35 @@ class QpaSummaryTest(unittest.TestCase):
             self.assertEqual({row["requested_surface"] for row in ledger["receipts"].values()},
                              {"default", "pbuffer"})
 
+    def test_config_inventory_rejects_synthetic_default_without_rewriting_pass(self) -> None:
+        template = ('#beginTestCaseResult CTS-Configs.gl33\n'
+                    '<TestCaseResult><Section Name="Configs">{}</Section>'
+                    '<Section Name="ExcludedConfigs"><Text>EGL(2): Not conformant</Text></Section>'
+                    '<Result StatusCode="Pass"/></TestCaseResult>\n'
+                    '#endTestCaseResult\n#endSession\n')
+        for entries, accepted in (("<Text>EGL(1): window, pbuffer</Text>", True),
+                                  ("<Text>default(0): window</Text>", False),
+                                  ("", False),
+                                  ("<Text>EGL(1): window</Text>" * 2, False),
+                                  ("<Text>EGL(1): unknown</Text>", False)):
+            with self.subTest(entries=entries), tempfile.TemporaryDirectory() as directory:
+                text = template.format(entries)
+                receipt = Path(directory) / "configs.qpa"
+                receipt.write_text(text)
+                result = subprocess.run(["python3", str(PARSER), str(receipt), "--json",
+                                         "--require-egl-configs"], text=True, capture_output=True)
+                summary = json.loads(result.stdout)
+                self.assertEqual(result.returncode, 0 if accepted else 1)
+                self.assertEqual(summary["counts"], {"Pass": 1})
+                self.assertEqual(summary["egl_configs"]["excluded"], ["EGL(2): Not conformant"])
+        for invalid in (template.format("").replace("#endSession", ""),
+                        template.format("").replace('StatusCode="Pass"', 'StatusCode="Fail"'),
+                        template.format("").replace('Name="Configs"', 'Name="Missing"'),
+                        template.format("").replace('</TestCaseResult>', ''),
+                        qpa([("KHR-GL33.info.vendor", "Pass")])):
+            with self.assertRaises(ValueError):
+                SUMMARY["egl_configuration_inventory"](invalid)
+
 
 if __name__ == "__main__":
     unittest.main()

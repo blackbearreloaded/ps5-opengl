@@ -4,6 +4,7 @@
 
 #include "tcuPS5Platform.hpp"
 
+#include "eglwLibrary.hpp"
 #include "gluContextFactory.hpp"
 #include "gluRenderConfig.hpp"
 #include "gluRenderContext.hpp"
@@ -11,6 +12,7 @@
 #include "glwFunctions.hpp"
 #include "glwEnums.hpp"
 #include "tcuCommandLine.hpp"
+#include "tcuFunctionLibrary.hpp"
 #include "tcuRenderTarget.hpp"
 #include "tcuTestCase.hpp"
 
@@ -18,11 +20,59 @@
 #include <EGL/eglext.h>
 
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 namespace tcu {
 namespace ps5 {
 namespace {
+
+class PublicEGLLibrary : public eglw::FuncPtrLibrary,
+                         private eglw::FunctionLoader {
+public:
+  PublicEGLLibrary(void) { eglw::initCore(&m_egl, this); }
+
+private:
+  eglw::GenericFuncType get(const char *name) const override {
+    // The static runtime exports EGL 1.4; do not invent EGL 1.5 entry points
+    // or use its GL-only eglGetProcAddress to load EGL functions.
+    static const tcu::StaticFunctionLibrary::Entry entries[] = {
+#include "eglwStaticLibrary14.inl"
+    };
+    for (const auto &entry : entries)
+      if (std::strcmp(name, entry.name) == 0)
+        return reinterpret_cast<eglw::GenericFuncType>(entry.ptr);
+    return nullptr;
+  }
+};
+
+class NativeDisplay : public eglu::NativeDisplay {
+public:
+  NativeDisplay(void) : eglu::NativeDisplay(CAPABILITY_GET_DISPLAY_LEGACY) {}
+
+  const eglw::Library &getLibrary(void) const override { return m_library; }
+
+  eglw::EGLNativeDisplayType getLegacyNative(void) override {
+    return reinterpret_cast<eglw::EGLNativeDisplayType>(EGL_DEFAULT_DISPLAY);
+  }
+
+private:
+  PublicEGLLibrary m_library;
+};
+
+class NativeDisplayFactory : public eglu::NativeDisplayFactory {
+public:
+  NativeDisplayFactory(void)
+      : eglu::NativeDisplayFactory("ps5", "PS5 public EGL native display",
+                                  eglu::NativeDisplay::CAPABILITY_GET_DISPLAY_LEGACY) {}
+
+  eglu::NativeDisplay *
+  createDisplay(const eglw::EGLAttrib *attributes = nullptr) const override {
+    if (attributes && attributes[0] != EGL_NONE)
+      throw tcu::NotSupportedError("PS5 EGL native display attributes are unsupported");
+    return new NativeDisplay();
+  }
+};
 
 class PublicFunctionLoader : public glw::FunctionLoader {
 public:
@@ -264,6 +314,7 @@ void RenderContext::makeCurrent(void) {
 
 Platform::Platform(void) {
   m_contextFactoryRegistry.registerFactory(new ContextFactory());
+  m_nativeDisplayFactoryRegistry.registerFactory(new NativeDisplayFactory());
 }
 
 Platform::~Platform(void) {

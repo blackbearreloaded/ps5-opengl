@@ -61,6 +61,21 @@ execution. The two FBO profiles remain explicitly `fbo`; they are not window
 configuration coverage. Generate new hashed selections after changing this
 contract; preserve older plans and receipts unchanged.
 
+The adapter also registers the upstream `CTS-Configs` package and a native EGL
+display backed by the runtime's static EGL 1.4 entry points. Run the single
+`--deqp-case=CTS-Configs.gl33` diagnostic to inspect configuration selection,
+then check its saved receipt:
+
+```sh
+python3 tools/summarize-cts-qpa.py PATH-TO-CONFIGS.qpa --require-egl-configs --json
+```
+
+This keeps the upstream result unchanged but rejects synthetic `default(0)`
+coverage, missing/duplicate configurations and incomplete receipts. A passing
+configuration case alone is not proof of an eligible real EGL config, required
+framebuffer formats, working windows, or a complete official runner inventory.
+Neither this adapter nor the checker changes runtime conformance flags.
+
 ## G2: freeze once, qualify cheaply
 
 1. Finish affected host regressions and commit the candidate. Preserve the earlier
