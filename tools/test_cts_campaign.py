@@ -8,7 +8,9 @@ import contextlib
 import importlib
 import io
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -17,6 +19,32 @@ PLANNER = importlib.import_module("plan-cts-campaign")
 
 
 class CampaignTests(unittest.TestCase):
+    def test_native_dependency_copy_resumes_without_nesting(self):
+        script = (Path(__file__).parent / "build-native-cts-app.sh").read_text()
+        start = script.index('if [[ ! -f "$app/.deps/native/.cts-copy-complete" ]]')
+        block = script[start:script.index('\nfi', start) + 3]
+        with tempfile.TemporaryDirectory() as tmp:
+            app, template = Path(tmp) / "partial app", Path(tmp) / "template"
+            native = app / ".deps/native"
+            native.mkdir(parents=True)
+            (native / "linker").write_text("partial")
+            env = dict(os.environ, app=str(app), template=str(template))
+            failed = subprocess.run(["bash", "-ec", block], env=env, capture_output=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertFalse((native / ".cts-copy-complete").exists())
+            source = template / ".deps/native"
+            source.mkdir(parents=True)
+            (source / "linker").write_text("complete")
+            (source / "header").write_text("required")
+            subprocess.run(["bash", "-ec", block], env=env, check=True)
+            self.assertEqual((native / "header").read_text(), "required")
+            self.assertEqual((native / "linker").read_text(), "complete")
+            self.assertTrue((native / ".cts-copy-complete").is_file())
+            self.assertFalse((native / "native").exists())
+            (native / "linker").write_text("stage-specific")
+            subprocess.run(["bash", "-ec", block], env=env, check=True)
+            self.assertEqual((native / "linker").read_text(), "stage-specific")
+
     def test_every_profile_selects_its_surface_explicitly(self):
         for config, surface in enumerate(("pbuffer", "pbuffer", "fbo", "fbo")):
             args = PLANNER.PREPARE.encode_arguments(config).decode().splitlines()

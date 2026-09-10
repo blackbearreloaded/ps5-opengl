@@ -127,9 +127,12 @@ group="$app/vendor/libps5_opengl_cts_group.a"
 printf 'APP_INCLUDE_PATHS = include\nAPP_STATIC_ARCHIVES = vendor/libps5_opengl_cts_group.a\n' \
     > "$app/.env"
 
-if [[ ! -x "$app/.deps/native/ps5-payload-sdk/bin/prospero-lld" ]]; then
-    mkdir -p "$app/.deps"
-    cp -a "$template/.deps/native" "$app/.deps/native"
+if [[ ! -f "$app/.deps/native/.cts-copy-complete" ]]; then
+    # A paused copy may contain the linker but lack headers. Copy contents on
+    # resume (never nest native/native), and mark ready only after success.
+    mkdir -p "$app/.deps/native"
+    cp -a "$template/.deps/native/." "$app/.deps/native/"
+    touch "$app/.deps/native/.cts-copy-complete"
 fi
 
 app_sdk="$app/.deps/native/ps5-payload-sdk"
