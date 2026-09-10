@@ -49,8 +49,9 @@ counters exclude process RSS, foreign heaps and module-internal allocations.
 ## Verification scope
 
 - The [official-release CTS prerequisites](cts-qualification.md) are blocked:
-  required default/window configurations and a negative compute-stage case
-  remain unresolved. A complete new CTS baseline has not been collected.
+  required default/window configurations and upstream disposition of a local
+  compute-stage test correction remain unresolved. The patched diagnostic
+  passed 13/13; it is not a complete new CTS baseline or upstream acceptance.
 - The [full campaign](validation.md) belongs to one frozen runtime: 37,404 passes
   plus 2,140 reviewed exclusions, not 39,544 passes.
 - [SDK 0.2.0](release-g62.md) has a 202-execution sample and 82 focused GPU cases

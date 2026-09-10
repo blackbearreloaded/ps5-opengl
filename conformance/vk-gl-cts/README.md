@@ -15,6 +15,8 @@ byte-identical platform-overlay files, with no other tracked-source changes.
 
 The release path applies only patches 0001–0004 and 0006. It deliberately leaves
 the negative-shader test unchanged, including the known compute-stage issue.
+The separately [validated local correction](../../docs/cts-qualification.md#validated-local-correction)
+does not change this default or establish upstream acceptance.
 `verify-source.sh` compares tracked files against the selected base plus the
 prescribed patches, and checks all seven platform overlay files byte-for-byte.
 The adapter queries actual default-framebuffer bits/samples, checks them against

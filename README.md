@@ -88,9 +88,10 @@ loader. See [SDK integration](docs/consumer-build.md) for your own application.
 
 ## Validation
 
-**Current official-release CTS qualification is blocked:** a 12-case rendering
-regression passed, but the native configuration inventory and one unchanged
-negative-shader test remain unresolved. See the
+**Current official-release CTS qualification is blocked:** a locally corrected
+CTS diagnostic passed **13/13 cases**, including the negative-shader case.
+The unchanged release still fails that case; upstream acceptance of the
+correction and required native EGL configurations remain unresolved. See the
 [qualification report](docs/cts-qualification.md). The new full campaign has
 not started; these results are separate from the historical matrix below.
 

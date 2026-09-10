@@ -26,7 +26,8 @@ Do not spend a full campaign validating the wrong test revision or configuration
 - Audit every overlay patch. In particular,
   [the compute-stage test correction](../conformance/vk-gl-cts/patches/0005-gl33-negative-compute-guard.patch)
   changes a test body. Establish an upstream-accepted fix or the required waiver;
-  our local judgment alone is not submission approval.
+  the [13-case local diagnostic](cts-qualification.md#validated-local-correction)
+  passed, but local validation alone is not submission approval.
   [Khronos porting rules](https://github.com/KhronosGroup/VK-GL-CTS/blob/main/external/openglcts/README.md#porting).
 - Resolve the default-framebuffer/configuration gap. The current
   [EGL implementation](../src/egl/ps5_egl.c) exposes one RGBA8/D32/S8,
