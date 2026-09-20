@@ -1110,6 +1110,8 @@ ps5_agc_linear_color_bytes(uint32_t info)
 {
    switch (info) {
    case UINT32_C(0x00008028): return 4; /* RGBA8_UNORM */
+   case UINT32_C(0x00008628): return 4; /* RGBA8_SRGB: preserve native conversion bits. */
+   case UINT32_C(0x00060718): return 4; /* R11G11B10_FLOAT: packed 32-bit texels. */
    case UINT32_C(0x00008004): return 1; /* R8_UNORM */
    case UINT32_C(0x0000800c): return 2; /* RG8_UNORM */
    case UINT32_C(0x00060730): return 8; /* RGBA16F */

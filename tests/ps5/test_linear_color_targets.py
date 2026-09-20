@@ -56,8 +56,8 @@ code += "\n".join(function(name) for name in (
     "ps5_agc_gate2_set_color_target_views", "ps5_agc_gate2_set_dual_source_blend",
 ))
 code += r'''
-static const uint32_t formats[] = {0x8028, 0x8004, 0x800c, 0x60730};
-static const unsigned bpps[] = {4, 1, 2, 8};
+static const uint32_t formats[] = {0x8028, 0x8004, 0x800c, 0x60730, 0x8628, 0x60718};
+static const unsigned bpps[] = {4, 1, 2, 8, 4, 4};
 static unsigned rejections;
 struct layout {
    void *targets[8];
@@ -163,7 +163,7 @@ static void check_registers(const struct layout *c)
    assert(reg(0x777) == 0x87654321 && reg(0x2d5) == 0x12345678);
    for (unsigned i = 0; i < c->count; ++i) {
       unsigned bpp = bpps[i / 2];
-      for (unsigned f = 0; f < 4; ++f)
+      for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); ++f)
          if (c->infos[i] == formats[f]) bpp = bpps[f];
       uint64_t address = (uintptr_t)c->targets[i];
       unsigned encoded_width = c->pitches[i] ? c->pitches[i] / bpp : c->widths[i];
@@ -232,7 +232,7 @@ int main(void)
          BAD(targets[i], (void *)((uintptr_t)good.targets[i] + 256));
       }
    }
-   const uint32_t unsupported[] = {0x8628, 0x70528, 0x8008, 0x802c, 0x60738};
+   const uint32_t unsupported[] = {0x70528, 0x8008, 0x802c, 0x60738};
    for (unsigned i = 0; i < sizeof(unsupported) / sizeof(unsupported[0]); ++i)
       BAD(infos[0], unsupported[i]);
 
@@ -285,7 +285,7 @@ int main(void)
          assert(!ps5_agc_mrt_pitches[i] && !ps5_agc_mrt_views[i]);
       }
    }
-   for (unsigned f = 0; f < 4; ++f) {
+   for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); ++f) {
       struct layout c = mixed(true);
       c.count = 1; c.infos[0] = formats[f];
       c.widths[0] = c.heights[0] = 8192;
@@ -349,11 +349,11 @@ int main(void)
 
    /* The shared extent helper retains the original tile geometry at both
     * sample counts, including a tile boundary in each dimension. */
-   const unsigned tile_widths[] = {128, 256, 256, 128};
-   const unsigned tile_heights[] = {128, 256, 128, 64};
+   const unsigned tile_widths[] = {128, 256, 256, 128, 128, 128};
+   const unsigned tile_heights[] = {128, 256, 128, 64, 128, 128};
    for (unsigned samples = 1; samples <= 4; samples += 3) {
       assert(ps5_agc_gate2_set_multisample_state(samples, 0xffff, 1, 0, 0, 0) == 0);
-      for (unsigned f = 0; f < 4; ++f) {
+      for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); ++f) {
          unsigned divisor = samples == 4 ? 2 : 1;
          tiled.infos[0] = formats[f];
          tiled.widths[0] = tile_widths[f] / divisor + 1;

@@ -6130,7 +6130,8 @@ ps5_linear_color_pitch(const struct pipe_surface *surface)
        surface->last_layer >= ps5_surface_layer_count(surface) || !r->layer_stride ||
        surface->last_layer >= r->size / r->layer_stride ||
        (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
-        surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT))
+        surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
+        surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB))
       return 0;
    unsigned width = ps5_surface_width(surface), height = ps5_surface_height(surface);
    unsigned stride = r->level_stride[surface->level];

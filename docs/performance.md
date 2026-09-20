@@ -99,3 +99,21 @@ can include driver waits; it is not isolated GPU execution time.
 A 30-second profile is suitable for a focused comparison; the standard sustained
 check is bounded at two minutes. Neither is a claim about every application.
 See [testing](testing.md) and [limitations](limitations.md).
+
+### Eden staged-format diagnosis (local branch)
+
+Eden candidate3aefeb2 / OpenGLc48fcad on firmware6.02 classified all823
+framebuffer rejects without overflow in
+`workspace/dev/ps5-eden-feasibility/results/headless-fw602-20260920-194750/fallback-layouts.json`.
+711 were R11G11B10_FLOAT and112 were R8G8B8A8_SRGB; all were single color
+attachments, single-sample, one array layer, mip0 and aligned linear strides.
+Rendering/lifecycle acceptance passed and the frame30 menu was visually checked.
+
+The direct-layout candidate enables only those two additional formats in Gallium
+and in the native linear byte-size validator. It retains existing color-info
+bits (0x60718 packed float;0x8628 sRGB), all range/alignment/sample/view guards,
+and the narrower GPU-blit format gate. No new asynchronous submission policy.
+Host sanitizer/register/guard tests, full make test and PS5 cross-build pass.
+Hardware color correctness and speedup for this format change remain unqualified;
+the diagnostic capture predates the direct-layout change. Do not treat API
+coverage or the original menu capture as native validation of this candidate.
