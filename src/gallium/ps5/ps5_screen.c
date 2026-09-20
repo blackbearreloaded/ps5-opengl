@@ -331,6 +331,11 @@ struct ps5_context {
 #ifdef PS5_DRAW_PROFILE
    uint64_t batch_eligible;
    uint64_t batch_reject[7];
+   struct {
+      unsigned key[16];
+      uint64_t count;
+   } framebuffer_fallbacks[32];
+   uint64_t framebuffer_fallback_overflow;
 #endif
 };
 
@@ -10451,6 +10456,23 @@ enum ps5_batch_eligibility {
    PS5_BATCH_REJECT_TEXTURE,
 };
 
+#ifdef PS5_DRAW_PROFILE
+static void
+ps5_record_framebuffer_fallback(struct ps5_context *context, const unsigned key[16])
+{
+   /* Bounded diagnostic: count exact layouts; never allocate or print per draw. */
+   for (unsigned i = 0; i < 32; ++i) {
+      if (!context->framebuffer_fallbacks[i].count ||
+          !memcmp(context->framebuffer_fallbacks[i].key, key, sizeof(unsigned) * 16)) {
+         memcpy(context->framebuffer_fallbacks[i].key, key, sizeof(unsigned) * 16);
+         ++context->framebuffer_fallbacks[i].count;
+         return;
+      }
+   }
+   ++context->framebuffer_fallback_overflow;
+}
+#endif
+
 static bool
 ps5_batch_eligibility(struct ps5_context *context, unsigned rejects)
 {
@@ -10496,8 +10518,13 @@ ps5_multidraw_eligible(struct ps5_context *context,
    if (context->stream_output_target_count || context->render_condition_query)
       rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_QUERY - 1);
    if (!context->framebuffer_valid ||
-       context->framebuffer.nr_cbufs > PS5_MAX_RENDER_TARGETS)
+       context->framebuffer.nr_cbufs > PS5_MAX_RENDER_TARGETS) {
       rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_FRAMEBUFFER - 1);
+#ifdef PS5_DRAW_PROFILE
+      ps5_record_framebuffer_fallback(context, (unsigned[16]){
+         context->framebuffer_valid ? 2 : 1, context->framebuffer.nr_cbufs});
+#endif
+   }
    else
       for (unsigned i = 0; i < context->framebuffer.nr_cbufs; ++i) {
          const struct pipe_surface *surface = &context->framebuffer.cbufs[i];
@@ -10508,6 +10535,18 @@ ps5_multidraw_eligible(struct ps5_context *context,
          if (target && target->render_staging_size &&
              !ps5_linear_color_pitch(surface)) {
             rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_FRAMEBUFFER - 1);
+#ifdef PS5_DRAW_PROFILE
+            ps5_record_framebuffer_fallback(context, (unsigned[16]){
+               3, context->framebuffer.nr_cbufs, i, surface->format,
+               target->base.format, target->base.target,
+               ps5_surface_width(surface), ps5_surface_height(surface),
+               target->base.nr_samples, surface->level,
+               surface->first_layer, surface->last_layer,
+               surface->level < ARRAY_SIZE(target->level_stride)
+                  ? target->level_stride[surface->level] : 0,
+               target->base.bind, target->base.nr_storage_samples,
+               (unsigned)((uintptr_t)target->data & 255u)});
+#endif
             break;
          }
       }
@@ -15146,6 +15185,19 @@ ps5_context_destroy(struct pipe_context *base)
           context->batch_reject[1], context->batch_reject[2],
           context->batch_reject[3], context->batch_reject[4],
           context->batch_reject[5], context->batch_reject[6]);
+   for (unsigned i = 0; i < 32 && context->framebuffer_fallbacks[i].count; ++i) {
+      const unsigned *k = context->framebuffer_fallbacks[i].key;
+      printf("[ps5-framebuffer-fallback] count=%" PRIu64
+             " reason=%u targets=%u slot=%u format=%u resource_format=%u target=%u"
+             " width=%u height=%u samples=%u mip=%u first_layer=%u last_layer=%u"
+             " stride=%u bind=%u storage_samples=%u address_mod256=%u\n",
+             context->framebuffer_fallbacks[i].count,
+             k[0], k[1], k[2], k[3], k[4], k[5], k[6], k[7],
+             k[8], k[9], k[10], k[11], k[12], k[13], k[14], k[15]);
+   }
+   if (context->framebuffer_fallback_overflow)
+      printf("[ps5-framebuffer-fallback] overflow=%" PRIu64 "\n",
+             context->framebuffer_fallback_overflow);
 #endif
    for (index = 0; index < PS5_COMPUTE_BUFFER_SLOTS; ++index)
       pipe_resource_reference(&context->compute_buffers[index].buffer, NULL);

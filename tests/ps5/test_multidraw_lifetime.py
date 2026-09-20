@@ -331,6 +331,7 @@ code = r'''
 #include <setjmp.h>
 #include "ps5_screen.h"
 #define MIN2(a,b) ((a)<(b)?(a):(b))
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define BITFIELD_BIT(b) (1u << (b))
 #define PS5_RENDER_ARENA_OFFSET (2u * 0xa00000u)
 enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=16, PS5_MAX_RENDER_TARGETS=8, PIPE_BUFFER=1,
@@ -341,6 +342,7 @@ struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, 
 struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
     union { struct { unsigned first_level, last_level, first_layer, last_layer; } tex; } u; };
 struct ps5_resource { struct pipe_resource base; unsigned render_staging_size, depth_staging_size;
+    unsigned level_stride[16];
     uint8_t *data, *stencil_data; size_t size, allocation_size, stencil_allocation_size; };
 struct pipe_screen { struct pipe_resource *(*resource_create)(struct pipe_screen *, const struct pipe_resource *); };
 struct ps5_screen { struct pipe_screen base; struct pipe_resource *render_pool; };
@@ -370,6 +372,8 @@ struct ps5_context {
     const struct pipe_depth_stencil_alpha_state *depth_stencil_alpha;
     int last_draw_status;
     uint64_t batch_eligible, batch_reject[7];
+    struct { unsigned key[16]; uint64_t count; } framebuffer_fallbacks[32];
+    uint64_t framebuffer_fallback_overflow;
 };
 static bool ps5_any_primitive_query(const struct ps5_context *c)
 { for (unsigned i=0;i<PIPE_MAX_VERTEX_STREAMS;++i) {
@@ -400,6 +404,8 @@ static unsigned ps5_linear_color_pitch(const struct pipe_surface *s) {
     return s && s->texture && s->first_layer == s->last_layer &&
         ((struct ps5_resource *)s->texture)->render_staging_size ? 256 : 0;
 }
+static unsigned ps5_surface_width(const struct pipe_surface *s) { (void)s; return 16; }
+static unsigned ps5_surface_height(const struct pipe_surface *s) { (void)s; return 16; }
 static bool ps5_depth_render_target(unsigned target) {
     return target == PIPE_TEXTURE_2D || target == PIPE_TEXTURE_2D_ARRAY;
 }
