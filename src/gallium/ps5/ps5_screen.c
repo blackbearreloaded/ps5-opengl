@@ -165,12 +165,21 @@ static uint64_t ps5_prepare_clock(void)
    __asm__ volatile("lfence; rdtsc" : "=a"(low), "=d"(high) : : "memory");
    return (uint64_t)high << 32 | low;
 }
+static void ps5_prepare_report(void)
+{
+   for (unsigned phase = 0; phase < 3; ++phase)
+      printf("[ps5-driver-cycles] phase=%u calls=%" PRIu64 " cycles=%" PRIu64 "\n",
+             phase, __atomic_load_n(&ps5_prepare_calls[phase], __ATOMIC_RELAXED),
+             __atomic_load_n(&ps5_prepare_cycles[phase], __ATOMIC_RELAXED));
+}
 struct ps5_prepare_scope { unsigned phase; uint64_t start; };
 static void ps5_prepare_scope_end(struct ps5_prepare_scope *scope)
 {
    uint64_t elapsed = ps5_prepare_clock() - scope->start;
    __atomic_fetch_add(&ps5_prepare_cycles[scope->phase], elapsed, __ATOMIC_RELAXED);
-   __atomic_fetch_add(&ps5_prepare_calls[scope->phase], 1, __ATOMIC_RELAXED);
+   uint64_t calls = __atomic_add_fetch(&ps5_prepare_calls[scope->phase], 1, __ATOMIC_RELAXED);
+   if (scope->phase == 0 && calls % 10000 == 0)
+      ps5_prepare_report();
 }
 #endif
 
@@ -15662,10 +15671,7 @@ ps5_context_destroy(struct pipe_context *base)
 
 #ifdef PS5_DRAW_PROFILE
 #ifdef PS5_NATIVE_TITLE_RUNTIME
-   for (unsigned phase = 0; phase < 3; ++phase)
-      printf("[ps5-driver-cycles] phase=%u calls=%" PRIu64 " cycles=%" PRIu64 "\n",
-             phase, __atomic_load_n(&ps5_prepare_calls[phase], __ATOMIC_RELAXED),
-             __atomic_load_n(&ps5_prepare_cycles[phase], __ATOMIC_RELAXED));
+   ps5_prepare_report();
 #endif
    printf("[ps5-cpu-flush-summary] calls=%" PRIu64 " bytes=%" PRIu64 "\n",
           __atomic_load_n(&ps5_cpu_flush_calls, __ATOMIC_RELAXED),
