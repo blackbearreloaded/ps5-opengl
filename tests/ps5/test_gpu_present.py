@@ -230,7 +230,7 @@ with tempfile.TemporaryDirectory() as tmp:
 print("PASS: first clear-only swap registers scanout; reuse and failures are bounded")
 
 # Compile the actual scanout-flush gate, including the unchanged default path.
-start = source.rindex("    PS5_PROFILE_MARK(1);", 0, source.index("    /* The first queued draw flushes"))
+start = source.rindex("    PS5_PROFILE_MARK(1);", 0, source.index("    /* The first queued draw"))
 flush_gate = source[start:source.index("    PS5_PROFILE_MARK(2);", start)]
 code = r'''
 #include <assert.h>
@@ -255,22 +255,30 @@ int main(void) {
         run(active, queued ? 2 : 0, registered, pools, 64,
             pools + !same_pointer, larger_registration ? 128 : same_size ? 64 : 32);
 #ifdef PS5_GPU_PRESENT_BATCH
-        assert(flushes == !(active && queued && registered && same_pointer &&
+        assert(flushes == !(active && registered && same_pointer &&
                            (same_size || larger_registration)));
 #else
         assert(flushes == 1);
 #endif
     }
-    /* CPU access drains/reset the queue: the first resumed draw flushes again. */
+    /* Queue splits do not dirty a GPU-written pool; CPU writers flush their own ranges. */
     flushes = 0;
     run(1, 0, 1, pools, 64, pools, 64);
     run(1, 1, 1, pools, 64, pools, 64);
     run(1, 2, 1, pools, 64, pools, 64);
     run(1, 0, 1, pools, 64, pools, 64);
 #ifdef PS5_GPU_PRESENT_BATCH
-    assert(flushes == 2);
+    assert(flushes == 0);
 #else
     assert(flushes == 4);
+#endif
+    flush_gpu_data(pools, 64); /* CPU writer owns publication. */
+    int published = flushes;
+    run(1, 0, 1, pools, 64, pools, 64);
+#ifdef PS5_GPU_PRESENT_BATCH
+    assert(flushes == published);
+#else
+    assert(flushes == published + 1);
 #endif
 }
 '''
@@ -281,7 +289,7 @@ with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags,
                         str(c), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
-print("PASS: scanout flush retained at batch/CPU-access/pool boundaries; default path unchanged")
+print("PASS: registered GPU pool survives queue splits; CPU publication, replacement and default paths retained")
 
 screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 start = screen.index("struct ps5_batch_flush_cache {")

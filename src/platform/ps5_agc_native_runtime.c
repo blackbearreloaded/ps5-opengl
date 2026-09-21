@@ -895,8 +895,8 @@ static void runtime_require_retirement(int completed)
 }
 #endif
 
-/* Match Mesa's AMD fence publication: SEND_DATA_AFTER_WR_CONFIRM, not an IRQ.
- * Publish/read the full 64-bit value in the existing aligned marker slot. */
+/* Publish/read the full 64-bit value in the aligned marker slot. Native
+ * publication follows the qualified platform cache policy below. */
 static uint32_t *runtime_release_completion(const agc_api_t *agc,
                                             agc_command_buffer_t *command,
                                             volatile uint64_t *marker,
@@ -3331,10 +3331,11 @@ int main(void)
 #endif
     PS5_PROFILE_MARK(1);
 #ifdef PS5_GPU_PRESENT_BATCH
-    /* The first queued draw flushes this pool. Later draws have not submitted
-     * any GPU work; Gallium drains the batch before CPU access to either slot.
-     * Keep the full flush for a new batch, pool, or nonbatched caller. */
-    if (!runtime_batch_active || !runtime_batch_count || !runtime_video_registered ||
+    /* The first queued draw only initializes a new scanout pool. Gallium's
+     * CPU clear/transfer/blit writers flush the ranges they modify. A query or
+     * fence splitting a GPU batch does not dirty this GPU-written pool. Keep
+     * the conservative flush for new pools and nonbatched callers. */
+    if (!runtime_batch_active || !runtime_video_registered ||
         framebuffer != runtime_video_framebuffer ||
         framebuffer_pool_bytes > runtime_video_framebuffer_size)
 #endif
