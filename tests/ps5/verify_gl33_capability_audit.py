@@ -571,7 +571,7 @@ require("context->base.get_query_result_resource = ps5_get_query_result_resource
         "caps->texture_mirror_clamp_to_edge = PS5_ENABLE_GLSL_440_CANDIDATE" in SCREEN and
         "caps->shader_array_components = PS5_ENABLE_GLSL_440_CANDIDATE" in SCREEN,
         "OpenGL 4.4 capability group lost its candidate gate or query writer")
-require("context->base.texture_barrier = ps5_memory_barrier" in SCREEN and
+require("context->base.texture_barrier = ps5_texture_barrier" in SCREEN and
         "caps->clip_halfz = PS5_ENABLE_GLSL_450_CANDIDATE" in SCREEN and
         "caps->cull_distance = PS5_ENABLE_GLSL_450_CANDIDATE" in SCREEN and
         "caps->fs_fine_derivative = PS5_ENABLE_GLSL_450_CANDIDATE" in SCREEN and

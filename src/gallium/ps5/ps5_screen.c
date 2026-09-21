@@ -8471,11 +8471,25 @@ ps5_flush(struct pipe_context *context, struct pipe_fence_handle **out_fence,
 static void
 ps5_memory_barrier(struct pipe_context *context, unsigned flags)
 {
-   /* Compute retires and synchronizes every bound resource before returning;
-    * graphics may still have deferred draws. Reuse the common drain.
-    * ponytail: full drain for every nonzero mask; async queues need tracked hazards. */
-   if (flags)
+   /* Compute already completes synchronously. Deferred graphics retains its
+    * resources and emits cache releases at submission boundaries; GPU consumers
+    * need that boundary, not a CPU completion wait. */
+   if (flags & (PIPE_BARRIER_MAPPED_BUFFER | ~PIPE_BARRIER_ALL))
       ps5_draw_batch_drain();
+   else if (flags)
+      ps5_draw_batch_submit();
+   (void)context;
+}
+
+static void
+ps5_texture_barrier(struct pipe_context *context, unsigned flags)
+{
+   /* Texture-barrier flags are a separate namespace: SAMPLER is bit zero,
+    * which means MAPPED_BUFFER in memory_barrier. */
+   if (flags & ~(PIPE_TEXTURE_BARRIER_SAMPLER | PIPE_TEXTURE_BARRIER_FRAMEBUFFER))
+      ps5_draw_batch_drain();
+   else if (flags)
+      ps5_draw_batch_submit();
    (void)context;
 }
 
@@ -15473,7 +15487,7 @@ ps5_context_create(struct pipe_screen *screen, void *priv, unsigned flags)
 #endif
    context->base.draw_vbo = ps5_draw_vbo;
    context->base.memory_barrier = ps5_memory_barrier;
-   context->base.texture_barrier = ps5_memory_barrier;
+   context->base.texture_barrier = ps5_texture_barrier;
    context->base.create_query = ps5_create_query;
    context->base.destroy_query = ps5_destroy_query;
    context->base.begin_query = ps5_begin_query;

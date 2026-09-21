@@ -77,3 +77,18 @@ Frontend errors806, critical0, native profile failures0. Title teardown,
 service health and lock release passed. This is now the installed candidate.
 The evidence shifts priority from submission-call overhead to forced completion
 boundaries; polling wall time alone still cannot prove GPU hardware saturation.
+
+## GPU-only barrier ordering follow-up
+
+The memory and texture barrier callbacks previously unconditionally drained CPU
+completion. Split their flag namespaces (texture SAMPLER and memory MAPPED_BUFFER
+both use bit zero). Known GPU-only barriers now submit the retained draw batch;
+mapped-buffer and unknown flags retain completion waits. The existing batch-tail
+cache releases, dependency packets, ordered submission and resource retention are
+unchanged. Zero masks remain no-ops. Compute remains synchronous. Binding changes
+still drain because storage bindings are not all retained in deferred snapshots.
+
+The production-extraction test checks every memory mask, all texture masks, zero
+masks and unknown-bit fallback. Full host suite and PS5 SDK cross-build pass.
+Hardware visibility and performance await the next frozen Eden comparison against
+`headless-fw602-20260920-223632`; no speedup is claimed from offline tests.

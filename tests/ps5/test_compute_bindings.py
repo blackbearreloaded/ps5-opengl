@@ -233,7 +233,8 @@ static int ps5_resource_info(struct pipe_resource *base, void **address, size_t 
     return 0;
 }
 static bool fragment_mode;
-static unsigned fragment_drains;
+static unsigned fragment_drains, barrier_submissions;
+static void ps5_draw_batch_submit(void) { ++barrier_submissions; }
 static void ps5_draw_batch_drain(void) { ++fragment_drains; }
 static bool ps5_render_condition_passes(const struct ps5_context *context) { (void)context; return render_condition_pass; }
 static void ps5_flush_gpu_data(const void *address, size_t size) { assert(address && (fragment_mode ? size==32 || size==64 || size==256 || size==512 || size==768 || size==2048 || size==4*PS5_TESSELLATION_BUFFER_STRIDE || size==PS5_DESCRIPTOR_STORAGE_BYTES : size==12)); }
@@ -1134,13 +1135,23 @@ int main(void) {
     assert(PS5_COMPUTE_TEXTURE_SLOTS==16 && PS5_AGC_COMPUTE_MAX_RESOURCES==79);
     struct pipe_screen screen={.resource_destroy=destroy}, other_screen={0};
     struct pipe_context barrier_context={0};
-    unsigned barrier_before=fragment_drains;
+    unsigned barrier_before=fragment_drains, submits_before=barrier_submissions;
     ps5_memory_barrier(&barrier_context,0);
-    assert(fragment_drains==barrier_before);
+    ps5_texture_barrier(&barrier_context,0);
+    assert(fragment_drains==barrier_before && barrier_submissions==submits_before);
     for(unsigned mask=1;mask<=PIPE_BARRIER_ALL;++mask) {
         ps5_memory_barrier(&barrier_context,mask);
-        assert(fragment_drains==barrier_before+mask);
+        if(mask & PIPE_BARRIER_MAPPED_BUFFER) ++barrier_before;
+        else ++submits_before;
+        assert(fragment_drains==barrier_before && barrier_submissions==submits_before);
     }
+    for(unsigned mask=1;mask<=3;++mask) {
+        ps5_texture_barrier(&barrier_context,mask);
+        assert(fragment_drains==barrier_before && barrier_submissions==++submits_before);
+    }
+    ps5_memory_barrier(&barrier_context,1u<<31);
+    ps5_texture_barrier(&barrier_context,1u<<31);
+    assert(fragment_drains==barrier_before+2 && barrier_submissions==submits_before);
     uint8_t table_data[PS5_COMPUTE_DESCRIPTOR_BYTES], output[256];
     struct ps5_resource table={.data=table_data};
     struct ps5_resource buffer={.base={.screen=&screen,.target=PIPE_BUFFER,.width0=256},.data=output};
