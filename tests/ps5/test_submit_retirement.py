@@ -104,3 +104,18 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c",
                     "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], cwd=temporary, check=True)
+
+# Exercise the same production submit and retirement code with frame boundaries.
+start = source.index("#ifdef PS5_FRAME_SUSPEND\nstatic int (*runtime_frame_suspend)")
+policy = source[start:source.index("\n#endif", start) + 7]
+frame_code = code.replace(guard, guard + "\n" + policy)
+frame_code = frame_code.replace("int rc = draw();", "int rc = draw();\n            runtime_require_retirement(runtime_end_submit_period() == 0);")
+frame_code = frame_code.replace("seen->suspends == !submit_error", "seen->suspends == (!submit_error && scenario != 5)")
+frame_code = frame_code.replace("seen->unmaps == !fatal && seen->releases == (!fatal && !unmap_error)",
+    "seen->unmaps == (!fatal || scenario == 4) && seen->releases == ((!fatal || scenario == 4) && !unmap_error)")
+with tempfile.TemporaryDirectory() as temporary:
+    executable = str(Path(temporary) / "frame-retirement")
+    subprocess.run(["cc", "-DPS5_FRAME_SUSPEND=1", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c",
+                    "-o", executable, "-"], input=frame_code, text=True, check=True)
+    subprocess.run([executable], cwd=temporary, check=True)
+print("PASS: frame policy preserves synchronous marker retirement and boundary failure stops lifecycle")

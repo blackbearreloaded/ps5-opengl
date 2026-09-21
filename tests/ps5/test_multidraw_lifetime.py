@@ -373,6 +373,37 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
 print("PASS: native FIFO capacity, full-queue ownership/retry, out-of-order markers and wraparound")
 
+# Repeat native FIFO ownership with one suspend callback per frame.
+start = source.index("#ifdef PS5_FRAME_SUSPEND\nstatic int (*runtime_frame_suspend)")
+policy = source[start:source.index("\n#endif", start) + 7]
+frame_fifo = native_fifo.replace(guard, guard + "\n" + policy)
+frame_fifo = frame_fifo.replace("reset(); delay=100000;", """reset(); delay=100000;
+    assert(runtime_end_submit_period()==0 && !suspends);
+    assert(runtime_defer_suspend(NULL)==-1);""")
+frame_fifo = frame_fifo.replace("assert(unmaps==submits && releases==submits && !sleeps);", """
+        assert(unmaps==submits && releases==submits && !sleeps);
+        assert(suspends==round); // No suspend during any submission or retirement.
+        assert(runtime_end_submit_period()==0 && suspends==round+1);
+        assert(runtime_end_submit_period()==0 && suspends==round+1);
+    """)
+frame_fifo = frame_fifo.replace("int main(void) {", "static int other_suspend(void) { return 0; }\nint main(void) {")
+frame_fifo = frame_fifo.replace("    }\n}\n", """    }
+    assert(runtime_defer_suspend(suspend_point)==0);
+    assert(runtime_defer_suspend(other_suspend)==-1);
+    fail_suspend=-1;
+    assert(runtime_end_submit_period()==-1 && runtime_frame_suspend==suspend_point);
+    fail_suspend=0;
+    assert(runtime_end_submit_period()==0 && !runtime_frame_suspend);
+}
+""")
+with tempfile.TemporaryDirectory() as tmp:
+    exe=Path(tmp)/"frame-fifo"
+    subprocess.run(["cc", "-DPS5_FRAME_SUSPEND=1", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+                    "-I"+str(root/"src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
+                   input=frame_fifo, text=True, check=True)
+    subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
+print("PASS: frame suspend batches retain FIFO ownership, coalesce callbacks, retain failed boundary")
+
 # Exercise the real Gallium wrapper too: ownership must survive command staging.
 source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 cache_start = source.index("struct ps5_batch_flush_cache {")

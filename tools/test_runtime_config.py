@@ -37,7 +37,7 @@ class RuntimeConfigTest(unittest.TestCase):
                 if enabled is not None:
                     environment["PS5_DEFERRED_DRAW_BATCH"] = enabled
                 output = subprocess.check_output(command, text=True, env=environment)
-                self.assertEqual(output.split(), ["-DPS5_NATIVE_TITLE_RUNTIME=1",
+                self.assertEqual(output.split(), ["-DPS5_NATIVE_TITLE_RUNTIME=1", "-DPS5_FRAME_SUSPEND=1",
                     "-DPS5_DRAW_PROFILE=1", "-DPS5_GPU_PRESENT_BATCH=1"] +
                     (["-DPS5_MULTIDRAW_BATCH=1", "-DPS5_DEFERRED_DRAW_BATCH=1"] if enabled != "0" else []))
 

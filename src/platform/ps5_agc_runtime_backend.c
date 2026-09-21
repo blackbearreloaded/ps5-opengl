@@ -884,7 +884,11 @@ ps5_agc_compute_execute(struct pipe_screen *screen,
    agc_submit_description_t submit = {words, (uint32_t)(command.up - words), 0, {0}};
    flush_gpu_data(memory, memory_size);
    int submit_rc = agc.submit(&submit);
+#ifdef PS5_FRAME_SUSPEND
+   int suspend_rc = submit_rc == 0 ? runtime_defer_suspend(agc.suspend_point) : -1;
+#else
    int suspend_rc = submit_rc == 0 ? agc.suspend_point() : -1;
+#endif
    unsigned polls = 0;
    for (; submit_rc == 0 && polls < 2000; ++polls) {
       flush_gpu_data((const void *)marker, sizeof(*marker));

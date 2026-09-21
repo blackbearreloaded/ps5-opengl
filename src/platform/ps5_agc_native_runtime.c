@@ -892,6 +892,29 @@ static void runtime_require_retirement(int completed)
 }
 #endif
 
+/* SuspendPoint ends a native submission period and stages the next period's
+ * prologue. It is a frame/lifecycle boundary, not a draw completion operation.
+ * GPU release markers still govern every retirement and resource lifetime. */
+#ifdef PS5_FRAME_SUSPEND
+static int (*runtime_frame_suspend)(void);
+static int runtime_defer_suspend(int (*callback)(void))
+{
+    if (!callback || (runtime_frame_suspend && runtime_frame_suspend != callback))
+        return -1;
+    runtime_frame_suspend = callback;
+    return 0;
+}
+static int runtime_end_submit_period(void)
+{
+    if (!runtime_frame_suspend)
+        return 0;
+    int result = runtime_frame_suspend();
+    if (!result)
+        runtime_frame_suspend = NULL;
+    return result;
+}
+#endif
+
 #ifdef PS5_MULTIDRAW_BATCH
 #ifdef PS5_DRAW_PROFILE
 #include "util/os_time.h"
@@ -1019,7 +1042,11 @@ int ps5_agc_gate2_batch_submit(void)
         }
     }
     BATCH_SUBMIT_MARK(1);
+#ifdef PS5_FRAME_SUSPEND
+    if (attempted && runtime_defer_suspend(runtime_batch_api.suspend_point) != 0)
+#else
     if (attempted && runtime_batch_api.suspend_point() != 0)
+#endif
         result = 1;
     BATCH_SUBMIT_MARK(2);
     runtime_require_retirement(result == 0);
@@ -1458,6 +1485,9 @@ int ps5_agc_gate2_shutdown_present(void)
         return -1;
 #endif
 
+#ifdef PS5_FRAME_SUSPEND
+    runtime_require_retirement(runtime_end_submit_period() == 0);
+#endif
 #ifdef PS5_DRAW_PROFILE
     runtime_profile_report();
 #endif
@@ -1651,6 +1681,9 @@ int ps5_agc_gate2_present(unsigned buffer_index)
         !runtime_video_api.is_flip_pending ||
         !runtime_video_api.wait_vblank)
         return -1;
+#ifdef PS5_FRAME_SUSPEND
+    runtime_require_retirement(runtime_end_submit_period() == 0);
+#endif
     PS5_PROFILE_MARK(0);
     if (runtime_video_wait_idle() != 0) {
 #ifdef PS5_DRAW_PROFILE
@@ -3891,7 +3924,11 @@ int main(void)
 #endif
         int submit_rc = agc.submit(&submit);
         PS5_PROFILE_MARK(6);
+#ifdef PS5_FRAME_SUSPEND
+        int suspend_rc = submit_rc == 0 ? runtime_defer_suspend(agc.suspend_point) : -1;
+#else
         int suspend_rc = submit_rc == 0 ? agc.suspend_point() : -1;
+#endif
         PS5_PROFILE_MARK(7);
 #ifdef AGC_RUNTIME_PACKAGES
         waits = 2000;
