@@ -1530,7 +1530,7 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
 {
     if (runtime_gpu_present_buffer != (int)buffer_index)
         return -1;
-    for (unsigned waits = 0; waits <= 120; ++waits) {
+    for (unsigned waits = 0; waits <= 2000; ++waits) {
         uint64_t status[16] = {0};
         int result = runtime_video_api.get_flip_status(runtime_video_handle, status);
         if (result != 0)
@@ -1543,9 +1543,11 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
             ++runtime_gpu_present_count;
             return 0;
         }
-        if (waits == 120)
+        if (waits == 2000)
             return -1;
-        result = runtime_video_api.wait_vblank(runtime_video_handle);
+        /* Vblank can wake before VideoOut publishes flip status. Sleeping until
+         * another vblank then adds a whole refresh despite completed work. */
+        result = sceKernelUsleep(UINT32_C(1000));
         if (result != 0)
             return result;
     }
@@ -1853,7 +1855,12 @@ int ps5_agc_gate2_present(unsigned buffer_index)
     runtime_require_retirement(runtime_end_submit_period() == 0);
 #endif
     PS5_PROFILE_MARK(0);
-    if (runtime_video_wait_idle() != 0) {
+    /* The GPU-tail path checks both marker and idle state together below. */
+    if (
+#ifdef PS5_GPU_PRESENT_BATCH
+        runtime_gpu_present_buffer < 0 &&
+#endif
+        runtime_video_wait_idle() != 0) {
 #ifdef PS5_DRAW_PROFILE
         if (profile_this_present)
             runtime_present_profile_record(profile_ticks, -1);

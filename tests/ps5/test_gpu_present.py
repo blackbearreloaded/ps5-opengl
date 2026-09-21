@@ -37,7 +37,7 @@ static uint64_t runtime_gpu_present_marker;
 static unsigned runtime_gpu_present_count, runtime_present_count, out_of_space;
 static unsigned tails, releases, flushes, cpu_flips, waits, idle_calls;
 static int idle_error, flip_error, status_error, pending_error, wait_error, tail_error;
-static unsigned finish_after;
+static unsigned finish_after, pending_after, polls;
 static int64_t runtime_next_render_marker(void) { return 101; }
 static uint8_t command_out_of_space(agc_command_buffer_t *c, uint32_t n, void *p) {
     (void)c; (void)n; (void)p; out_of_space = 1; return 0;
@@ -81,8 +81,9 @@ static int status(int handle, void *p) {
     assert(handle == 7); ((uint64_t *)p)[3] = waits >= finish_after ? 101 : 99;
     return status_error;
 }
-static int pending(int handle) { assert(handle == 7); return pending_error ? pending_error : waits < finish_after; }
+static int pending(int handle) { assert(handle == 7); return pending_error ? pending_error : (waits < finish_after || waits < pending_after); }
 static int vblank(int handle) { assert(handle == 7); ++waits; return wait_error; }
+static int sceKernelUsleep(uint32_t us) { assert(us == 1000); ++waits; ++polls; return wait_error; }
 static int cpu_flip(int handle, int index, uint32_t mode, int64_t marker) {
     assert(handle == 7 && index == 1 && mode == 1 && marker == 101); ++cpu_flips; return flip_error;
 }
@@ -107,21 +108,28 @@ static void reset(void) {
     tails = releases = flushes = cpu_flips = waits = idle_calls = 0;
     runtime_present_count = runtime_gpu_present_count = 0;
     idle_error = flip_error = status_error = pending_error = wait_error = tail_error = 0;
-    finish_after = 0;
+    finish_after = pending_after = polls = 0;
 }
 int main(void) {
-    for (unsigned n = 0; n <= 121; ++n) {
+    for (unsigned n = 0; n <= 2001; ++n) {
         reset(); assert(ps5_agc_gate2_batch_present(1) == 0);
         assert(tails == 1 && releases == 1 && flushes == 1);
         assert(runtime_batch_entries[0].expected == 101 && completion == 17);
         assert(ps5_agc_gate2_present(1) != 0); /* Unretired command tail. */
         completion = 101; runtime_batch_count = runtime_batch_active = 0;
         finish_after = n;
-        assert((ps5_agc_gate2_present(1) == 0) == (n <= 120));
-        assert(!cpu_flips && waits == (n <= 120 ? n : 120));
-        assert(runtime_present_count == (n <= 120) && runtime_gpu_present_count == (n <= 120));
-        assert(runtime_gpu_present_buffer == (n <= 120 ? -1 : 1));
+        assert((ps5_agc_gate2_present(1) == 0) == (n <= 2000));
+        assert(!cpu_flips && waits == (n <= 2000 ? n : 2000));
+        assert(polls == waits && idle_calls == 1);
+        assert(runtime_present_count == (n <= 2000) && runtime_gpu_present_count == (n <= 2000));
+        assert(runtime_gpu_present_buffer == (n <= 2000 ? -1 : 1));
     }
+    /* Marker publication and queue idle can become visible separately. */
+    reset(); assert(ps5_agc_gate2_batch_present(1) == 0);
+    runtime_batch_count = runtime_batch_active = 0;
+    finish_after = 2; pending_after = 7;
+    assert(ps5_agc_gate2_present(1) == 0 && polls == 7 && waits == 7);
+    assert(idle_calls == 1 && runtime_gpu_present_buffer == -1);
     for (int error = 0; error < 10; ++error) {
         reset();
         if (error == 0) runtime_batch_entries[0].submit.word_count = COMMAND_BYTES / 4;
