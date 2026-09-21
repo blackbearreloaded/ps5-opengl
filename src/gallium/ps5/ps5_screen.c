@@ -8337,8 +8337,13 @@ ps5_get_query_result_resource(struct pipe_context *base,
 static void
 ps5_set_active_query_state(struct pipe_context *base, bool enable)
 {
-   ps5_draw_batch_drain();
-   ((struct ps5_context *)base)->queries_enabled = enable;
+   struct ps5_context *context = (struct ps5_context *)base;
+   /* u_blitter toggles this around internal draws even with no active query.
+    * Only a live query transition needs retirement before changing its state. */
+   if (context->queries_enabled != enable &&
+       (context->active_occlusion_query || ps5_any_primitive_query(context)))
+      ps5_draw_batch_drain();
+   context->queries_enabled = enable;
 }
 
 static void
@@ -11452,7 +11457,7 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
                     const struct pipe_scissor_state *scissor_state,
                     const union pipe_color_union *color)
 {
-   /* Native, single-layer color targets only. Masks and staged images keep
+   /* Native, single-layer color targets only. Masks and incompatible layouts keep
     * their checked CPU path; a scissored rectangle uses the same blitter. */
    if (!PS5_ENABLE_MRT_CANDIDATE || !PS5_ENABLE_UBO_CANDIDATE || !context ||
        !context->framebuffer_valid || !color ||
@@ -11476,12 +11481,15 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
 
    const struct pipe_surface *surface = &context->framebuffer.cbufs[0];
    const struct ps5_resource *target = (const struct ps5_resource *)surface->texture;
-   if (!target || target->base.target != PIPE_TEXTURE_2D ||
+   if (!target || (target->base.target != PIPE_TEXTURE_2D &&
+                   target->base.target != PIPE_TEXTURE_2D_ARRAY) ||
        target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
-       target->render_staging_size || surface->level || surface->first_layer ||
+       (target->render_staging_size && !ps5_linear_color_pitch(surface)) ||
+       surface->level || surface->first_layer ||
        surface->last_layer ||
        (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
-        surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT) ||
+        surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
+        surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB) ||
        target->base.format != surface->format ||
        context->framebuffer.width != ps5_surface_width(surface) ||
        context->framebuffer.height != ps5_surface_height(surface))
@@ -11548,8 +11556,7 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
    /* Only this validated color operation may defer its internal fan. The
     * caller has already completed any CPU depth/stencil part of a mixed clear. */
-   context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0 && !scissor_state &&
-                                  surface->format == PIPE_FORMAT_R8G8B8A8_UNORM;
+   context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0 && !scissor_state;
    if (scissor_state) {
       struct pipe_surface selected = *surface;
       util_blitter_clear_render_target(blitter, &selected, &quantized,

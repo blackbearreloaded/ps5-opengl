@@ -13,10 +13,12 @@ source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 assert "#define PS5_GPU_CLEAR_MIN_PIXELS 16384u" in source
 start = source.index("static bool\nps5_clear_gpu_color(")
 clear_body = source[start:source.index("\nstatic void\nps5_clear(", start)]
-assert clear_body.index("context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0 && !scissor_state &&") < \
+assert clear_body.index("context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0 && !scissor_state;") < \
        clear_body.index("   util_blitter_clear(") < \
        clear_body.index("context->deferred_color_clear = false;")
 prefix = source[start:source.index("   if (!context->blitter)", start)]
+query_start = source.index("static void\nps5_set_active_query_state(")
+query_state = source[query_start:source.index("\n}\n", query_start) + 3]
 code = r'''
 #include <assert.h>
 #include <stdint.h>
@@ -31,10 +33,13 @@ code = r'''
 #define PIPE_CLEAR_COLOR0 4
 #define PIPE_MASK_RGBA 15
 #define PIPE_TEXTURE_2D 2
+#define PIPE_TEXTURE_2D_ARRAY 7
 #define PIPE_FORMAT_R8G8B8A8_UNORM 1
 #define PIPE_FORMAT_R8_UNORM 2
 #define PIPE_FORMAT_R8G8_UNORM 3
 #define PIPE_FORMAT_R16G16B16A16_FLOAT 4
+#define PIPE_FORMAT_R11G11B10_FLOAT 5
+#define PIPE_FORMAT_R8G8B8A8_SRGB 6
 union pipe_color_union { uint32_t ui[4]; float f[4]; };
 struct pipe_scissor_state { unsigned minx,miny,maxx,maxy; };
 struct resource { unsigned target, nr_samples, nr_storage_samples, format; };
@@ -45,7 +50,7 @@ struct constant { struct resource *buffer; unsigned offset, size; bool valid, co
 struct pipe_constant_buffer { struct resource *buffer; unsigned buffer_offset, buffer_size; const void *user_buffer; };
 struct ps5_context {
     struct { unsigned width, height, nr_cbufs; struct pipe_surface cbufs[1]; } framebuffer;
-    bool framebuffer_valid;
+    bool framebuffer_valid, queries_enabled;
     unsigned render_condition_query, stream_output_target_count, active_occlusion_query;
     unsigned active_primitives_generated_query, active_primitives_emitted_query;
     struct constant constants[2][1]; struct ps5_resource *descriptor_storage[2];
@@ -54,6 +59,8 @@ static bool ps5_any_primitive_query(const struct ps5_context *c) {
     return c->active_primitives_generated_query || c->active_primitives_emitted_query;
 }
 static unsigned target_width = 128, target_height = 128;
+static unsigned linear_pitch;
+static unsigned ps5_linear_color_pitch(const struct pipe_surface *s) { (void)s; return linear_pitch; }
 static unsigned ps5_surface_width(const struct pipe_surface *s) { (void)s; return target_width; }
 static unsigned ps5_surface_height(const struct pipe_surface *s) { (void)s; return target_height; }
 static size_t ps5_copied_constant_offset(unsigned slot) { assert(slot == 1); return 16; }
@@ -64,7 +71,10 @@ static void ps5_clear_bounds(const struct pipe_scissor_state *s, unsigned w, uns
     *x1=s && s->maxx<w ? s->maxx : w;
     *y1=s && s->maxy<h ? s->maxy : h;
 }
-''' + prefix + r'''
+struct pipe_context { int unused; };
+static unsigned query_drains;
+static void ps5_draw_batch_drain(void) { ++query_drains; }
+''' + query_state + '\n' + prefix + r'''
    if (state->valid && state->copied) {
        assert(cb.user_buffer == copied_constants && cb.buffer_size == state->size);
        assert(!memcmp(cb.user_buffer, context->descriptor_storage[1]->data + 16, state->size));
@@ -78,6 +88,18 @@ static void ps5_clear_bounds(const struct pipe_scissor_state *s, unsigned w, uns
 static void test_adapter(void);
 int main(void) {
     test_adapter();
+    struct ps5_context query = {0};
+    ps5_set_active_query_state((struct pipe_context *)&query, true);
+    ps5_set_active_query_state((struct pipe_context *)&query, false);
+    assert(query_drains == 0 && !query.queries_enabled);
+    query.active_occlusion_query = 1;
+    ps5_set_active_query_state((struct pipe_context *)&query, true);
+    ps5_set_active_query_state((struct pipe_context *)&query, true);
+    assert(query_drains == 1 && query.queries_enabled);
+    query.active_occlusion_query = 0;
+    query.active_primitives_generated_query = 1;
+    ps5_set_active_query_state((struct pipe_context *)&query, false);
+    assert(query_drains == 2 && !query.queries_enabled);
     uint8_t bytes[PS5_MAX_CONSTANT_BUFFER_SIZE + 16]; memset(bytes, 0xa5, sizeof(bytes));
     struct ps5_resource target = {.base = {.target=2, .format=1}};
     struct ps5_resource storage = {.data=bytes, .size=sizeof(bytes)};
@@ -113,6 +135,25 @@ int main(void) {
         target.base.format=good.framebuffer.cbufs[0].format=format;
         assert(ps5_clear_gpu_color(&good,4,15,NULL,&color));
     }
+    target.base.format=good.framebuffer.cbufs[0].format=1;
+    /* The production layout validator is tested separately; its rejection
+     * must retain the CPU fallback, including incompatible sRGB views. */
+    target.base.target=PIPE_TEXTURE_2D_ARRAY;
+    target.render_staging_size=4096;
+    for (unsigned format=1;format<=6;++format) {
+        target.base.format=good.framebuffer.cbufs[0].format=format;
+        linear_pitch=0;
+        assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
+        linear_pitch=512;
+        assert(ps5_clear_gpu_color(&good,4,15,NULL,&color));
+        good.framebuffer.cbufs[0].format=99;
+        assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
+    }
+    target.base.target=3;
+    good.framebuffer.cbufs[0].format=target.base.format;
+    assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
+    target.base.target=PIPE_TEXTURE_2D;
+    target.render_staging_size=linear_pitch=0;
     target.base.format=good.framebuffer.cbufs[0].format=1;
     assert(!ps5_clear_gpu_color(&good, 4, 7, 0, &color));
     assert(!ps5_clear_gpu_color(&good, 8, 15, 0, &color));
