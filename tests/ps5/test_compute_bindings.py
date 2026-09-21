@@ -323,10 +323,7 @@ int ps5_agc_compute_execute(struct pipe_screen *s, const PsbcShaderOutput *shade
     for (unsigned i=0; i<15*4; ++i) assert(((uint32_t *)t->data)[i]==0);
     ++submitted; return 0;
 }
-static unsigned barrier_flushes;
-static void ps5_flush(struct pipe_context *context, struct pipe_fence_handle **fence, unsigned flags) {
-    assert(context && !fence && !flags); ++barrier_flushes;
-}
+
 ''' + barrier + fragment + constant + '\n#define PS5_ENABLE_BORDER_COLOR_CANDIDATE 1\n' + sampler_helpers + functions + r'''
 /* Only fields read by the extracted Mesa handoff/state code are modeled. */
 struct gl_buffer_object { struct pipe_resource *buffer; };
@@ -1112,11 +1109,12 @@ int main(void) {
     assert(PS5_COMPUTE_TEXTURE_SLOTS==16 && PS5_AGC_COMPUTE_MAX_RESOURCES==79);
     struct pipe_screen screen={.resource_destroy=destroy}, other_screen={0};
     struct pipe_context barrier_context={0};
+    unsigned barrier_before=fragment_drains;
     ps5_memory_barrier(&barrier_context,0);
-    assert(!barrier_flushes);
+    assert(fragment_drains==barrier_before);
     for(unsigned mask=1;mask<=PIPE_BARRIER_ALL;++mask) {
         ps5_memory_barrier(&barrier_context,mask);
-        assert(barrier_flushes==mask);
+        assert(fragment_drains==barrier_before+mask);
     }
     uint8_t table_data[PS5_COMPUTE_DESCRIPTOR_BYTES], output[256];
     struct ps5_resource table={.data=table_data};

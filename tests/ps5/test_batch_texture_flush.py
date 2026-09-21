@@ -13,8 +13,9 @@ code = (root / 'src/gallium/ps5/ps5_screen.c').read_text()
 start = code.index('struct ps5_batch_flush_cache {')
 end = code.index('\n}\n', code.index('ps5_flush_batch_backing(', start)) + 3
 helper = code[start:end]
-assert 'bool hazard = !base || base->target != PIPE_BUFFER;' in code
-assert 'memset(&ps5_deferred, 0, sizeof(ps5_deferred));' in code
+assert 'ps5_deferred_batch_overlaps(&ps5_deferred, buffer)' in code
+assert 'ps5_deferred_batch_overlaps(&ps5_inflight, buffer)' in code
+assert 'memset(batch, 0, sizeof(*batch));' in code
 assert 'slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit' in code
 assert 'flush_cache, 2 + PS5_MAX_TEXTURE_UNITS + binding' in code
 assert 'flush_cache, 2 + PS5_MAX_TEXTURE_UNITS + PIPE_MAX_ATTRIBS' in code

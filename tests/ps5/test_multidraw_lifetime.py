@@ -253,8 +253,13 @@ static _Noreturn void check_exit(int status) {
 static void reset(void) {
     /* Only resets the host mock. Production intentionally has no reset API. */
     memset(runtime_batch_entries, 0, sizeof(runtime_batch_entries));
+    memset(runtime_pending_entries, 0, sizeof(runtime_pending_entries));
     memset(markers, 0, sizeof(markers));
     runtime_batch_count = runtime_batch_active = runtime_batch_faulted = 0;
+    runtime_pending_count = runtime_pending_attempted = 0;
+#ifdef PS5_DRAW_PROFILE
+    runtime_pending_profile = 0;
+#endif
     submits = suspends = sleeps = unmaps = releases = delay = 0;
     fail_submit = -1; fail_suspend = fail_unmap = wrong_marker = 0;
 }
@@ -282,6 +287,12 @@ int main(void) {
     agc_submit_description_t d = {memory[0], 1, 0, {0}};
     assert(runtime_batch_queue(&api, &d, memory[0], 0, 64, &markers[0], 101) != 0);
     assert(ps5_agc_gate2_batch_end() == 0);
+    reset(); delay=5; queue(3);
+    assert(ps5_agc_gate2_batch_submit() == 0 && runtime_pending_count == 3);
+    assert(ps5_agc_gate2_batch_begin() == 0); /* CPU may stage the next batch. */
+    assert(ps5_agc_gate2_batch_retire(0) == 0 && !sleeps && !unmaps);
+    assert(ps5_agc_gate2_batch_retire(1) == 1 && sleeps == 5 && unmaps == 3 && releases == 3);
+    assert(ps5_agc_gate2_batch_end() == 0); /* Empty staged successor. */
     for (int failure = 0; failure < 6; ++failure) {
         reset(); queue(PS5_MULTIDRAW_BATCH_CAPACITY);
         if (failure == 0) fail_submit = 0;
@@ -302,7 +313,8 @@ int main(void) {
         assert(submits == (failure == 0 ? 1u : failure == 1 ? 4u : PS5_MULTIDRAW_BATCH_CAPACITY));
         assert(suspends == 1 && sleeps <= 2000);
         if (failure == 4) assert(sleeps == 2000); /* One shared timeout for the whole batch. */
-        assert(ps5_agc_gate2_batch_begin() != 0 && ps5_agc_gate2_batch_end() != 0);
+        if (failure == 5)
+            assert(ps5_agc_gate2_batch_begin() != 0 && ps5_agc_gate2_batch_end() != 0);
     }
 }
 '''
@@ -477,6 +489,8 @@ static int end(void) {
 }
 static int (*ps5_agc_gate2_batch_begin)(void)=begin;
 static int (*ps5_agc_gate2_batch_end)(void)=end;
+static int (*ps5_agc_gate2_batch_submit)(void) __attribute__((unused));
+static int (*ps5_agc_gate2_batch_retire)(int) __attribute__((unused));
 ''' + flush_cache_type + r'''
 static void ps5_draw_vbo_locked(struct pipe_context *b, const struct pipe_draw_info *info, unsigned id,
     const struct pipe_draw_indirect_info *indirect, const struct pipe_draw_start_count_bias *draw, unsigned n,
@@ -749,6 +763,7 @@ static _Noreturn void check_exit(int status) {
 static void drain(void) {
     simple_mtx_lock(&ps5_deferred_mutex);
     ps5_draw_batch_flush_locked();
+    ps5_draw_batch_retire_locked(true);
     simple_mtx_unlock(&ps5_deferred_mutex);
 }
 static void idle(void) {
@@ -963,16 +978,71 @@ with tempfile.TemporaryDirectory() as tmp:
             candidate = candidate.replace("if (ps5_deferred.owner && ps5_deferred.owner != context)", "if (false)")
             assert candidate != deferred_code
         if mutate == 2:
-            candidate = candidate.replace("   memset(&ps5_deferred, 0, sizeof(ps5_deferred));",
-                "   struct ps5_batch_flush_cache stale = ps5_deferred.flush_cache;\n"
-                "   memset(&ps5_deferred, 0, sizeof(ps5_deferred));\n"
-                "   ps5_deferred.flush_cache = stale;")
+            candidate = candidate.replace("   memset(batch, 0, sizeof(*batch));",
+                "   struct ps5_batch_flush_cache stale = batch->flush_cache;\n"
+                "   memset(batch, 0, sizeof(*batch));\n"
+                "   batch->flush_cache = stale;")
             assert candidate != deferred_code
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", *flags,
                         "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
                        input=candidate, text=True, check=True)
         run = subprocess.run([str(exe)], cwd=tmp, capture_output=True, text=True)
-        assert (run.returncode == 0) == (mutate == 0), run.stderr
+        assert (run.returncode == 0) == (mutate == 0), f"mutate={mutate} flags={flags}\n{run.stderr}"
+
+# Exercise the new runtime entry points, not only the synchronous fallback above.
+submit_start = source.index("static void\nps5_draw_batch_submit(")
+submit_helper = source[submit_start:source.index("\n}\n", submit_start) + 3]
+async_code = deferred_code[:deferred_code.index("int main(void) {")] + submit_helper + r'''
+static bool in_flight;
+static unsigned blocking_waits, probes;
+static int async_submit(void) {
+    assert(!in_flight);
+    int result=end();
+    in_flight=true;
+    return result;
+}
+static int async_retire(int wait) {
+    assert(in_flight);
+    if (!wait) { ++probes; return 0; }
+    ++blocking_waits;
+    in_flight=false;
+    return 1;
+}
+int main(void) {
+    struct pipe_draw_info info={.mode=4,.instance_count=1,.index_size=2,.index={&borrowed.base}};
+    struct pipe_draw_start_count_bias draw={0,6,0};
+    deferred_mode=true;
+    reset();
+    ps5_agc_gate2_batch_submit=async_submit;
+    ps5_agc_gate2_batch_retire=async_retire;
+    struct ps5_query occlusion={.buffer=&query_backing.base};
+    context.active_occlusion_query=&occlusion;
+    context.queries_enabled=true;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    ps5_draw_batch_submit();
+    assert(in_flight && probes==1 && !blocking_waits && !freed);
+    assert(ps5_inflight.owner && !ps5_deferred.owner && !occlusion.value);
+    ps5_draw_batch_submit(); /* An empty flush must not retire the prior batch. */
+    assert(in_flight && !blocking_waits && !freed);
+    struct ps5_resource independent={.base={.target=PIPE_BUFFER},.data=(void *)1,.allocation_size=1};
+    ps5_draw_batch_drain_buffer(&independent.base);
+    assert(in_flight && !blocking_waits && !freed);
+    /* CPU can build a second batch while the first still owns its resources. */
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    assert(ps5_deferred.owner && ps5_inflight.owner && !freed);
+    ps5_draw_batch_drain_buffer(&borrowed.base);
+    assert(!in_flight && blocking_waits==2 && probes==2 && occlusion.value==2);
+    idle();
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    exe = Path(tmp) / "async"
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                    "-Wno-unused-function", "-DPS5_DEFERRED_DRAW_BATCH=1",
+                    "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
+                   input=async_code, text=True, check=True)
+    subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
+print("PASS: submission-only flush, two retained batches, unrelated CPU access, alias wait and delayed query collection")
 
 # The queue test alone cannot prove that CPU access / lifecycle entry points drain.
 for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_blit",
@@ -995,7 +1065,7 @@ for name, argument in (("ps5_transfer_map", "base"),
     assert "ps5_draw_batch_drain();" not in function, name
 start = source.index("\nps5_flush(")
 function = source[start:source.index("\n}\n", start)]
-assert function.index("ps5_draw_batch_drain();") < function.index("if (!out_fence)")
+assert function.index("if (!out_fence)") < function.index("ps5_draw_batch_submit();") < function.index("ps5_draw_batch_drain();")
 start = source.index("\nps5_screen_submit_lock(")
 assert "ps5_draw_batch_flush_locked();" in source[start:source.index("\n}\n", start)]
 print(f"PASS: deferred 1..{capacity} snapshots and {2 * capacity + 3} cross-boundary draws, resource pins, owner/fallback drains, OOM/no replay and fail-stop")

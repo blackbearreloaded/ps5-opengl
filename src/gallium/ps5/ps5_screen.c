@@ -115,6 +115,7 @@ struct ps5_screen {
 /* Runtime setters/queue are process-global, including across pipe_screens. */
 static simple_mtx_t ps5_deferred_mutex = SIMPLE_MTX_INITIALIZER;
 static void ps5_draw_batch_flush_locked(void);
+static void ps5_draw_batch_retire_locked(bool wait);
 static void ps5_draw_batch_drain_buffer(struct pipe_resource *resource);
 #else
 #define ps5_draw_batch_drain_buffer(resource) ((void)(resource))
@@ -129,6 +130,7 @@ ps5_screen_submit_lock(struct pipe_screen *base)
    (void)base;
    simple_mtx_lock(&ps5_deferred_mutex);
    ps5_draw_batch_flush_locked();
+   ps5_draw_batch_retire_locked(true);
 #else
    simple_mtx_lock(&((struct ps5_screen *)base)->submit_mutex);
 #endif
@@ -151,6 +153,16 @@ ps5_draw_batch_drain(void)
 #ifdef PS5_DEFERRED_DRAW_BATCH
    ps5_screen_submit_lock(NULL);
    ps5_screen_submit_unlock(NULL);
+#endif
+}
+
+static void
+ps5_draw_batch_submit(void)
+{
+#ifdef PS5_DEFERRED_DRAW_BATCH
+   simple_mtx_lock(&ps5_deferred_mutex);
+   ps5_draw_batch_flush_locked();
+   simple_mtx_unlock(&ps5_deferred_mutex);
 #endif
 }
 
@@ -8061,7 +8073,7 @@ static bool
 ps5_fence_finish(struct pipe_screen *screen, struct pipe_context *context,
                  struct pipe_fence_handle *fence, uint64_t timeout)
 {
-   /* Flush retires staged draws before creating a fence, so it is signaled.
+   /* A flush requesting a fence retires staged draws, so it is signaled.
     * ponytail: synchronous fences; replace when GPU work remains in flight. */
    (void)screen;
    (void)context;
@@ -8435,9 +8447,13 @@ ps5_flush(struct pipe_context *context, struct pipe_fence_handle **out_fence,
    struct ps5_fence *fence;
 
    (void)flags;
-   ps5_draw_batch_drain();
-   if (!out_fence)
+   if (!out_fence) {
+      ps5_draw_batch_submit();
       return;
+   }
+   /* Fences remain signaled on creation; only a submission-only flush can
+    * return while the retained batch is in flight. */
+   ps5_draw_batch_drain();
 
    fence = calloc(1, sizeof(*fence));
    if (!fence)
@@ -8456,7 +8472,8 @@ ps5_memory_barrier(struct pipe_context *context, unsigned flags)
     * graphics may still have deferred draws. Reuse the common drain.
     * ponytail: full drain for every nonzero mask; async queues need tracked hazards. */
    if (flags)
-      ps5_flush(context, NULL, 0);
+      ps5_draw_batch_drain();
+   (void)context;
 }
 
 static bool
@@ -10450,6 +10467,8 @@ ps5_draw_vbo_without_adjacency(
 #ifdef PS5_MULTIDRAW_BATCH
 int ps5_agc_gate2_batch_begin(void) __attribute__((weak));
 int ps5_agc_gate2_batch_end(void) __attribute__((weak));
+int ps5_agc_gate2_batch_submit(void) __attribute__((weak));
+int ps5_agc_gate2_batch_retire(int wait) __attribute__((weak));
 
 enum ps5_batch_eligibility {
    PS5_BATCH_ELIGIBLE,
@@ -10752,12 +10771,15 @@ struct ps5_deferred_slot {
    struct pipe_resource *occlusion_buffer;
 };
 
-static struct {
+struct ps5_deferred_batch {
    struct ps5_context *owner;
    unsigned count;
    struct ps5_batch_flush_cache flush_cache;
    struct ps5_deferred_slot slots[PS5_MULTIDRAW_BATCH_CAPACITY];
-} ps5_deferred;
+};
+/* ponytail: one in-flight batch plus one building batch; expand only if
+ * retirement backpressure remains significant after removing forced waits. */
+static struct ps5_deferred_batch ps5_deferred, ps5_inflight;
 
 static void
 ps5_deferred_slot_release(struct ps5_deferred_slot *slot)
@@ -10789,29 +10811,67 @@ ps5_context_queue_present(struct pipe_context *base, unsigned buffer_index)
 }
 
 static void
+ps5_deferred_batch_release(struct ps5_deferred_batch *batch)
+{
+   if (!batch->owner)
+      return;
+   printf("[ps5-deferred-batch] draws=%u result=0\n", batch->count);
+   for (unsigned slot = 0; slot < batch->count; ++slot) {
+      if (batch->slots[slot].occlusion_query &&
+          !ps5_collect_occlusion_query_resource(
+             batch->slots[slot].occlusion_query,
+             batch->slots[slot].occlusion_buffer)) {
+         fputs("[ps5-gallium] deferred query collection failed; terminating before resource release\n", stderr);
+         fflush(stderr);
+         _Exit(EXIT_FAILURE);
+      }
+      ps5_deferred_slot_release(&batch->slots[slot]);
+   }
+   memset(batch, 0, sizeof(*batch));
+}
+
+static void
+ps5_draw_batch_retire_locked(bool wait)
+{
+   if (!ps5_inflight.owner)
+      return;
+   int status = ps5_agc_gate2_batch_retire
+      ? ps5_agc_gate2_batch_retire(wait)
+      : -1;
+   if (!status)
+      return;
+   if (status < 0) {
+      fputs("[ps5-gallium] deferred batch retirement failed; terminating before resource release\n", stderr);
+      fflush(stderr);
+      _Exit(EXIT_FAILURE);
+   }
+   ps5_deferred_batch_release(&ps5_inflight);
+}
+
+static void
 ps5_draw_batch_flush_locked(void)
 {
    if (!ps5_deferred.owner)
       return;
+   if (ps5_agc_gate2_batch_submit && ps5_agc_gate2_batch_retire) {
+      ps5_draw_batch_retire_locked(true);
+      if (ps5_agc_gate2_batch_submit() != 0) {
+         fputs("[ps5-gallium] deferred batch submission failed; terminating before resource release\n", stderr);
+         fflush(stderr);
+         _Exit(EXIT_FAILURE);
+      }
+      ps5_inflight = ps5_deferred;
+      memset(&ps5_deferred, 0, sizeof(ps5_deferred));
+      ps5_draw_batch_retire_locked(false);
+      return;
+   }
    if (ps5_agc_gate2_batch_end() != 0) {
       /* No late error can safely be reported as success by a later GL call. */
       fputs("[ps5-gallium] deferred batch cleanup failed; terminating before resource release\n", stderr);
       fflush(stderr);
       _Exit(EXIT_FAILURE);
    }
-   printf("[ps5-deferred-batch] draws=%u result=0\n", ps5_deferred.count);
-   for (unsigned slot = 0; slot < ps5_deferred.count; ++slot) {
-      if (ps5_deferred.slots[slot].occlusion_query &&
-          !ps5_collect_occlusion_query_resource(
-             ps5_deferred.slots[slot].occlusion_query,
-             ps5_deferred.slots[slot].occlusion_buffer)) {
-         fputs("[ps5-gallium] deferred query collection failed; terminating before resource release\n", stderr);
-         fflush(stderr);
-         _Exit(EXIT_FAILURE);
-      }
-      ps5_deferred_slot_release(&ps5_deferred.slots[slot]);
-   }
-   memset(&ps5_deferred, 0, sizeof(ps5_deferred));
+   ps5_deferred_batch_release(&ps5_deferred);
 }
 
 static bool
@@ -10843,8 +10903,27 @@ ps5_buffer_overlaps_resource(const struct ps5_resource *buffer,
                             resource->data, bytes))
       return true;
    return (resource->stencil_data || resource->stencil_allocation_size) &&
-      ps5_memory_overlaps(buffer->data, buffer->allocation_size,
-                           resource->stencil_data, resource->stencil_allocation_size);
+       ps5_memory_overlaps(buffer->data, buffer->allocation_size,
+                            resource->stencil_data, resource->stencil_allocation_size);
+}
+
+static bool
+ps5_deferred_batch_overlaps(const struct ps5_deferred_batch *batch,
+                            const struct ps5_resource *buffer)
+{
+   if (!batch->owner)
+      return false;
+   if (!buffer || buffer->base.target != PIPE_BUFFER)
+      return true;
+   for (unsigned slot = 0; slot < batch->count; ++slot) {
+      for (unsigned stage = 0; stage < 3; ++stage)
+         if (ps5_buffer_overlaps_resource(buffer, batch->slots[slot].storage[stage]))
+            return true;
+      for (unsigned i = 0; i < batch->slots[slot].retained_count; ++i)
+         if (ps5_buffer_overlaps_resource(buffer, batch->slots[slot].retained[i]))
+            return true;
+   }
+   return false;
 }
 
 static void
@@ -10852,18 +10931,12 @@ ps5_draw_batch_drain_buffer(struct pipe_resource *base)
 {
    const struct ps5_resource *buffer = (const struct ps5_resource *)base;
    simple_mtx_lock(&ps5_deferred_mutex);
-   if (ps5_deferred.owner) {
-      /* ponytail: whole allocations, bounded by the batch capacity. Range tracking only
-       * if conservative alias/arena overlap becomes a measured bottleneck. */
-      bool hazard = !base || base->target != PIPE_BUFFER;
-      for (unsigned slot = 0; !hazard && slot < ps5_deferred.count; ++slot) {
-         for (unsigned stage = 0; stage < 3; ++stage)
-            hazard |= ps5_buffer_overlaps_resource(buffer, ps5_deferred.slots[slot].storage[stage]);
-         for (unsigned i = 0; i < ps5_deferred.slots[slot].retained_count; ++i)
-            hazard |= ps5_buffer_overlaps_resource(buffer, ps5_deferred.slots[slot].retained[i]);
-      }
-      if (hazard)
-         ps5_draw_batch_flush_locked();
+   /* ponytail: whole allocations, bounded by the batch capacity. Range tracking only
+    * if conservative alias/arena overlap becomes a measured bottleneck. */
+   if (ps5_deferred_batch_overlaps(&ps5_deferred, buffer) ||
+       ps5_deferred_batch_overlaps(&ps5_inflight, buffer)) {
+      ps5_draw_batch_flush_locked();
+      ps5_draw_batch_retire_locked(true);
    }
    simple_mtx_unlock(&ps5_deferred_mutex);
 }

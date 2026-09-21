@@ -30,7 +30,8 @@ static uint32_t completion;
 static struct runtime_batch_entry { struct { void *words; uint32_t word_count; } submit;
     void *memory; size_t bytes; uint32_t *marker; uint32_t expected;
 } runtime_batch_entries[1];
-static unsigned runtime_batch_count, runtime_batch_active, runtime_batch_faulted;
+static unsigned runtime_batch_count, runtime_batch_active, runtime_batch_faulted,
+                runtime_pending_count;
 static int runtime_video_registered, runtime_video_handle, runtime_gpu_present_buffer;
 static uint64_t runtime_gpu_present_marker;
 static unsigned runtime_gpu_present_count, runtime_present_count, out_of_space;
