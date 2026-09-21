@@ -41,8 +41,10 @@ harness = r'''
 #define PS5_MAX_TEXTURE_UNITS 16
 #define PIPE_MAX_ATTRIBS 16
 static unsigned flushes;
+static const void *flushed_data[2];
+static size_t flushed_bytes[2];
 static void ps5_flush_gpu_data(const void *data, size_t bytes) {
-    (void)data; (void)bytes; ++flushes;
+    flushed_data[flushes&1]=data; flushed_bytes[flushes&1]=bytes; ++flushes;
 }
 ''' + helper + r'''
 enum { PIPE_TEXTURE_2D=2, PIPE_TEXTURE_2D_ARRAY=7 };
@@ -146,13 +148,39 @@ int main(void) {
     ps5_flush_batch_backing(&cache, 2, textures[1], 32);
     ps5_flush_batch_backing(NULL, 2, textures[1], 32);
     ps5_flush_batch_backing(NULL, 2, textures[1], 32);
+#ifdef PS5_GPU_PRESENT_BATCH
+    assert(flushes == before + 8); /* The smaller first range is already published. */
+#else
     assert(flushes == before + 9);
+#endif
     /* Missing backing/empty flush cannot consume a remembered entry. */
     before = flushes;
     ps5_flush_batch_backing(&cache, 2, NULL, 32);
     ps5_flush_batch_backing(&cache, 2, textures[1], 0);
     ps5_flush_batch_backing(&cache, 2, textures[1], 32);
     assert(flushes == before + 3);
+#ifdef PS5_GPU_PRESENT_BATCH
+    char range[256];
+    memset(&cache,0,sizeof(cache));
+    before=flushes;
+    ps5_flush_batch_backing(&cache,0,range+64,64);
+    ps5_flush_batch_backing(&cache,0,range+80,16);
+    assert(flushes==before+1);
+    ps5_flush_batch_backing(&cache,0,range+32,64);
+    assert(flushes==before+2 && cache.data[0]==range+32 && cache.size[0]==96);
+    assert(flushed_data[(flushes-1)&1]==range+32 && flushed_bytes[(flushes-1)&1]==32);
+    ps5_flush_batch_backing(&cache,0,range+96,64);
+    assert(flushes==before+3 && cache.size[0]==128);
+    assert(flushed_data[(flushes-1)&1]==range+128 && flushed_bytes[(flushes-1)&1]==32);
+    ps5_flush_batch_backing(&cache,0,range,192);
+    assert(flushes==before+5 && cache.data[0]==range && cache.size[0]==192);
+    assert(flushed_data[(flushes-2)&1]==range && flushed_bytes[(flushes-2)&1]==32);
+    assert(flushed_data[(flushes-1)&1]==range+160 && flushed_bytes[(flushes-1)&1]==32);
+    ps5_flush_batch_backing(&cache,0,range+224,32);
+    assert(flushes==before+6 && cache.data[0]==range+224 && cache.size[0]==32);
+    ps5_flush_batch_backing(&cache,0,range+192,32);
+    assert(flushes==before+7 && cache.data[0]==range+192 && cache.size[0]==64);
+#endif
     return 0;
 }
 '''

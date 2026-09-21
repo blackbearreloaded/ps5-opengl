@@ -2344,11 +2344,24 @@ ps5_hash32(const void *data, size_t size)
    return hash;
 }
 
+#ifdef PS5_DRAW_PROFILE
+static uint64_t ps5_cpu_flush_calls, ps5_cpu_flush_bytes, ps5_cpu_flush_ns;
+#endif
+
 static void
 ps5_flush_gpu_data(const void *address, size_t bytes)
 {
-   if (bytes)
-      util_flush_inval_range((void *)address, bytes);
+   if (!bytes)
+      return;
+#ifdef PS5_DRAW_PROFILE
+   const int64_t start = os_time_get_nano();
+#endif
+   util_flush_inval_range((void *)address, bytes);
+#ifdef PS5_DRAW_PROFILE
+   __atomic_fetch_add(&ps5_cpu_flush_calls, 1, __ATOMIC_RELAXED);
+   __atomic_fetch_add(&ps5_cpu_flush_bytes, bytes, __ATOMIC_RELAXED);
+   __atomic_fetch_add(&ps5_cpu_flush_ns, os_time_get_nano() - start, __ATOMIC_RELAXED);
+#endif
 }
 
 static bool
@@ -2444,11 +2457,24 @@ ps5_flush_batch_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
 {
    /* Only unsubmitted, retained batch resources may reuse a CPU flush. CPU
     * access drains that batch; its cache is discarded before the next draw.
-    * ponytail: last backing per plane/texture unit, reset at every batch drain. */
+    * ponytail: one published interval per plane/texture unit, reset at batch drain. */
 #ifdef PS5_GPU_PRESENT_BATCH
-   if (batch && data && bytes &&
-       batch->data[slot] == data && batch->size[slot] == bytes)
-      return;
+   if (batch && data && bytes && batch->data[slot] && batch->size[slot]) {
+      uintptr_t start = (uintptr_t)data, old = (uintptr_t)batch->data[slot];
+      if (bytes <= UINTPTR_MAX - start && batch->size[slot] <= UINTPTR_MAX - old) {
+         uintptr_t end = start + bytes, old_end = old + batch->size[slot];
+         if (start <= old_end && old <= end) {
+            if (start < old)
+               ps5_flush_gpu_data(data, old - start);
+            if (end > old_end)
+               ps5_flush_gpu_data((const void *)old_end, end - old_end);
+            uintptr_t first = start < old ? start : old;
+            batch->data[slot] = (const void *)first;
+            batch->size[slot] = (end > old_end ? end : old_end) - first;
+            return;
+         }
+      }
+   }
 #else
    (void)batch;
    (void)slot;
@@ -15508,6 +15534,10 @@ ps5_context_destroy(struct pipe_context *base)
 
    ps5_draw_batch_drain();
 #ifdef PS5_DRAW_PROFILE
+   printf("[ps5-cpu-flush-summary] calls=%" PRIu64 " bytes=%" PRIu64 " ns=%" PRIu64 "\n",
+          __atomic_load_n(&ps5_cpu_flush_calls, __ATOMIC_RELAXED),
+          __atomic_load_n(&ps5_cpu_flush_bytes, __ATOMIC_RELAXED),
+          __atomic_load_n(&ps5_cpu_flush_ns, __ATOMIC_RELAXED));
    printf("[ps5-batch-summary] config gpu-present="
 #ifdef PS5_GPU_PRESENT_BATCH
           "1"
