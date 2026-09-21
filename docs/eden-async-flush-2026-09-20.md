@@ -32,7 +32,15 @@ No PS5 connection or deployment was made for this change. Eden's shared
 token-owned console lock was restored separately in Eden commit `7ae2883`.
 The installed candidate remains the previous combined-query clear build.
 
-Remaining major serialization points include query begin/end/result,
+Counter begin/end and query enable/disable now preserve queued work. Only
+reuse of an occlusion object referenced by queued or in-flight slots drains
+before resetting its value. Primitive counters are accounted at draw-build
+time; timestamps, query result reads and query destruction retain their waits.
+Production-source checks cover successive queries, queued and in-flight reuse,
+and reject mutations that remove reuse protection or restore global waits.
+The full host suite and SDK cross-build passed (`build/sdk/query-scopes`).
+
+Remaining major serialization points include query result reads,
 clear entry, barriers and standalone draws. Do not interpret the previous
 completion-poll wall time as hardware GPU execution time, or attribute a
 speedup to this patch without a frozen candidate and a hardware comparison.

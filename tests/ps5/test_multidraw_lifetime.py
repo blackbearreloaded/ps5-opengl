@@ -365,7 +365,7 @@ struct pipe_draw_info { unsigned mode, instance_count, start_instance, index_siz
 struct pipe_draw_indirect_info { int unused; };
 struct pipe_draw_start_count_bias { unsigned start, count; int index_bias; };
 struct pipe_depth_stencil_alpha_state { bool depth_enabled; struct { bool enabled; } stencil[2]; };
-struct ps5_query { uint64_t value; struct pipe_resource *buffer; };
+struct ps5_query { uint64_t value, start, end; unsigned type, index; bool ready, active; struct pipe_resource *buffer; };
 struct ps5_context {
     struct pipe_context base;
     struct { bool running; } *blitter;
@@ -374,6 +374,7 @@ struct ps5_context {
     bool framebuffer_valid; unsigned *vs, *fs, *gs;
     unsigned stream_output_target_count, render_condition_query, vertex_buffer_count;
     bool queries_enabled;
+    struct ps5_query *active_streamout_overflow_query[PIPE_MAX_VERTEX_STREAMS+1];
     struct ps5_query *active_occlusion_query;
     struct ps5_query *active_primitives_generated_query[PIPE_MAX_VERTEX_STREAMS];
     struct ps5_query *active_primitives_emitted_query[PIPE_MAX_VERTEX_STREAMS];
@@ -992,7 +993,25 @@ with tempfile.TemporaryDirectory() as tmp:
 # Exercise the new runtime entry points, not only the synchronous fallback above.
 submit_start = source.index("static void\nps5_draw_batch_submit(")
 submit_helper = source[submit_start:source.index("\n}\n", submit_start) + 3]
-async_code = deferred_code[:deferred_code.index("int main(void) {")] + submit_helper + r'''
+def query_function(name):
+    start = source.index("\n" + name + "(")
+    start = source.rfind("static ", 0, start)
+    return source[start:source.index("\n}\n", start) + 3]
+query_code = r'''
+struct pipe_query;
+enum { PIPE_QUERY_PRIMITIVES_GENERATED=1, PIPE_QUERY_PRIMITIVES_EMITTED,
+       PIPE_QUERY_SO_OVERFLOW_PREDICATE, PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE,
+       PIPE_QUERY_OCCLUSION_COUNTER, PIPE_QUERY_OCCLUSION_PREDICATE,
+       PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE, PIPE_QUERY_TIME_ELAPSED };
+#define PS5_ENABLE_TRANSFORM_FEEDBACK_CANDIDATE 1
+#define PS5_ENABLE_GLSL_460_CANDIDATE 1
+#define PS5_ENABLE_OCCLUSION_QUERY_CANDIDATE 1
+static void ps5_draw_batch_drain(void) { drain(); }
+static uint64_t os_time_get_nano(void) { return 1; }
+''' + "\n".join(query_function(name) for name in (
+    "ps5_active_primitive_query", "ps5_active_streamout_overflow_query",
+    "ps5_begin_query", "ps5_end_query", "ps5_set_active_query_state"))
+async_code = deferred_code[:deferred_code.index("int main(void) {")] + submit_helper + query_code + r'''
 static bool in_flight;
 static unsigned blocking_waits, probes;
 static int async_submit(void) {
@@ -1015,10 +1034,12 @@ int main(void) {
     reset();
     ps5_agc_gate2_batch_submit=async_submit;
     ps5_agc_gate2_batch_retire=async_retire;
-    struct ps5_query occlusion={.buffer=&query_backing.base};
-    context.active_occlusion_query=&occlusion;
+    struct ps5_query occlusion={.buffer=&query_backing.base,.type=PIPE_QUERY_OCCLUSION_COUNTER};
+    assert(ps5_begin_query(&context.base,(struct pipe_query *)&occlusion));
     context.queries_enabled=true;
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    assert(ps5_end_query(&context.base,(struct pipe_query *)&occlusion));
+    assert(!ended && !freed && ps5_deferred.owner);
     ps5_draw_batch_submit();
     assert(in_flight && probes==1 && !blocking_waits && !freed);
     assert(ps5_inflight.owner && !ps5_deferred.owner && !occlusion.value);
@@ -1027,29 +1048,54 @@ int main(void) {
     struct ps5_resource independent={.base={.target=PIPE_BUFFER},.data=(void *)1,.allocation_size=1};
     ps5_draw_batch_drain_buffer(&independent.base);
     assert(in_flight && !blocking_waits && !freed);
+    struct ps5_query successor={.buffer=&query_backing.base,.type=PIPE_QUERY_OCCLUSION_COUNTER};
+    assert(ps5_begin_query(&context.base,(struct pipe_query *)&successor));
+    assert(in_flight && !blocking_waits && !freed);
+    ps5_set_active_query_state(&context.base,false);
+    ps5_set_active_query_state(&context.base,true);
+    assert(in_flight && !blocking_waits);
     /* CPU can build a second batch while the first still owns its resources. */
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     assert(ps5_deferred.owner && ps5_inflight.owner && !freed);
-    ps5_draw_batch_drain_buffer(&borrowed.base);
-    assert(!in_flight && blocking_waits==2 && probes==2 && occlusion.value==2);
+    assert(ps5_end_query(&context.base,(struct pipe_query *)&successor));
+    assert(!blocking_waits && !freed);
+    /* Reusing the first query must collect both batches before resetting it. */
+    assert(ps5_begin_query(&context.base,(struct pipe_query *)&occlusion));
+    assert(!in_flight && blocking_waits==2 && probes==2);
+    assert(occlusion.value==0 && successor.value==1);
+    assert(ps5_end_query(&context.base,(struct pipe_query *)&occlusion));
+    idle();
+    assert(ps5_begin_query(&context.base,(struct pipe_query *)&occlusion));
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    assert(ps5_end_query(&context.base,(struct pipe_query *)&occlusion));
+    assert(ps5_begin_query(&context.base,(struct pipe_query *)&occlusion));
+    assert(blocking_waits==3 && !occlusion.value); /* Reuse of an unsubmitted slot. */
+    assert(ps5_end_query(&context.base,(struct pipe_query *)&occlusion));
     idle();
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:
     exe = Path(tmp) / "async"
-    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+    for before, after in ((None, None),
+        ("pending |= batches[i]->slots[slot].occlusion_query == query;",
+         "pending |= (false && query);"),
+        ("ps5_draw_batch_drain_query(query);", "ps5_draw_batch_drain();")):
+        candidate = async_code if before is None else async_code.replace(before, after)
+        assert before is None or candidate != async_code
+        subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
                     "-Wno-unused-function", "-DPS5_DEFERRED_DRAW_BATCH=1",
                     "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
-                   input=async_code, text=True, check=True)
-    subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
-print("PASS: submission-only flush, two retained batches, unrelated CPU access, alias wait and delayed query collection")
+                       input=candidate, text=True, check=True)
+        run = subprocess.run([str(exe)], cwd=tmp, capture_output=True, text=True)
+        assert (run.returncode == 0) == (before is None), run.stderr
+print("PASS: asynchronous flush, query scope changes, queued/in-flight query reuse, and delayed collection; both unsafe reuse and global-wait mutations rejected")
 
 # The queue test alone cannot prove that CPU access / lifecycle entry points drain.
 for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_blit",
              "ps5_generate_mipmap", "ps5_get_timestamp", "ps5_destroy_query",
              "ps5_begin_query", "ps5_end_query", "ps5_get_query_result",
              "ps5_get_query_result_resource",
-             "ps5_set_active_query_state", "ps5_render_condition",
+             "ps5_render_condition",
              "ps5_flush", "ps5_clear", "ps5_context_last_draw_status",
              "ps5_context_destroy", "ps5_screen_destroy"):
     start = source.index("\n" + name + "(")

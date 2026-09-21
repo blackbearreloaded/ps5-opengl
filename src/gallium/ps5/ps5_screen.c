@@ -116,9 +116,12 @@ struct ps5_screen {
 static simple_mtx_t ps5_deferred_mutex = SIMPLE_MTX_INITIALIZER;
 static void ps5_draw_batch_flush_locked(void);
 static void ps5_draw_batch_retire_locked(bool wait);
+struct ps5_query;
+static void ps5_draw_batch_drain_query(struct ps5_query *query);
 static void ps5_draw_batch_drain_buffer(struct pipe_resource *resource);
 #else
 #define ps5_draw_batch_drain_buffer(resource) ((void)(resource))
+#define ps5_draw_batch_drain_query(query) ((void)(query))
 #endif
 static int ps5_storage_image_view_descriptor(const struct pipe_image_view *view,
                                              uint32_t descriptor[8]);
@@ -8180,9 +8183,11 @@ ps5_begin_query(struct pipe_context *base, struct pipe_query *pipe_query)
    struct ps5_query **primitive_query;
    struct ps5_query **overflow_query;
 
-   ps5_draw_batch_drain();
    if (!query || query->active)
       return false;
+   /* A new counter does not depend on earlier draws. Reusing an occlusion
+    * object must first collect any slots that still point at its old value. */
+   ps5_draw_batch_drain_query(query);
    primitive_query = ps5_active_primitive_query(
       context, query->type, query->index);
    if (primitive_query) {
@@ -8219,6 +8224,7 @@ ps5_begin_query(struct pipe_context *base, struct pipe_query *pipe_query)
    }
    if (query->type != PIPE_QUERY_TIME_ELAPSED)
       return false;
+   ps5_draw_batch_drain();
    query->start = os_time_get_nano();
    query->end = 0;
    query->active = true;
@@ -8234,7 +8240,6 @@ ps5_end_query(struct pipe_context *base, struct pipe_query *pipe_query)
    struct ps5_query **primitive_query;
    struct ps5_query **overflow_query;
 
-   ps5_draw_batch_drain();
    if (!query)
       return false;
    primitive_query = ps5_active_primitive_query(
@@ -8273,6 +8278,7 @@ ps5_end_query(struct pipe_context *base, struct pipe_query *pipe_query)
    } else if (query->active) {
       return false;
    }
+   ps5_draw_batch_drain();
    query->end = os_time_get_nano();
    query->active = false;
    query->ready = true;
@@ -8350,11 +8356,8 @@ static void
 ps5_set_active_query_state(struct pipe_context *base, bool enable)
 {
    struct ps5_context *context = (struct ps5_context *)base;
-   /* Finish counted draws before disabling a live query. Re-enabling needs no
-    * drain: each deferred slot captured its query (or NULL) when it was built. */
-   if (context->queries_enabled && !enable &&
-       (context->active_occlusion_query || ps5_any_primitive_query(context)))
-      ps5_draw_batch_drain();
+   /* Slots capture occlusion ownership at draw time; primitive counts are
+    * accounted when each draw is built. Changing scope needs no GPU wait. */
    context->queries_enabled = enable;
 }
 
@@ -10883,6 +10886,22 @@ ps5_memory_overlaps(const void *a, size_t a_size, const void *b, size_t b_size)
        a_size > UINTPTR_MAX - first || b_size > UINTPTR_MAX - second)
       return true;
    return first <= second ? second - first < a_size : first - second < b_size;
+}
+
+static void
+ps5_draw_batch_drain_query(struct ps5_query *query)
+{
+   simple_mtx_lock(&ps5_deferred_mutex);
+   const struct ps5_deferred_batch *batches[] = {&ps5_deferred, &ps5_inflight};
+   bool pending = false;
+   for (unsigned i = 0; i < 2; ++i)
+      for (unsigned slot = 0; slot < batches[i]->count; ++slot)
+         pending |= batches[i]->slots[slot].occlusion_query == query;
+   if (pending) {
+      ps5_draw_batch_flush_locked();
+      ps5_draw_batch_retire_locked(true);
+   }
+   simple_mtx_unlock(&ps5_deferred_mutex);
 }
 
 static bool

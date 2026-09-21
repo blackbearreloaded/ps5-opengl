@@ -55,7 +55,7 @@ struct ps5_context {
     unsigned active_primitives_generated_query, active_primitives_emitted_query;
     struct constant constants[2][1]; struct ps5_resource *descriptor_storage[2];
 };
-static bool ps5_any_primitive_query(const struct ps5_context *c) {
+static __attribute__((unused)) bool ps5_any_primitive_query(const struct ps5_context *c) {
     return c->active_primitives_generated_query || c->active_primitives_emitted_query;
 }
 static unsigned target_width = 128, target_height = 128;
@@ -73,7 +73,7 @@ static void ps5_clear_bounds(const struct pipe_scissor_state *s, unsigned w, uns
 }
 struct pipe_context { int unused; };
 static unsigned query_drains;
-static void ps5_draw_batch_drain(void) { ++query_drains; }
+static __attribute__((unused)) void ps5_draw_batch_drain(void) { ++query_drains; }
 ''' + query_state + '\n' + prefix + r'''
    if (state->valid && state->copied) {
        assert(cb.user_buffer == copied_constants && cb.buffer_size == state->size);
@@ -99,7 +99,7 @@ int main(void) {
     query.active_occlusion_query = 0;
     query.active_primitives_generated_query = 1;
     ps5_set_active_query_state((struct pipe_context *)&query, false);
-    assert(query_drains == 1 && !query.queries_enabled);
+    assert(query_drains == 0 && !query.queries_enabled);
     uint8_t bytes[PS5_MAX_CONSTANT_BUFFER_SIZE + 16]; memset(bytes, 0xa5, sizeof(bytes));
     struct ps5_resource target = {.base = {.target=2, .format=1}};
     struct ps5_resource storage = {.data=bytes, .size=sizeof(bytes)};
@@ -261,7 +261,7 @@ static int gpu_status;
 static bool gpu_depth;
 static int gpu_depth_status;
 static void record(char stage) { assert(used < 15); order[used++] = stage; }
-static void ps5_draw_batch_drain(void) { record('D'); pending = 0; }
+static __attribute__((unused)) void ps5_draw_batch_drain(void) { record('D'); pending = 0; }
 static bool ps5_render_condition_passes(struct ps5_context *c)
 { assert(c); record('R'); return condition; }
 static bool ps5_clear_gpu_depth_stencil(struct ps5_context *c, unsigned buffers,
@@ -347,7 +347,7 @@ struct ps5_context { bool framebuffer_valid; unsigned render_condition_query,
     stream_output_target_count,active_occlusion_query,active_primitives_generated_query,
     active_primitives_emitted_query;
     struct { struct pipe_surface zsbuf; unsigned width,height; } framebuffer; };
-static bool ps5_any_primitive_query(const struct ps5_context *c) {
+static __attribute__((unused)) bool ps5_any_primitive_query(const struct ps5_context *c) {
     return c->active_primitives_generated_query || c->active_primitives_emitted_query;
 }
 static size_t ps5_tiled_depth_surface_size(unsigned w,unsigned h,unsigned samples)
