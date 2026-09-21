@@ -22,7 +22,9 @@ PS5_OPENGL_REGISTRY := $(PS5_OPENGL_MESA_SRC)/src/mesa/glapi/glapi/registry/gl.x
 PS5_OPENGL_PUBLIC_CFLAGS := -DGL_GLEXT_PROTOTYPES=1 \
 	-I$(PS5_OPENGL_MESA_SRC)/include
 
-PS5_OPENGL_COMMON_CFLAGS := -std=c11 -Os -g -Wall -Wextra -Werror \
+# Draw preparation and CPU texture fallbacks are runtime hot paths. Preserve
+# normal floating-point semantics while optimizing throughput, not code size.
+PS5_OPENGL_COMMON_CFLAGS := -std=c11 -O3 -g -Wall -Wextra -Werror \
 	-ffunction-sections -fdata-sections -DHAVE_FUNC_ATTRIBUTE_PACKED=1 \
 	-I$(PS5_OPENGL_MESA_BUILD)/src \
 	-I$(PS5_OPENGL_MESA_SRC)/src \
