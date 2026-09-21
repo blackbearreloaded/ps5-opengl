@@ -6483,6 +6483,67 @@ ps5_stage_depth_surface(const struct pipe_surface *surface, bool to_staging)
    return true;
 }
 
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+/* CPU-only scratch becomes reusable at unmap; GPU resources never enter here. */
+static simple_mtx_t ps5_staging_mutex = SIMPLE_MTX_INITIALIZER;
+static struct { void *memory; size_t size; } ps5_staging_free[8];
+static unsigned ps5_staging_count;
+static size_t ps5_staging_bytes;
+static uint64_t ps5_staging_hits, ps5_staging_misses;
+
+static void *
+ps5_staging_take(size_t size)
+{
+   void *memory = NULL;
+   simple_mtx_lock(&ps5_staging_mutex);
+   for (unsigned i = 0; i < ps5_staging_count; ++i) {
+      if (ps5_staging_free[i].size != size)
+         continue;
+      memory = ps5_staging_free[i].memory;
+      ps5_staging_free[i] = ps5_staging_free[--ps5_staging_count];
+      ps5_staging_bytes -= size;
+      break;
+   }
+   if (memory) ++ps5_staging_hits; else ++ps5_staging_misses;
+   simple_mtx_unlock(&ps5_staging_mutex);
+   return memory;
+}
+
+static bool
+ps5_staging_put(void *memory, size_t size)
+{
+   const size_t limit = 128u * 1024u * 1024u;
+   simple_mtx_lock(&ps5_staging_mutex);
+   bool retained = memory && size && size <= limit &&
+      ps5_staging_count < ARRAY_SIZE(ps5_staging_free) && ps5_staging_bytes <= limit - size;
+   if (retained) {
+      ps5_staging_free[ps5_staging_count].memory = memory;
+      ps5_staging_free[ps5_staging_count++].size = size;
+      ps5_staging_bytes += size;
+   }
+   simple_mtx_unlock(&ps5_staging_mutex);
+   return retained;
+}
+
+static void
+ps5_staging_clear(void)
+{
+   simple_mtx_lock(&ps5_staging_mutex);
+   printf("[ps5-staging-reuse] hits=%" PRIu64 " misses=%" PRIu64 " retained=%zu\n",
+          ps5_staging_hits, ps5_staging_misses, ps5_staging_bytes);
+   while (ps5_staging_count) {
+      unsigned i = ps5_staging_count - 1;
+      if (munmap(ps5_staging_free[i].memory, ps5_staging_free[i].size)) {
+         fprintf(stderr, "[ps5-gallium] cached staging munmap failed\n");
+         break;
+      }
+      ps5_staging_bytes -= ps5_staging_free[i].size;
+      --ps5_staging_count;
+   }
+   simple_mtx_unlock(&ps5_staging_mutex);
+}
+#endif
+
 static bool
 ps5_transfer_alloc_staging(struct ps5_transfer *transfer, size_t size)
 {
@@ -6497,6 +6558,13 @@ ps5_transfer_alloc_staging(struct ps5_transfer *transfer, size_t size)
    }
    size = (size + PS5_DIRECT_ALIGNMENT - 1u) &
           ~(size_t)(PS5_DIRECT_ALIGNMENT - 1u);
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+   transfer->staging = ps5_staging_take(size);
+   if (transfer->staging) {
+      transfer->staging_mapping_size = size;
+      return true;
+   }
+#endif
    transfer->staging = mmap(NULL, size, PROT_READ | PROT_WRITE,
                             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
    if (transfer->staging == MAP_FAILED) {
@@ -6511,11 +6579,16 @@ static void
 ps5_transfer_free_staging(struct ps5_transfer *transfer)
 {
    if (transfer->staging_mapping_size) {
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+      if (!ps5_staging_put(transfer->staging, transfer->staging_mapping_size))
+#endif
       if (munmap(transfer->staging, transfer->staging_mapping_size))
          fprintf(stderr, "[ps5-gallium] transfer staging munmap failed\n");
    } else {
       free(transfer->staging);
    }
+   transfer->staging = NULL;
+   transfer->staging_mapping_size = 0;
 }
 
 static void *
@@ -6555,6 +6628,19 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
    }
    if (!ps5_map_bounds(bounds_resource, level, box, &offset))
       return NULL;
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   static unsigned trace_count;
+   if (__atomic_load_n(&ps5_prepare_calls[0], __ATOMIC_RELAXED) >= 60000 &&
+       __atomic_load_n(&trace_count, __ATOMIC_RELAXED) < 32 &&
+       __atomic_fetch_add(&trace_count, 1, __ATOMIC_RELAXED) < 32) {
+      printf("[ps5-map-layout] target=%u format=%u bind=%x usage=%x level=%u "
+             "image=%ux%u layers=%u box=%d,%d,%d/%dx%dx%d bytes=%zu\n",
+             base->target, base->format, base->bind, usage, level,
+             base->width0, base->height0, base->array_size,
+             box->x, box->y, box->z, box->width, box->height, box->depth,
+             resource->allocation_size);
+   }
+#endif
    /* Mesa's streaming uploader uses disjoint ranges in an existing buffer.
     * Honor its explicit no-wait contract; reads and texture staging still wait. */
    if (base->target != PIPE_BUFFER || (usage & PIPE_MAP_READ) ||
@@ -16098,6 +16184,9 @@ ps5_screen_destroy(struct pipe_screen *base)
    struct ps5_screen *screen = (struct ps5_screen *)base;
 
    ps5_draw_batch_drain();
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+   ps5_staging_clear();
+#endif
    simple_mtx_destroy(&screen->submit_mutex);
    simple_mtx_destroy(&screen->resource_mutex);
    free(base);

@@ -106,6 +106,7 @@ test:
 	python3 tests/ps5/test_used_buffer_retention.py
 	python3 tests/ps5/test_query_completion_scope.py
 	python3 tests/ps5/test_identical_image_copy.py
+	python3 tests/ps5/test_staging_reuse.py
 	python3 tests/ps5/test_batch_texture_flush.py
 	python3 tests/ps5/test_native_color_layout.py
 	python3 tests/ps5/test_native_srgb_transfer.py
