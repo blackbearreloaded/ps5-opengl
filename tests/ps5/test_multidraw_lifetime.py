@@ -841,6 +841,9 @@ deferred = source[start:source.index(
 fence_helpers = source[source.index("static uint64_t\nps5_draw_batch_fence_submit("):source.index("static bool\nps5_memory_overlaps(")]
 deferred = deferred.replace(fence_helpers, "")
 deferred_code = code[:code.index("int main(void) {")] + r'''
+static unsigned scanout_waits;
+static int scanout_wait(void) { assert(locked); ++scanout_waits; return 0; }
+static int (*ps5_agc_gate2_wait_present)(void) = scanout_wait;
 static unsigned ps5_deferred_mutex;
 static uint64_t ps5_texture_publication_epoch=1;
 static void simple_mtx_lock(unsigned *m) { assert(m == &ps5_deferred_mutex && !locked); locked=1; }
@@ -908,6 +911,13 @@ int main(void) {
     assert(gpu_present_requests == 1 && !locked && !ended && staged == 2);
 #endif
     drain(); idle(); assert(ended==1);
+    struct ps5_resource display = {.base={.target=PIPE_TEXTURE_2D, .bind=PIPE_BIND_DISPLAY_TARGET}};
+    unsigned waits_before = scanout_waits;
+    ps5_draw_batch_drain_buffer(&display.base);
+    assert(scanout_waits == waits_before + 1);
+    display.base.bind = 0;
+    ps5_draw_batch_drain_buffer(&display.base);
+    assert(scanout_waits == waits_before + 1);
     assert(!ps5_memory_overlaps((void *)100, 10, (void *)110, 10));
     assert(!ps5_memory_overlaps((void *)110, 10, (void *)100, 10));
     assert(ps5_memory_overlaps((void *)100, 10, (void *)109, 10));

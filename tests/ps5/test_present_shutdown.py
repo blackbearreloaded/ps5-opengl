@@ -47,6 +47,12 @@ static int runtime_work_cache_clear(void) {
 #endif
 #ifdef PS5_GPU_PRESENT_BATCH
 static int runtime_gpu_present_buffer = -1;
+static int deferred_flip, deferred_error;
+static int ps5_agc_gate2_wait_present(void) {
+    if (deferred_flip && deferred_error) return deferred_error;
+    if (deferred_flip) { runtime_gpu_present_buffer = -1; deferred_flip = 0; }
+    return 0;
+}
 static unsigned runtime_gpu_present_count;
 #endif
 typedef struct { uint64_t words[8]; } video_attribute_t;
@@ -170,6 +176,7 @@ static void setup(void) {
     runtime_pending_batches = 0;
 #ifdef PS5_GPU_PRESENT_BATCH
     runtime_gpu_present_buffer = -1; runtime_gpu_present_count = 6;
+    deferred_flip = deferred_error = 0;
 #endif
     close_failure = closes = unregisters = releases = locked = egl_error = 0;
     opens = registrations = sleeps = pending_calls = waits = pending_until = 0;
@@ -334,6 +341,14 @@ int main(void) {
         assert(runtime_video_registered && runtime_video_framebuffer == next && runtime_video_framebuffer_size == bytes);
         assert(!ps5_agc_gate2_shutdown_present() && closes == 3);
     }
+#ifdef PS5_GPU_PRESENT_BATCH
+    setup(); runtime_gpu_present_buffer = 1; deferred_flip = 1; deferred_error = -9;
+    assert(!eglDestroySurface(&ps5_display, &surface));
+    assert(!closes && !releases && deferred_flip && runtime_gpu_present_buffer == 1);
+    deferred_error = 0;
+    assert(eglDestroySurface(&ps5_display, &surface));
+    assert(closes == 1 && releases == 5 && !deferred_flip && runtime_gpu_present_buffer == -1);
+#endif
     int last_failure = 8;
 #ifdef PS5_GPU_PRESENT_BATCH
     last_failure = 9;

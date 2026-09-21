@@ -24,6 +24,10 @@ code = r'''
 #define PS5_MULTIDRAW_BATCH 1
 #define PS5_PROFILE_MARK(i) ((void)0)
 #define COMMAND_BYTES 0x4000u
+#define FRAMEBUFFER_POOL_BYTES 128u
+static size_t runtime_video_framebuffer_size;
+static int runtime_gpu_present_deferred;
+int ps5_agc_gate2_wait_present(void);
 typedef struct { uint32_t *bottom, *top, *up, *down; uintptr_t callback; } agc_command_buffer_t;
 static uint8_t memory[COMMAND_BYTES + 64];
 static uint64_t completion;
@@ -109,6 +113,7 @@ static void reset(void) {
     runtime_present_count = runtime_gpu_present_count = 0;
     idle_error = flip_error = status_error = pending_error = wait_error = tail_error = 0;
     finish_after = pending_after = polls = 0;
+    runtime_video_framebuffer_size = runtime_gpu_present_deferred = 0;
 }
 int main(void) {
     for (unsigned n = 0; n <= 2001; ++n) {
@@ -130,6 +135,28 @@ int main(void) {
     finish_after = 2; pending_after = 7;
     assert(ps5_agc_gate2_present(1) == 0 && polls == 7 && waits == 7);
     assert(idle_calls == 1 && runtime_gpu_present_buffer == -1);
+    reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
+    assert(ps5_agc_gate2_batch_present(1) == 0);
+    runtime_batch_count = runtime_batch_active = 0; finish_after = 7;
+    assert(ps5_agc_gate2_present(1) == 0 && !polls);
+    assert(runtime_gpu_present_deferred && runtime_gpu_present_buffer == 1);
+    assert(!runtime_gpu_present_count && runtime_present_count == 1);
+    assert(ps5_agc_gate2_wait_present() == 0 && polls == 7);
+    assert(!runtime_gpu_present_deferred && runtime_gpu_present_buffer == -1);
+    assert(runtime_gpu_present_count == 1 && ps5_agc_gate2_wait_present() == 0 && polls == 7);
+    /* Empty next swaps retire the old flip before issuing a new CPU flip. */
+    reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
+    assert(ps5_agc_gate2_batch_present(1) == 0);
+    runtime_batch_count = runtime_batch_active = 0; finish_after = 3;
+    assert(ps5_agc_gate2_present(1) == 0 && !polls);
+    assert(ps5_agc_gate2_present(1) == 0 && polls == 3 && cpu_flips == 1);
+    /* A failed deferred wait retains ownership and cannot queue another flip. */
+    reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
+    assert(ps5_agc_gate2_batch_present(1) == 0);
+    runtime_batch_count = runtime_batch_active = 0;
+    assert(ps5_agc_gate2_present(1) == 0); status_error = -21;
+    assert(ps5_agc_gate2_wait_present() == -21 && runtime_gpu_present_deferred);
+    assert(ps5_agc_gate2_present(1) != 0 && !cpu_flips && runtime_gpu_present_buffer == 1);
     for (int error = 0; error < 10; ++error) {
         reset();
         if (error == 0) runtime_batch_entries[0].submit.word_count = COMMAND_BYTES / 4;
@@ -399,3 +426,57 @@ with tempfile.TemporaryDirectory() as tmp:
                         str(c), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
 print("PASS: depth/stencil flushes at first enabled use, backing/size changes, CPU/drain boundaries; nonbatched/default unchanged")
+
+# A registered pool can contain offscreen arena allocations after two scanouts.
+backend = (root / "src/platform/ps5_agc_runtime_backend.c").read_text()
+a = backend.index("static bool\nps5_agc_writes_scanout(")
+predicate = backend[a:backend.index("#define PS5_RUNTIME_WRITES_SCANOUT", a)]
+a = source.index("static int runtime_video_prepare_draw(void)")
+prepare_draw = source[a:source.index("\nint ps5_agc_gate2_present", a)]
+code = r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#define PS5_GPU_PRESENT_BATCH 1
+#define PS5_AGC_FRAMEBUFFER_POOL_BYTES 128u
+static void *ps5_agc_scanout_target;
+static void *ps5_agc_mrt_targets[8];
+static unsigned ps5_agc_mrt_mask, ps5_agc_mrt_count;
+static int runtime_video_registered = 1, wait_error;
+static unsigned waits;
+static int ps5_agc_gate2_wait_present(void) { ++waits; return wait_error; }
+''' + predicate + r'''
+#define PS5_RUNTIME_WRITES_SCANOUT() ps5_agc_writes_scanout()
+''' + prepare_draw + r'''
+int main(void) {
+ assert(ps5_agc_writes_scanout());
+ ps5_agc_scanout_target = (void *)0x10000;
+ ps5_agc_mrt_count = 1; ps5_agc_mrt_mask = 15;
+ assert(ps5_agc_writes_scanout()); /* Unknown target is conservative. */
+ for(unsigned i=0;i<8;++i) ps5_agc_mrt_targets[i]=(void *)0x20000;
+ ps5_agc_mrt_count=8; ps5_agc_mrt_mask=UINT32_MAX;
+ assert(!ps5_agc_writes_scanout());
+ assert(runtime_video_prepare_draw()==0 && !waits);
+ for(unsigned slot=0;slot<8;++slot) {
+  for(unsigned offset=0;offset<128;offset+=16) {
+   ps5_agc_mrt_targets[slot]=(void *)(uintptr_t)(0x10000+offset);
+   assert(ps5_agc_writes_scanout());
+  }
+  ps5_agc_mrt_targets[slot]=(void *)0x10080;
+  assert(!ps5_agc_writes_scanout());
+  ps5_agc_mrt_targets[slot]=(void *)0x20000;
+ }
+ ps5_agc_mrt_targets[0]=(void *)0x10000;
+ assert(runtime_video_prepare_draw()==0 && waits==1);
+ wait_error=-9; assert(runtime_video_prepare_draw()==-1 && waits==2);
+ ps5_agc_mrt_mask=0;
+ assert(runtime_video_prepare_draw()==0 && waits==2);
+ runtime_video_registered=0; assert(runtime_video_prepare_draw()==-1);
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    exe = Path(tmp) / 'scanout-reuse'
+    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-x','c','-','-o',str(exe)], input=code,text=True,check=True)
+    subprocess.run([str(exe)],check=True)
+print('PASS: offscreen overlap, both scanout aliases, every MRT slot, masks, unknown targets and wait failure')

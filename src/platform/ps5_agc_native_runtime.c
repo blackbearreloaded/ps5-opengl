@@ -880,6 +880,7 @@ static unsigned runtime_present_count;
 static int runtime_agc_initialized;
 #ifdef PS5_GPU_PRESENT_BATCH
 static int runtime_gpu_present_buffer = -1;
+static int runtime_gpu_present_deferred;
 static uint64_t runtime_gpu_present_marker;
 static unsigned runtime_gpu_present_count;
 #endif
@@ -1486,9 +1487,11 @@ static int64_t runtime_next_render_marker(void)
 static int runtime_video_wait_idle(void);
 
 #ifdef PS5_GPU_PRESENT_BATCH
+int ps5_agc_gate2_wait_present(void);
 int ps5_agc_gate2_batch_present(unsigned buffer_index)
 {
-    if (buffer_index > 1 || runtime_gpu_present_buffer >= 0 ||
+    if (ps5_agc_gate2_wait_present() != 0 ||
+        buffer_index > 1 || runtime_gpu_present_buffer >= 0 ||
         !runtime_video_registered || runtime_video_handle < 0 ||
         !runtime_batch_active || !runtime_batch_count || runtime_batch_faulted ||
         !runtime_batch_api.set_flip || !runtime_batch_api.release_mem ||
@@ -1540,6 +1543,7 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
             return pending;
         if (!pending && status[3] == runtime_gpu_present_marker) {
             runtime_gpu_present_buffer = -1;
+            runtime_gpu_present_deferred = 0;
             ++runtime_gpu_present_count;
             return 0;
         }
@@ -1553,6 +1557,14 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
     }
     return -1;
 }
+
+/* Only a swap whose GPU tail has retired may defer display completion. */
+int ps5_agc_gate2_wait_present(void)
+{
+    return runtime_gpu_present_deferred
+        ? runtime_gpu_present_finish((unsigned)runtime_gpu_present_buffer) : 0;
+}
+
 #endif
 
 #if defined(PS5_DRAW_PROFILE) && defined(PS5_NATIVE_TITLE_RUNTIME)
@@ -1642,6 +1654,8 @@ int ps5_agc_gate2_shutdown_present(void)
 {
     int close_rc = 0;
 #ifdef PS5_GPU_PRESENT_BATCH
+    if (ps5_agc_gate2_wait_present() != 0)
+        return -1;
     if (runtime_gpu_present_buffer >= 0)
         return -1; /* Unconfirmed presentation still owns scanout. */
 #endif
@@ -1828,6 +1842,15 @@ static int runtime_video_wait_idle(void)
 
 static int runtime_video_prepare_draw(void)
 {
+#ifdef PS5_GPU_PRESENT_BATCH
+    /* Offscreen work can overlap a pending flip. Scanout must be reusable
+     * before any command capable of writing it enters the GPU queue. */
+#ifdef PS5_RUNTIME_WRITES_SCANOUT
+    if (PS5_RUNTIME_WRITES_SCANOUT())
+#endif
+        if (ps5_agc_gate2_wait_present() != 0)
+            return -1;
+#endif
     return runtime_video_registered ? 0 : -1;
 }
 
@@ -1845,6 +1868,11 @@ int ps5_agc_gate2_present(unsigned buffer_index)
         return -1;
 #endif
 
+#ifdef PS5_GPU_PRESENT_BATCH
+    /* An empty next frame may reach swap without touching its back buffer. */
+    if (ps5_agc_gate2_wait_present() != 0)
+        return -1;
+#endif
     if (buffer_index > 1 || !runtime_video_registered ||
         runtime_video_handle < 0 ||
         !runtime_video_api.submit_flip ||
@@ -1871,7 +1899,14 @@ int ps5_agc_gate2_present(unsigned buffer_index)
 #ifdef PS5_GPU_PRESENT_BATCH
     if (runtime_gpu_present_buffer >= 0) {
         PS5_PROFILE_MARK(2);
-        result = runtime_gpu_present_finish(buffer_index);
+        if (runtime_gpu_present_buffer != (int)buffer_index)
+            return -1;
+        if (runtime_video_framebuffer_size >= FRAMEBUFFER_POOL_BYTES) {
+            runtime_gpu_present_deferred = 1;
+            result = 0;
+        } else {
+            result = runtime_gpu_present_finish(buffer_index);
+        }
     } else
 #endif
     {

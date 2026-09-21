@@ -659,6 +659,26 @@ ps5_agc_runtime_dlsym(void *module, const char *name)
    ps5_agc_runtime_bind_native_api( \
       (set_instances), (api)->draw_auto, (api)->draw_index, (api)->set_cx, \
       &(api)->draw_auto, &(api)->draw_index, &(api)->set_cx)
+#ifdef PS5_GPU_PRESENT_BATCH
+/* Both scanout aliases occupy the first two slots of the registered pool. */
+static bool
+ps5_agc_writes_scanout(void)
+{
+   const uintptr_t first = (uintptr_t)ps5_agc_scanout_target;
+   if (!first)
+      return true;
+   for (unsigned i = 0; i < ps5_agc_mrt_count; ++i) {
+      if (!(ps5_agc_mrt_mask & (UINT32_C(0xf) << (4 * i))))
+         continue;
+      const uintptr_t target = (uintptr_t)ps5_agc_mrt_targets[i];
+      if (!target || (target >= first && target - first < PS5_AGC_FRAMEBUFFER_POOL_BYTES))
+         return true;
+   }
+   return false;
+}
+#define PS5_RUNTIME_WRITES_SCANOUT() ps5_agc_writes_scanout()
+#endif
+
 #define ps5_agc_gate2_set_depth_buffer ps5_agc_native_set_depth_buffer
 #define ps5_agc_gate2_set_depth_stencil_buffer \
    ps5_agc_native_set_depth_stencil_buffer

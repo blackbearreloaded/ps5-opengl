@@ -160,6 +160,7 @@ static bool cpu_resolve_accepts(const struct pipe_blit_info *info) {
 ''' + source[resolve_start:resolve_end] + 'return false; } return true; }\n'
 code += r'''
 static void ps5_draw_batch_drain(void) { ++drains; }
+static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { assert(r && (r->bind & PIPE_BIND_DISPLAY_TARGET)); }
 static void dispatch(struct ps5_context *ps5,const struct pipe_blit_info *info) {
 ''' + source[dispatch_start:dispatch_end] + r'''
     ++cpu_replays;
@@ -331,6 +332,6 @@ assert '!ps5_linear_color_pitch(surface) &&\n             !ps5_stage_color_surfa
 assert 'context->framebuffer.nr_cbufs != 1 || !ps5_linear_color_pitch(surface)' not in source
 assert body.index("   if (!view)") < body.index("   util_blitter_save_vertex_buffers(")
 dispatch = source[source.index("static void\nps5_blit("):]
-assert "ps5_draw_batch_drain();\n   if (ps5_blit_gpu_color(ps5, info))\n      return;" in dispatch
+assert dispatch.index("ps5_draw_batch_drain();") < dispatch.index("ps5_draw_batch_drain_buffer(info->dst.resource);") < dispatch.index("if (ps5_blit_gpu_color(ps5, info))")
 print("PASS: actual GPU-blit/pitch guards, four formats, same-allocation mip/layer aliases, "
       "source views/base dimensions, state flags/view cleanup, attempted-failure no-replay dispatch (ASan/UBSan)")

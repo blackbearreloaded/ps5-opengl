@@ -4169,6 +4169,7 @@ int ps5_agc_gate2_set_scanout(void *framebuffer, size_t size)
    __attribute__((weak));
 int ps5_agc_gate2_prepare_present(void *framebuffer, size_t size)
    __attribute__((weak));
+int ps5_agc_gate2_wait_present(void) __attribute__((weak));
 int ps5_agc_gate2_set_vertex_user_data(const uint32_t *values, unsigned count)
    __attribute__((weak));
 int ps5_agc_gate2_set_hull_user_data(const uint32_t *values, unsigned count)
@@ -5089,6 +5090,8 @@ ps5_resource_info(struct pipe_resource *base, void **address,
    struct ps5_resource *resource = (struct ps5_resource *)base;
 
    ps5_draw_batch_drain();
+   if (base && (base->bind & PIPE_BIND_DISPLAY_TARGET))
+      ps5_draw_batch_drain_buffer(base);
    if (!resource)
       return -1;
    if (address) {
@@ -7673,6 +7676,8 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    unsigned min_x, min_y, max_x, max_y;
 
    ps5_draw_batch_drain();
+   if (info && info->dst.resource && (info->dst.resource->bind & PIPE_BIND_DISPLAY_TARGET))
+      ps5_draw_batch_drain_buffer(info->dst.resource);
    if (ps5_blit_gpu_color(ps5, info))
       return;
    if (PS5_ENABLE_MSAA4_CANDIDATE && info && info->src.resource &&
@@ -11444,6 +11449,11 @@ ps5_draw_batch_drain_buffer(struct pipe_resource *base)
             break;
          }
       }
+   }
+   if (base && (base->bind & PIPE_BIND_DISPLAY_TARGET) &&
+       ps5_agc_gate2_wait_present && ps5_agc_gate2_wait_present() != 0) {
+      fputs("[ps5-gallium] scanout reuse before confirmed flip completion\n", stderr);
+      _Exit(EXIT_FAILURE);
    }
    simple_mtx_unlock(&ps5_deferred_mutex);
 }
