@@ -38,6 +38,13 @@ code = r'''
 #define RENDER_MARKER 100
 static int runtime_batch_faulted, runtime_batch_active;
 static unsigned runtime_batch_count, runtime_pending_batches;
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+static void runtime_require_retirement(int ready) { assert(ready); }
+static int runtime_work_cache_clear(void) {
+    assert(!runtime_batch_faulted && !runtime_batch_active && !runtime_batch_count && !runtime_pending_batches);
+    return 0;
+}
+#endif
 #ifdef PS5_GPU_PRESENT_BATCH
 static int runtime_gpu_present_buffer = -1;
 static unsigned runtime_gpu_present_count;

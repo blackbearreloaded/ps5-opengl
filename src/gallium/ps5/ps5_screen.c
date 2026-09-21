@@ -10162,8 +10162,12 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          context->last_draw_status = -29;
          return;
       }
-      if (flush_depth_stencil)
-         ps5_flush_batch_backing(flush_cache, 0, depth_data, depth_allocation);
+      if (flush_depth_stencil) {
+         if (depth_data == depth->data)
+            ps5_flush_texture_backing(flush_cache, 0, depth, depth_allocation);
+         else
+            ps5_flush_batch_backing(flush_cache, 0, depth_data, depth_allocation);
+      }
       if (packed) {
          if (!ps5_agc_gate2_set_depth_stencil_buffer ||
              !depth->stencil_data ||

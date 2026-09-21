@@ -293,7 +293,7 @@ print("PASS: registered GPU pool survives queue splits; CPU publication, replace
 
 screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 start = screen.index("struct ps5_batch_flush_cache {")
-flush_cache = screen[start:screen.index("\nstatic void\nps5_flush_texture_backing", start)]
+flush_cache = screen[start:screen.index("\nstatic bool\nps5_stage_packed_depth_samples", start)]
 start = screen.index("#ifdef PS5_GPU_PRESENT_BATCH\n      /* Disabled depth AND stencil")
 policy = screen[start:screen.index("#endif", start) + len("#endif")] + "\n"
 start = screen.index("      if (flush_depth_stencil)")
@@ -309,6 +309,14 @@ code = r'''
 #define PIPE_MAX_ATTRIBS 16
 static unsigned flushes;
 static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); ++flushes; }
+#define PIPE_BUFFER 0
+#define PIPE_BIND_DISPLAY_TARGET 8
+static uint64_t ps5_texture_publication_epoch=1;
+struct ps5_resource {
+    struct { unsigned target,bind; } base;
+    void *data,*stencil_data; size_t stencil_allocation_size,depth_staging_size,texture_published_bytes;
+    uint64_t texture_publication_epoch; bool external_cpu_access;
+};
 ''' + flush_cache + r'''
 static void run(uint32_t control, struct ps5_batch_flush_cache *flush_cache,
                 char *backing, size_t bytes) {
@@ -316,7 +324,7 @@ static void run(uint32_t control, struct ps5_batch_flush_cache *flush_cache,
     (void)native;
     void *depth_data = backing;
     size_t depth_allocation = bytes;
-    struct { void *stencil_data; size_t stencil_allocation_size; } buffer = {backing + 1, 8}, *depth = &buffer;
+    struct ps5_resource buffer = {.base={.target=2},.data=backing,.stencil_data=backing+1,.stencil_allocation_size=8}, *depth=&buffer;
 ''' + policy + depth_flush + "\n{\n" + stencil_flush + "}\n" + r'''
 }
 int main(void) {

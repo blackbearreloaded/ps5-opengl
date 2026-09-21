@@ -993,6 +993,58 @@ static void runtime_draw_gpu_timing(void *memory, size_t bytes)
 #endif
 /* The caller holds the queue lock and retains descriptors/resources until
  * the matching FIFO retirement. Queue-full rejection never transfers ownership. */
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+/* Queue-lock protected. Only confirmed-retired work may enter this cache. */
+static struct runtime_work_allocation {
+    void *memory;
+    int64_t direct;
+    size_t bytes;
+} runtime_work_free[PS5_MULTIDRAW_BATCH_CAPACITY * PS5_INFLIGHT_BATCH_CAPACITY];
+static unsigned runtime_work_free_count;
+static size_t runtime_work_free_bytes;
+
+static int runtime_work_take(size_t bytes, void **memory, int64_t *direct)
+{
+    for (unsigned i = 0; i < runtime_work_free_count; ++i) {
+        if (runtime_work_free[i].bytes != bytes)
+            continue;
+        *memory = runtime_work_free[i].memory;
+        *direct = runtime_work_free[i].direct;
+        runtime_work_free_bytes -= bytes;
+        runtime_work_free[i] = runtime_work_free[--runtime_work_free_count];
+        return 1;
+    }
+    return 0;
+}
+
+static int runtime_work_put(void *memory, int64_t direct, size_t bytes)
+{
+    const size_t limit = 64u * 1024u * 1024u;
+    if (runtime_work_free_count < sizeof(runtime_work_free) / sizeof(runtime_work_free[0]) &&
+        bytes <= limit && runtime_work_free_bytes <= limit - bytes) {
+        runtime_work_free[runtime_work_free_count++] =
+            (struct runtime_work_allocation){memory, direct, bytes};
+        runtime_work_free_bytes += bytes;
+        return 0;
+    }
+    return munmap(memory, bytes) != 0 ||
+           sceKernelReleaseDirectMemory(direct, bytes) != 0 ? -1 : 0;
+}
+
+static int runtime_work_cache_clear(void)
+{
+    while (runtime_work_free_count) {
+        struct runtime_work_allocation *entry = &runtime_work_free[runtime_work_free_count - 1];
+        if (munmap(entry->memory, entry->bytes) != 0 ||
+            sceKernelReleaseDirectMemory(entry->direct, entry->bytes) != 0)
+            return -1;
+        runtime_work_free_bytes -= entry->bytes;
+        --runtime_work_free_count;
+    }
+    return 0;
+}
+#endif
+
 static struct runtime_batch_entry {
     agc_submit_description_t submit;
     void *memory;
@@ -1199,8 +1251,12 @@ int ps5_agc_gate2_batch_retire(int wait)
 #ifdef PS5_DRAW_GPU_TIMESTAMPS
         runtime_draw_gpu_timing(entry->memory, entry->bytes);
 #endif
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+        if (runtime_work_put(entry->memory, entry->direct, entry->bytes) != 0) {
+#else
         if (munmap(entry->memory, entry->bytes) != 0 ||
             sceKernelReleaseDirectMemory(entry->direct, entry->bytes) != 0) {
+#endif
             runtime_batch_faulted = 1;
             return -1;
         }
@@ -1566,6 +1622,10 @@ int ps5_agc_gate2_shutdown_present(void)
     if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count ||
         runtime_pending_batches)
         return -1;
+#endif
+
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
+    runtime_require_retirement(runtime_work_cache_clear() == 0);
 #endif
 
 #ifdef PS5_FRAME_SUSPEND
@@ -3034,12 +3094,19 @@ int main(void)
 #ifdef PS5_DRAW_GPU_TIMESTAMPS
     work_bytes += 0x4000;
 #endif
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
+    if (runtime_work_take(work_bytes, (void **)&memory, &work_start)) {
+        work_alloc_rc = work_map_rc = 0;
+    } else
+#endif
+    {
     work_alloc_rc = sceKernelAllocateDirectMemory(
         0, direct_limit, work_bytes, 0x4000, DIRECT_MEMORY_TYPE, &work_start);
     if (work_alloc_rc == 0)
         work_map_rc = sceKernelMapDirectMemory(
             (void **)&memory, work_bytes, MAP_PROTECTION, 0, work_start,
             0x4000);
+    }
     if (work_alloc_rc != 0 || work_map_rc != 0 || !memory)
         goto receipt;
     if (runtime_hs_package) {
