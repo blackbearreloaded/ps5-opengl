@@ -92,3 +92,13 @@ The production-extraction test checks every memory mask, all texture masks, zero
 masks and unknown-bit fallback. Full host suite and PS5 SDK cross-build pass.
 Hardware visibility and performance await the next frozen Eden comparison against
 `headless-fw602-20260920-223632`; no speedup is claimed from offline tests.
+
+Hardware follow-up: Eden `9d4b382`, case `headless-fw602-20260920-225300`,
+passed native acceptance and all five clear/query checks; captured menu inspected.
+Frame20..30 was6.272948s versus6.322992s: no material gain from this single run.
+Postwarmup57 batches averaged13.358545ms polling, so the dominant boundaries remain.
+There were806 existing frontend errors and zero critical messages. Exact-title
+teardown, service health and owned-lock release passed. GPU-only barrier ordering
+has game-specific coverage, not comprehensive synchronization qualification.
+Next audit: synchronous fence creation and CPU resource reuse; do not repeat an
+unchanged game profile or infer GPU saturation from wall-clock polling.
