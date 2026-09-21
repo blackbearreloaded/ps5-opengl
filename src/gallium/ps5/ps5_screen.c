@@ -160,7 +160,7 @@ ps5_screen_submit_unlock(struct pipe_screen *base)
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
 /* Raw invariant-TSC cycles: no per-draw OS clock calls. Phases overlap:
  * 0=draw preparation, 1=descriptor copy, 2=whole deferred draw entry. */
-static uint64_t ps5_prepare_cycles[8], ps5_prepare_calls[8];
+static uint64_t ps5_prepare_cycles[9], ps5_prepare_calls[9];
 static uint64_t ps5_prepare_clock(void)
 {
    uint32_t low, high;
@@ -169,7 +169,7 @@ static uint64_t ps5_prepare_clock(void)
 }
 static void ps5_prepare_report(void)
 {
-   for (unsigned phase = 0; phase < 8; ++phase)
+   for (unsigned phase = 0; phase < 9; ++phase)
       printf("[ps5-driver-cycles] phase=%u calls=%" PRIu64 " cycles=%" PRIu64 "\n",
              phase, __atomic_load_n(&ps5_prepare_calls[phase], __ATOMIC_RELAXED),
              __atomic_load_n(&ps5_prepare_cycles[phase], __ATOMIC_RELAXED));
@@ -15643,6 +15643,68 @@ ps5_buffer_subdata(struct pipe_context *base, struct pipe_resource *resource,
    memcpy(buffer->data + offset, data, size);
 }
 
+/* Whole, identical single-level images need no detile/re-tile round trip. */
+static bool
+ps5_copy_identical_image(struct pipe_resource *dst_base, unsigned dst_level,
+                         unsigned dst_x, unsigned dst_y, unsigned dst_z,
+                         struct pipe_resource *src_base, unsigned src_level,
+                         const struct pipe_box *box)
+{
+   struct ps5_resource *dst = (struct ps5_resource *)dst_base;
+   struct ps5_resource *src = (struct ps5_resource *)src_base;
+   if (!src || !dst || !box || src_level || dst_level || dst_x || dst_y || dst_z ||
+       box->x || box->y || box->z || box->depth != 1 ||
+       src_base->target != PIPE_TEXTURE_2D || dst_base->target != PIPE_TEXTURE_2D ||
+       src_base->last_level || dst_base->last_level ||
+       src_base->array_size != 1 || dst_base->array_size != 1 ||
+       src_base->depth0 != 1 || dst_base->depth0 != 1 ||
+       src_base->nr_samples > 1 || dst_base->nr_samples > 1 ||
+       src_base->nr_storage_samples > 1 || dst_base->nr_storage_samples > 1 ||
+       src_base->format != dst_base->format || src_base->bind != dst_base->bind ||
+       (src_base->bind & PIPE_BIND_DISPLAY_TARGET) ||
+       box->width <= 0 || box->height <= 0 ||
+       (unsigned)box->width != src_base->width0 || (unsigned)box->height != src_base->height0 ||
+       src_base->width0 != dst_base->width0 || src_base->height0 != dst_base->height0 ||
+       src->render_staging_size || dst->render_staging_size ||
+       src->depth_staging_size || dst->depth_staging_size ||
+       src->external_cpu_access || dst->external_cpu_access ||
+       !src->data || !dst->data || !src->allocation_size ||
+       src->allocation_size != dst->allocation_size || src->size != dst->size ||
+       src->stride != dst->stride || src->layer_stride != dst->layer_stride ||
+       src->level_offset[0] != dst->level_offset[0] ||
+       src->level_stride[0] != dst->level_stride[0] ||
+       src->stencil_allocation_size != dst->stencil_allocation_size ||
+       (!!src->stencil_data != !!dst->stencil_data) ||
+       (src->stencil_allocation_size && !src->stencil_data))
+      return false;
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {8, ps5_prepare_clock()};
+#endif
+   ps5_draw_batch_drain_buffer(src_base);
+   ps5_draw_batch_drain_buffer(dst_base);
+   ps5_flush_gpu_data(src->data, src->allocation_size);
+   memmove(dst->data, src->data, src->allocation_size);
+   ps5_flush_gpu_data(dst->data, dst->allocation_size);
+   if (src->stencil_allocation_size) {
+      ps5_flush_gpu_data(src->stencil_data, src->stencil_allocation_size);
+      memmove(dst->stencil_data, src->stencil_data, src->stencil_allocation_size);
+      ps5_flush_gpu_data(dst->stencil_data, dst->stencil_allocation_size);
+   }
+   return true;
+}
+
+static void
+ps5_resource_copy_region(struct pipe_context *base, struct pipe_resource *dst,
+                          unsigned dst_level, unsigned dst_x, unsigned dst_y, unsigned dst_z,
+                          struct pipe_resource *src, unsigned src_level,
+                          const struct pipe_box *src_box)
+{
+   if (ps5_copy_identical_image(dst, dst_level, dst_x, dst_y, dst_z, src, src_level, src_box))
+      return;
+   util_resource_copy_region(base, dst, dst_level, dst_x, dst_y, dst_z, src, src_level, src_box);
+}
+
 static void
 ps5_sampler_view_release(struct pipe_context *base,
                          struct pipe_sampler_view *view)
@@ -16012,7 +16074,7 @@ ps5_context_create(struct pipe_screen *screen, void *priv, unsigned flags)
    context->base.transfer_flush_region = ps5_transfer_flush_region;
    context->base.buffer_unmap = ps5_transfer_unmap;
    context->base.texture_unmap = ps5_transfer_unmap;
-   context->base.resource_copy_region = util_resource_copy_region;
+   context->base.resource_copy_region = ps5_resource_copy_region;
    if (PS5_ENABLE_SOFTWARE_BLIT_CANDIDATE || PS5_ENABLE_MSAA4_CANDIDATE)
       context->base.blit = ps5_blit;
    context->base.resource_release = u_default_resource_release;

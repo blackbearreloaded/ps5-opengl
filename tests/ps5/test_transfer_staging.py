@@ -29,7 +29,7 @@ scissor = source[source.index("static void\nps5_blit_scissor_bounds("):
 view_policy = source[source.index("static bool\nps5_color_view_format_compatible("):
                      source.index("static void\nps5_resolve_color_msaa4(")]
 subdata = source[source.index("static void\nps5_buffer_subdata("):
-                 source.index("static void\nps5_sampler_view_release(")]
+                 source.index("static bool\nps5_copy_identical_image(")]
 code = r'''
 #define _GNU_SOURCE
 #include <assert.h>
