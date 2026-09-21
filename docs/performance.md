@@ -164,3 +164,19 @@ All127 remaining guest CPU clears have active occlusion queries; the clear
 fast path rejects that state. Next qualification must prove clear draws do not
 pollute query results before enabling that workload. Batch completion polling
 still averages13.053838ms in the short post-warmup profile.
+
+### Combined query clear qualification (FW6.02)
+
+Eden d319a43 / OpenGL00b610b, case
+`workspace/dev/ps5-eden-feasibility/results/headless-fw602-20260920-210612`:
+five formats pass simultaneous SamplesPassed/PrimitivesGenerated/TfbWritten
+checks: clear-only0,0,0; draw-clear-draw73728,2,0. Full/scissored clear pixels,
+untouched pixels, restored draw state, menu capture and lifecycle/health pass.
+Eden enables all three counters in upstream QueryCache::EnableCounters; the
+prior occlusion-only qualification was insufficient for this workload.
+Guest CPU clears127 ->31. Frame20..30 6.790124 ->6.623299s; the small single-run
+change does not establish a reliable speedup. Synchronous completion remains:
+61 batches and5 standalone submits total882.825ms polling in the short profile
+with2 presentations. Polling wall time is not proof of hardware GPU saturation.
+Next work must address submission/resource/query retirement at actual workload
+boundaries rather than only capacity drains or more isolated format gates.
