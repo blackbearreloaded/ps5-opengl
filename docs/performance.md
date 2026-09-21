@@ -152,3 +152,15 @@ native menu rendering, lifecycle and health pass. Frame20..30 was8.525188s
 versus8.375047s, with guest CPU clears127 unchanged (startup excluded) and
 post-warmup batches58 unchanged. No game performance gain established.
 The scanout-reuse candidate69c6b6f is a separate subsequent experiment.
+
+### Scanout reuse qualification (FW6.02)
+
+Eden1c09828 / OpenGL69c6b6f, case
+`workspace/dev/ps5-eden-feasibility/results/headless-fw602-20260920-203239`:
+prepared-draw scanout flush0.364674 ->0.023135ms; frame20..30 8.525188 ->
+6.790124s. All draw/clear pixel oracles, menu capture, lifecycle and service
+health pass. Single historical comparison, performance still inadequate.
+All127 remaining guest CPU clears have active occlusion queries; the clear
+fast path rejects that state. Next qualification must prove clear draws do not
+pollute query results before enabling that workload. Batch completion polling
+still averages13.053838ms in the short post-warmup profile.
