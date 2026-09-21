@@ -2125,6 +2125,38 @@ static void flush_gpu_data(const void *address, size_t bytes)
 #endif
 }
 
+#ifdef PS5_RUNTIME_COMPACT_WORK
+/* Runtime state/markers occupy 0x4000..0x8000; the two-ended command buffer
+ * occupies 0x8000..0xc000. Shader packages follow WORK_BYTES. */
+static void runtime_zero_work(uint8_t *memory, size_t bytes, int tessellation)
+{
+    if (tessellation) {
+        memset(memory, 0, bytes);
+        return;
+    }
+    memset(memory + 0x4000, 0, 0x8000);
+    memset(memory + WORK_BYTES, 0, bytes - WORK_BYTES);
+}
+
+static void runtime_publish_work(uint8_t *memory, size_t bytes,
+                                 const agc_command_buffer_t *command,
+                                 int tessellation)
+{
+    if (tessellation || command->bottom != (uint32_t *)(memory + 0x8000) ||
+        command->top != (uint32_t *)(memory + 0xc000) ||
+        command->up < command->bottom || command->up > command->down ||
+        command->down > command->top) {
+        flush_gpu_data(memory, bytes);
+        return;
+    }
+    flush_gpu_data(memory + 0x4000, 0x4000);
+    flush_gpu_data(command->bottom, (size_t)(command->up - command->bottom) * 4);
+    flush_gpu_data(command->down, (size_t)(command->top - command->down) * 4);
+    /* Include shader padding and timestamp storage. GPU acquires unchanged. */
+    flush_gpu_data(memory + WORK_BYTES, bytes - WORK_BYTES);
+}
+#endif
+
 #if (defined(AGC_RENDER_TO_TEXTURE_VARIANT) || \
      defined(AGC_CLEAR_TEST_VARIANT)) && defined(AGC_TRIANGLE_SUBMIT)
 static size_t tiled_rgba8_offset(uint32_t x, uint32_t y,
@@ -3206,7 +3238,11 @@ int main(void)
             goto receipt;
     }
     failure_phase = "shaders";
+#ifdef PS5_RUNTIME_COMPACT_WORK
+    runtime_zero_work(memory, work_bytes, runtime_hs_package != NULL);
+#else
     memset(memory, 0, work_bytes);
+#endif
 #ifdef AGC_RUNTIME_PACKAGES
     completion_marker = (volatile uint64_t *)(memory + 0x6ff0);
 #endif
@@ -4162,7 +4198,11 @@ int main(void)
 
 #ifdef AGC_TRIANGLE_SUBMIT
     PS5_PROFILE_MARK(4);
+#ifdef PS5_RUNTIME_COMPACT_WORK
+    runtime_publish_work(memory, work_bytes, &command, runtime_hs_package != NULL);
+#else
     flush_gpu_data(memory, work_bytes);
+#endif
     PS5_PROFILE_MARK(5);
 #ifdef PS5_MULTIDRAW_BATCH
     if (runtime_batch_active) {

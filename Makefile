@@ -92,6 +92,7 @@ test:
 	python3 tests/ps5/test_gpu_present.py
 	python3 tests/ps5/test_submit_batch_probe.py
 	python3 tests/ps5/test_native_work_pool.py
+	python3 tests/ps5/test_work_publication.py
 	python3 tests/ps5/test_multidraw_lifetime.py
 	python3 tests/ps5/test_command_groups.py
 	python3 tests/ps5/test_submit_retirement.py

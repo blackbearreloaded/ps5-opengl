@@ -682,6 +682,7 @@ ps5_agc_writes_scanout(void)
 #define ps5_agc_gate2_set_depth_buffer ps5_agc_native_set_depth_buffer
 #define ps5_agc_gate2_set_depth_stencil_buffer \
    ps5_agc_native_set_depth_stencil_buffer
+#define PS5_RUNTIME_COMPACT_WORK 1
 #include "ps5_agc_native_runtime.c"
 #undef ps5_agc_gate2_set_depth_stencil_buffer
 #undef ps5_agc_gate2_set_depth_buffer
