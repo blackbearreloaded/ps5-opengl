@@ -113,3 +113,34 @@ with tempfile.TemporaryDirectory() as tmp:
                     "-x", "c", "-", "-o", str(exe)], input=code, text=True, check=True)
     subprocess.run([str(exe)], check=True)
 print("buffer-arena: PASS buffer-only policy, alignment, exhaustion/fallback, ownership and zeroed reuse")
+
+# Compare exact first-fit behavior across word boundaries and a partial tail.
+wide = code[:code.index('int main(void)')].replace(
+    '#define PS5_RENDER_ARENA_SLOT_COUNT 16u', '#define PS5_RENDER_ARENA_SLOT_COUNT 130u').replace(
+    'PS5_RENDER_ARENA_OFFSET + 1024u', 'PS5_RENDER_ARENA_OFFSET + 8320u').replace(
+    'render_arena_bitmap[1]', 'render_arena_bitmap[3]') + r"""
+int main(void) {
+ unsigned char bytes[PS5_RENDER_POOL_BYTES];struct ps5_resource pool={.data=bytes};
+ uint32_t random=0x12345678;
+ for(unsigned test=0;test<10000;++test) {
+  struct ps5_screen screen={.render_pool=&pool.base};
+  for(unsigned i=0;i<3;++i) {
+   random=random*1664525u+1013904223u;
+   screen.render_arena_bitmap[i]=test%4 ? UINT64_MAX : ((uint64_t)random<<32)|random;
+  }
+  if(test%4) ps5_render_arena_mark(&screen,test%130,1+test%13 < 130-test%130 ? 1+test%13 : 130-test%130,false);
+  unsigned slots=1+test%12,align=1u<<(test%4),expected=130;
+  for(unsigned first=0;first+slots<=130;++first)
+   if(!(first%align) && ps5_render_arena_range_is_free(&screen,first,slots)) {expected=first;break;}
+  struct ps5_resource out={0};
+  bool ok=ps5_render_arena_allocate(&screen,&out,slots*64,align*64);
+  assert(ok==(expected<130));
+  if(ok) assert(out.render_arena_first_slot==expected && out.render_arena_slot_count==slots);
+ }
+}
+"""
+with tempfile.TemporaryDirectory() as tmp:
+    exe=Path(tmp)/'wide'
+    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function','-fsanitize=address,undefined','-x','c','-','-o',str(exe)],input=wide,text=True,check=True)
+    subprocess.run([str(exe)],check=True)
+print('buffer-arena: PASS 10000 reference first-fit cases, full words, alignment and partial tail')

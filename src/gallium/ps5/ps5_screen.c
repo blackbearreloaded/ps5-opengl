@@ -4501,6 +4501,10 @@ ps5_render_arena_allocate(struct ps5_screen *screen,
    slot_alignment = (unsigned)(alignment / PS5_RENDER_ARENA_SLOT_BYTES);
    for (unsigned first = 0;
         first + slots <= PS5_RENDER_ARENA_SLOT_COUNT; ++first) {
+      if (screen->render_arena_bitmap[first / 64u] == UINT64_MAX) {
+         first |= 63u;
+         continue;
+      }
       if (first % slot_alignment ||
           !ps5_render_arena_range_is_free(screen, first, slots))
          continue;
