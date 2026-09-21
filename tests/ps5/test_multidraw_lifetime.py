@@ -201,7 +201,7 @@ code = r'''
 #include "ps5_screen.h"
 typedef struct { void *words; uint32_t word_count; uint8_t flag, padding[3]; } agc_submit_description_t;
 typedef struct { int (*submit)(void *); int (*suspend_point)(void); } agc_api_t;
-static uint32_t markers[PS5_MULTIDRAW_BATCH_CAPACITY];
+static uint64_t markers[PS5_MULTIDRAW_BATCH_CAPACITY];
 static uint8_t memory[PS5_MULTIDRAW_BATCH_CAPACITY][64];
 static unsigned submits, suspends, sleeps, unmaps, releases, delay;
 #ifdef PS5_DRAW_PROFILE
@@ -226,7 +226,7 @@ static int submit(void *p) {
     return 0;
 }
 static int suspend_point(void) { ++suspends; return fail_suspend; }
-static void flush_gpu_data(const void *p, size_t n) { assert(p && n == 4); }
+static void flush_gpu_data(const void *p, size_t n) { assert(p && n == 8); }
 static int sceKernelUsleep(uint32_t us) {
     assert(us == 1000 && !unmaps && !releases);
     if (++sleeps >= delay)
@@ -356,6 +356,8 @@ int main(void) {
         unsigned freed=unmaps;
         markers[submits-1]=101+submits-1;
         assert(ps5_agc_gate2_batch_retire(0)==0 && unmaps==freed);
+        markers[first]=(UINT64_C(1)<<32)|(101+first);
+        assert(ps5_agc_gate2_batch_retire(0)==0 && unmaps==freed); // Reject partial/stale upper word.
         markers[first]=101+first;
         assert(ps5_agc_gate2_batch_retire(0)==1 && unmaps==freed+1);
         assert(ps5_agc_gate2_batch_submit()==0 && runtime_pending_batches==PS5_INFLIGHT_BATCH_CAPACITY);

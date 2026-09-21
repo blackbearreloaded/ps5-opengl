@@ -851,7 +851,7 @@ ps5_agc_compute_execute(struct pipe_screen *screen,
       words, words + 0x3000 / 4, words, words + 0x3000 / 4,
       (uintptr_t)command_out_of_space, NULL, 0, 0
    };
-   volatile uint32_t *marker = (volatile uint32_t *)(memory + 0x3fc0);
+   volatile uint64_t *marker = (volatile uint64_t *)(memory + 0x3fc0);
    const uint32_t expected = UINT32_C(0x43535035);
    out_of_space = 0;
    if (!agc.set_sh(&command, registers, 8) ||

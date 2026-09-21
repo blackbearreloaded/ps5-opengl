@@ -23,7 +23,8 @@ code = r'''
 #include "ps5_screen.h"
 typedef struct { void *words; uint32_t word_count; uint8_t flag, padding[3]; } agc_submit_description_t;
 typedef struct { int (*submit)(void *); int (*suspend_point)(void); } agc_api_t;
-static uint32_t memory[PS5_MULTIDRAW_BATCH_CAPACITY][16], markers[PS5_MULTIDRAW_BATCH_CAPACITY];
+static uint32_t memory[PS5_MULTIDRAW_BATCH_CAPACITY][16];
+static uint64_t markers[PS5_MULTIDRAW_BATCH_CAPACITY];
 static unsigned allocations, submits, sleeps, unmaps, releases, consumed, flushes;
 static unsigned completed[PS5_MULTIDRAW_BATCH_CAPACITY], completion_count;
 static int fail_submit, fail_suspend, never_complete;

@@ -893,13 +893,13 @@ static void runtime_require_retirement(int completed)
 #endif
 
 /* Match Mesa's AMD fence publication: SEND_DATA_AFTER_WR_CONFIRM, not an IRQ.
- * INT_SEL=0 can leave the final CPU-visible marker posted after GPU execution. */
+ * Publish/read the full 64-bit value in the existing aligned marker slot. */
 static uint32_t *runtime_release_completion(const agc_api_t *agc,
                                             agc_command_buffer_t *command,
-                                            volatile uint32_t *marker,
+                                            volatile uint64_t *marker,
                                             uint32_t value)
 {
-    return agc->release_mem(command, 40, 0x30c, 0, 0, (void *)marker, 1,
+    return agc->release_mem(command, 40, 0x30c, 0, 0, (void *)marker, 2,
                             value, 0, 0, 3, 0);
 }
 
@@ -939,7 +939,7 @@ static struct runtime_batch_entry {
     void *memory;
     int64_t direct;
     size_t bytes;
-    volatile uint32_t *marker;
+    volatile uint64_t *marker;
     uint32_t expected;
     uint32_t completion_offset, command_capacity;
 } runtime_batch_entries[PS5_MULTIDRAW_BATCH_CAPACITY];
@@ -967,7 +967,7 @@ int ps5_agc_gate2_batch_begin(void)
 static int runtime_batch_queue(const agc_api_t *api,
                                const agc_submit_description_t *submit,
                                void *memory, int64_t direct, size_t bytes,
-                               volatile uint32_t *marker, uint32_t expected)
+                               volatile uint64_t *marker, uint32_t expected)
 {
     if (!runtime_batch_active || runtime_batch_faulted ||
         runtime_batch_count == PS5_MULTIDRAW_BATCH_CAPACITY ||
@@ -2730,7 +2730,7 @@ int main(void)
     int video_handle = -1, video_open_attempts = 0, buffers_registered = 0;
     int64_t render_marker = RENDER_MARKER;
 #ifdef AGC_RUNTIME_PACKAGES
-    volatile uint32_t *completion_marker = NULL;
+    volatile uint64_t *completion_marker = NULL;
 #endif
     size_t framebuffer_pool_bytes = FRAMEBUFFER_POOL_BYTES;
 #ifndef AGC_RUNTIME_PACKAGES
@@ -2977,7 +2977,7 @@ int main(void)
     failure_phase = "shaders";
     memset(memory, 0, work_bytes);
 #ifdef AGC_RUNTIME_PACKAGES
-    completion_marker = (volatile uint32_t *)(memory + 0x6ff0);
+    completion_marker = (volatile uint64_t *)(memory + 0x6ff0);
 #endif
     memcpy(memory + vs_header_at, vs_header, vs_header_size);
     memcpy(memory + vs_code_at, vs_code, vs_code_size);

@@ -30,7 +30,7 @@ code = r'''
 #define PS5_NATIVE_TITLE_RUNTIME 1
 #define PS5_PROFILE_MARK(i) ((void)0)
 static struct counters { unsigned submits, suspends, waits, unmaps, releases, destructors; } *seen;
-static volatile uint32_t marker;
+static volatile uint64_t marker;
 static int submit_error, suspend_error, unmap_error, release_error;
 static unsigned delay;
 static int send(void *p) {
@@ -39,7 +39,7 @@ static int send(void *p) {
     return submit_error;
 }
 static int suspend_point(void) { ++seen->suspends; return suspend_error; }
-static void flush_gpu_data(const void *p, size_t n) { assert(p == &marker && n == 4); }
+static void flush_gpu_data(const void *p, size_t n) { assert(p == &marker && n == 8); }
 static int sceKernelUsleep(uint32_t us) {
     assert(us == 1000 && !seen->unmaps && !seen->releases);
     if (++seen->waits >= delay) marker = 101;
@@ -57,7 +57,7 @@ static int draw(void) {
     void *memory = &submit;
     size_t work_bytes = 64;
     int64_t work_start = 128, render_marker = 101;
-    volatile uint32_t *completion_marker = &marker;
+    volatile uint64_t *completion_marker = &marker;
     unsigned waits;
     uint64_t status[16] = {0};
 ''' + submit + r'''
@@ -131,17 +131,17 @@ fence_code = r"""
 #include <stdint.h>
 typedef struct { int unused; } agc_command_buffer_t;
 typedef struct { uint32_t *(*release_mem)(void *,uint8_t,int16_t,uint64_t,int8_t,void *,uint32_t,uint64_t,uint16_t,uint16_t,int8_t,int32_t); } agc_api_t;
-static uint32_t marker;
+static uint64_t marker;
 static int fail;
 static uint32_t *release(void *cb,uint8_t event,int16_t gcr,uint64_t dst,int8_t cache,void *address,uint32_t data,uint64_t value,uint16_t lo,uint16_t hi,int8_t interrupt,int32_t reserved) {
     assert(cb && event==40 && gcr==0x30c && !dst && !cache && address==&marker);
-    assert(data==1 && value==123 && !lo && !hi && interrupt==3 && !reserved);
-    return fail ? 0 : &marker;
+    assert(data==2 && value==123 && !lo && !hi && interrupt==3 && !reserved);
+    return fail ? 0 : (uint32_t *)&marker;
 }
 """ + emitter + r"""
 int main(void) {
     agc_api_t agc={release}; agc_command_buffer_t cb={0};
-    assert(runtime_release_completion(&agc,&cb,&marker,123)==&marker);
+    assert(runtime_release_completion(&agc,&cb,&marker,123)==(uint32_t *)&marker);
     fail=1; assert(runtime_release_completion(&agc,&cb,&marker,123)==0);
 }
 """
@@ -150,4 +150,4 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c",
                     "-o", executable, "-"], input=fence_code, text=True, check=True)
     subprocess.run([executable], check=True)
-print("PASS: graphics/compute completion emits write-confirmed 32-bit release and propagates packet failure")
+print("PASS: graphics/compute completion emits write-confirmed 64-bit release and propagates packet failure")
