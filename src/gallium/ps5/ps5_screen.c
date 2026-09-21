@@ -158,7 +158,7 @@ ps5_screen_submit_unlock(struct pipe_screen *base)
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
 /* Raw invariant-TSC cycles: no per-draw OS clock calls. Phases overlap:
  * 0=draw preparation, 1=descriptor copy, 2=whole deferred draw entry. */
-static uint64_t ps5_prepare_cycles[3], ps5_prepare_calls[3];
+static uint64_t ps5_prepare_cycles[8], ps5_prepare_calls[8];
 static uint64_t ps5_prepare_clock(void)
 {
    uint32_t low, high;
@@ -167,7 +167,7 @@ static uint64_t ps5_prepare_clock(void)
 }
 static void ps5_prepare_report(void)
 {
-   for (unsigned phase = 0; phase < 3; ++phase)
+   for (unsigned phase = 0; phase < 8; ++phase)
       printf("[ps5-driver-cycles] phase=%u calls=%" PRIu64 " cycles=%" PRIu64 "\n",
              phase, __atomic_load_n(&ps5_prepare_calls[phase], __ATOMIC_RELAXED),
              __atomic_load_n(&ps5_prepare_cycles[phase], __ATOMIC_RELAXED));
@@ -6517,6 +6517,11 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
                  unsigned level, unsigned usage, const struct pipe_box *box,
                  struct pipe_transfer **out_transfer)
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {6, ps5_prepare_clock()};
+#endif
+
    struct ps5_resource *resource = (struct ps5_resource *)base;
    struct ps5_transfer *transfer;
    size_t offset;
@@ -6747,6 +6752,11 @@ static void
 ps5_transfer_unmap(struct pipe_context *context,
                    struct pipe_transfer *transfer)
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {7, ps5_prepare_clock()};
+#endif
+
    struct ps5_transfer *ps5 = (struct ps5_transfer *)transfer;
    struct ps5_resource *resource =
       (struct ps5_resource *)transfer->resource;
@@ -10909,11 +10919,29 @@ ps5_batch_retain_resources(const struct ps5_context *context,
    pipe_resource_reference(&retained[retained_count++], context->border_color_storage);
    if (info->index_size)
       pipe_resource_reference(&retained[retained_count++], info->index.resource);
+   /* Retain only bindings this pipeline can read. Unused stale bindings must
+    * not turn an unrelated CPU upload into a GPU completion dependency. */
+   uint32_t vertex_bindings = 0;
+   if (context->vertex_elements)
+      for (unsigned i = 0; i < context->vertex_elements->count; ++i)
+         if (context->vertex_elements->elements[i].vertex_buffer_index < PIPE_MAX_ATTRIBS)
+            vertex_bindings |= BITFIELD_BIT(context->vertex_elements->elements[i].vertex_buffer_index);
    for (unsigned i = 0; i < context->vertex_buffer_count; ++i)
-      pipe_resource_reference(&retained[retained_count++], context->vertex_buffers[i].buffer.resource);
-   for (unsigned stage = 0; stage < 2; ++stage)
-      for (unsigned i = 0; i < PS5_MAX_CONSTANT_BUFFERS; ++i)
-         pipe_resource_reference(&retained[retained_count++], context->constants[stage][i].buffer);
+      if (vertex_bindings & BITFIELD_BIT(i))
+         pipe_resource_reference(&retained[retained_count++], context->vertex_buffers[i].buffer.resource);
+   for (unsigned stage = 0; stage < 2; ++stage) {
+      const struct ps5_shader *shader = stage ? context->fs : context->vs;
+      const bool all = context->gs || context->tcs || context->tes;
+      const unsigned count = all ? PS5_MAX_CONSTANT_BUFFERS :
+         shader ? MIN2(shader->nir->info.num_ubos, PS5_MAX_CONSTANT_BUFFERS) : 0;
+      for (unsigned i = 0; i < count; ++i) {
+         unsigned binding = all ? i : ps5_constant_state_binding(shader, i);
+         if (binding < PS5_MAX_CONSTANT_BUFFERS &&
+             context->constants[stage][binding].valid &&
+             !context->constants[stage][binding].copied)
+            pipe_resource_reference(&retained[retained_count++], context->constants[stage][binding].buffer);
+      }
+   }
    for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit)
       if (ps5_texture_used(context, context->fs, NULL, unit))
          pipe_resource_reference(&retained[retained_count++], context->sampler_views[1][unit]->texture);
@@ -11259,6 +11287,11 @@ ps5_deferred_batch_overlaps(const struct ps5_deferred_batch *batch,
 static void
 ps5_draw_batch_drain_buffer(struct pipe_resource *base)
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {3, ps5_prepare_clock()};
+#endif
+
    struct ps5_resource *buffer = (struct ps5_resource *)base;
    simple_mtx_lock(&ps5_deferred_mutex);
    if (buffer) {
@@ -12337,6 +12370,11 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
           const union pipe_color_union *color, double depth,
           unsigned stencil)
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {4, ps5_prepare_clock()};
+#endif
+
    struct ps5_context *context = (struct ps5_context *)base;
    struct ps5_resource *resource;
 
@@ -15553,6 +15591,11 @@ ps5_buffer_subdata(struct pipe_context *base, struct pipe_resource *resource,
                    unsigned usage, unsigned offset, unsigned size,
                    const void *data)
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {5, ps5_prepare_clock()};
+#endif
+
    struct ps5_resource *buffer = (struct ps5_resource *)resource;
 
    (void)base;
