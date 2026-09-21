@@ -23,3 +23,14 @@ fix. Case `results/headless-fw602-20260920-215916` acquired the shared lock but
 found `PPSA99003` active at foreground preflight. No deployment or launch occurred;
 services remained healthy and the owned lock was released. No performance result
 is claimed. The installed Eden package remains the previous `9c8bed4` candidate.
+
+Follow-up case `results/headless-fw602-20260920-220856` ran the frozen candidate
+at Eden commit `87f3449`. Native acceptance and five combined-query checks passed.
+Frame20..30 was 6.156177s versus 6.573240s (6.34% less time in one historical
+comparison); first frame81.321s, so startup is essentially unchanged. Menu
+captured; button sizes/visible entries differ, with animation phase versus
+regression unresolved from a single still. Existing frontend errors806, critical0.
+Corrected profiling reports58 batches, zero timing failures, average poll13.138ms
+over two post-warmup presentations. No GPU-saturation claim follows from wall time.
+Title teardown and service health passed. Our lock was released; a different
+owner subsequently acquired it. This candidate is now the installed package.
