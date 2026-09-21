@@ -907,6 +907,7 @@ static struct runtime_batch_entry {
     size_t bytes;
     volatile uint32_t *marker;
     uint32_t expected;
+    uint32_t completion_offset, command_capacity;
 } runtime_batch_entries[PS5_MULTIDRAW_BATCH_CAPACITY];
 static struct runtime_batch_entry
     runtime_pending_entries[PS5_MULTIDRAW_BATCH_CAPACITY];
@@ -943,9 +944,48 @@ static int runtime_batch_queue(const agc_api_t *api,
         return -1;
     runtime_batch_api = *api;
     runtime_batch_entries[runtime_batch_count++] = (struct runtime_batch_entry){
-        *submit, memory, direct, bytes, marker, expected
+        *submit, memory, direct, bytes, marker, expected, 0, 0
     };
     return 0; /* Ownership transfers only on success. No GPU work yet. */
+}
+
+/* Only native draw streams opt in. Keep draw bodies, color releases and
+ * explicit texture/depth dependency barriers. Completion release/cache tails
+ * move to the group boundary. No allocation is freed here. */
+static unsigned runtime_batch_combine(void)
+{
+    unsigned groups = 0;
+    struct runtime_batch_entry *leader = NULL;
+    for (unsigned i = 0; i < runtime_batch_count; ++i) {
+        struct runtime_batch_entry *entry = &runtime_batch_entries[i];
+        if (!entry->completion_offset ||
+            entry->completion_offset >= entry->submit.word_count ||
+            entry->submit.word_count > entry->command_capacity) {
+            leader = NULL;
+            ++groups;
+            continue;
+        }
+        if (!leader || entry->submit.flag != leader->submit.flag ||
+            entry->submit.word_count > leader->command_capacity - leader->completion_offset) {
+            leader = entry;
+            ++groups;
+            continue;
+        }
+        uint32_t offset = leader->completion_offset;
+        memcpy((uint32_t *)leader->submit.words + offset, entry->submit.words,
+               (size_t)entry->submit.word_count * sizeof(uint32_t));
+        leader->submit.word_count = offset + entry->submit.word_count;
+        leader->completion_offset = offset + entry->completion_offset;
+        leader->marker = entry->marker;
+        leader->expected = entry->expected;
+        entry->submit.word_count = 0; /* Retain allocation; leader retires it. */
+    }
+    if (groups < runtime_batch_count)
+        for (unsigned i = 0; i < runtime_batch_count; ++i)
+            if (runtime_batch_entries[i].submit.word_count)
+                flush_gpu_data(runtime_batch_entries[i].submit.words,
+                    (size_t)runtime_batch_entries[i].submit.word_count * sizeof(uint32_t));
+    return groups;
 }
 
 int ps5_agc_gate2_batch_submit(void)
@@ -965,8 +1005,11 @@ int ps5_agc_gate2_batch_submit(void)
     if (!runtime_batch_count)
         return 0;
     BATCH_SUBMIT_MARK(0);
+    unsigned groups = runtime_batch_combine();
     for (unsigned i = 0; i < runtime_batch_count; ++i) {
         ++attempted; /* A failed submit is conservatively treated as in flight. */
+        if (!runtime_batch_entries[i].submit.word_count)
+            continue;
         if (runtime_batch_api.submit(&runtime_batch_entries[i].submit) != 0) {
             result = 1;
             break;
@@ -977,6 +1020,7 @@ int ps5_agc_gate2_batch_submit(void)
         result = 1;
     BATCH_SUBMIT_MARK(2);
     runtime_require_retirement(result == 0);
+    printf("[ps5-command-groups] draws=%u submissions=%u\n", runtime_batch_count, groups);
     memcpy(runtime_pending_entries, runtime_batch_entries,
            runtime_batch_count * sizeof(runtime_batch_entries[0]));
     memset(runtime_batch_entries, 0,
@@ -1011,6 +1055,8 @@ int ps5_agc_gate2_batch_retire(int wait)
         complete = 1;
         for (unsigned i = 0; i < runtime_pending_attempted; ++i) {
             struct runtime_batch_entry *entry = &runtime_pending_entries[i];
+            if (!entry->submit.word_count)
+                continue;
             flush_gpu_data((const void *)entry->marker, sizeof(*entry->marker));
             complete &= *entry->marker == entry->expected;
         }
@@ -2673,6 +2719,9 @@ int main(void)
     agc_command_buffer_t command = {0};
     agc_submit_description_t submit = {0};
     uint32_t draw_words, final_words;
+#ifdef PS5_MULTIDRAW_BATCH
+    uint32_t completion_offset = 0;
+#endif
 #if !defined(AGC_RUNTIME_PACKAGES) || defined(AGC_RUNTIME_DIAGNOSTICS)
     uint32_t draw_hash, final_hash;
 #endif
@@ -3606,8 +3655,12 @@ int main(void)
 #ifdef AGC_TRIANGLE_SUBMIT
 #ifdef AGC_RUNTIME_PACKAGES
     if (!agc.release_mem(&command, 45, 12, 1, 0, NULL, 0, 0,
-                         0, 1, 0, 0) ||
-        !agc.release_mem(&command, 40, 0x30c, 0, 0,
+                         0, 1, 0, 0))
+        goto receipt;
+#ifdef PS5_MULTIDRAW_BATCH
+    completion_offset = (uint32_t)(command.up - words);
+#endif
+    if (!agc.release_mem(&command, 40, 0x30c, 0, 0,
                          (void *)completion_marker, 1,
                          (uint32_t)render_marker, 0, 0, 0, 0))
         goto receipt;
@@ -3803,6 +3856,11 @@ int main(void)
         if (runtime_batch_queue(&agc, &submit, memory, work_start, work_bytes,
                                 completion_marker, (uint32_t)render_marker) != 0)
             goto receipt;
+        struct runtime_batch_entry *entry = &runtime_batch_entries[runtime_batch_count - 1];
+        if (command.down >= command.up && command.down <= command.top) {
+            entry->completion_offset = completion_offset;
+            entry->command_capacity = (uint32_t)(command.down - words);
+        }
         memory = NULL;
         work_start = -1;
         result = 0;

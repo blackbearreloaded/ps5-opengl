@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Exercise production command grouping and retirement with delayed GPU markers."""
+from pathlib import Path
+import subprocess
+import tempfile
+
+root = Path(__file__).resolve().parents[2]
+source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
+start = source.index("static struct runtime_batch_entry {")
+body = source[start:source.index("\n#endif\n\n#ifdef PS5_DRAW_PROFILE", start)]
+tail_start = source.index('    failure_phase = "release";', source.index('    draw_words ='))
+tail = source[tail_start:source.index('    final_words =', tail_start)]
+assert tail.index('release_mem(&command, 45, 12') < tail.index('completion_offset =') < tail.index('release_mem(&command, 40, 0x30c')
+assert 'if (command.down >= command.up && command.down <= command.top)' in source
+assert 'entry->command_capacity = (uint32_t)(command.down - words);' in source
+code = r'''
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <setjmp.h>
+#include "ps5_screen.h"
+typedef struct { void *words; uint32_t word_count; uint8_t flag, padding[3]; } agc_submit_description_t;
+typedef struct { int (*submit)(void *); int (*suspend_point)(void); } agc_api_t;
+static uint32_t memory[PS5_MULTIDRAW_BATCH_CAPACITY][16], markers[PS5_MULTIDRAW_BATCH_CAPACITY];
+static unsigned allocations, submits, sleeps, unmaps, releases, consumed, flushes;
+static unsigned completed[PS5_MULTIDRAW_BATCH_CAPACITY], completion_count;
+static int fail_submit, fail_suspend, never_complete;
+static jmp_buf fatal;
+static void runtime_require_retirement(int ok) { if (!ok) { assert(!unmaps && !releases); longjmp(fatal,1); } }
+static int submit(void *p) {
+    agc_submit_description_t *d=p;
+    const uint32_t *words=d->words;
+    assert(d->word_count && !unmaps && !releases);
+    ++submits;
+    if (fail_submit) return -1;
+    unsigned i=0;
+    while (i+1<d->word_count && words[i]<3000) {
+        assert(words[i++]==1000+consumed);
+        assert(words[i++]==2000+consumed); /* Preserve every dependency barrier. */
+        ++consumed;
+    }
+    assert(words[i++]==3000+consumed-1); /* Only the group-tail marker remains. */
+    if (i<d->word_count) { /* Appended presentation and its final completion. */
+        assert(words[i++]==4000);
+        assert(words[i++]==5000);
+    }
+    assert(i==d->word_count);
+    completed[completion_count++]=consumed-1;
+    return 0;
+}
+static int suspend_point(void) { return fail_suspend ? -1 : 0; }
+static void flush_gpu_data(const void *p,size_t n) { assert(p && n && n<=64); ++flushes; }
+static int sceKernelUsleep(uint32_t n) {
+    assert(n==1000 && !unmaps && !releases);
+    if (++sleeps==3 && !never_complete)
+        for (unsigned i=0;i<completion_count;++i) markers[completed[i]]=101+completed[i];
+    return 0;
+}
+static int munmap(void *p,size_t n) {
+    assert(p && n==64 && consumed==allocations);
+    for (unsigned i=0;i<completion_count;++i) assert(markers[completed[i]]==101+completed[i]);
+    ++unmaps; return 0;
+}
+static int sceKernelReleaseDirectMemory(int64_t p,size_t n) {
+    assert(p>=0 && n==64 && unmaps>releases); ++releases; return 0;
+}
+''' + body + r'''
+static void reset(unsigned count) {
+    memset(runtime_batch_entries,0,sizeof(runtime_batch_entries));
+    memset(runtime_pending_entries,0,sizeof(runtime_pending_entries));
+    memset(markers,0,sizeof(markers));
+    memset(memory,0xa5,sizeof(memory));
+    runtime_batch_count=runtime_pending_count=runtime_pending_attempted=0;
+    runtime_batch_active=runtime_batch_faulted=0;
+    allocations=count; submits=sleeps=unmaps=releases=consumed=flushes=completion_count=0;
+    fail_submit=fail_suspend=never_complete=0;
+    const agc_api_t api={submit,suspend_point};
+    assert(!ps5_agc_gate2_batch_begin());
+    for (unsigned i=0;i<count;++i) {
+        memory[i][0]=1000+i; memory[i][1]=2000+i; memory[i][2]=3000+i;
+        agc_submit_description_t d={memory[i],3,0,{0}};
+        assert(!runtime_batch_queue(&api,&d,memory[i],i*64,64,&markers[i],101+i));
+        runtime_batch_entries[i].completion_offset=2;
+        runtime_batch_entries[i].command_capacity=16;
+    }
+}
+int main(void) {
+    for (unsigned n=1;n<=PS5_MULTIDRAW_BATCH_CAPACITY;++n) {
+        reset(n);
+        assert(!ps5_agc_gate2_batch_submit());
+        assert(submits==(n+6)/7 && consumed==n && !unmaps);
+        assert(!ps5_agc_gate2_batch_retire(0) && !sleeps && !releases);
+        assert(ps5_agc_gate2_batch_retire(1)==1 && unmaps==n && releases==n);
+        for (unsigned i=0;i<n;++i) assert(memory[i][15]==0xa5a5a5a5); /* Capacity canary. */
+    }
+    /* Exact-fit capacity, opt-out, submit flags and invalid metadata split groups. */
+    for (unsigned mode=0;mode<4;++mode) {
+        reset(3);
+        if (mode==0) runtime_batch_entries[0].command_capacity=5;
+        if (mode==1) runtime_batch_entries[1].completion_offset=0;
+        if (mode==2) runtime_batch_entries[1].submit.flag=1;
+        if (mode==3) runtime_batch_entries[1].command_capacity=2;
+        assert(!ps5_agc_gate2_batch_submit());
+        assert(submits==(mode==0?2:3));
+        assert(ps5_agc_gate2_batch_retire(1)==1 && releases==3);
+    }
+    reset(3);
+    memory[2][3]=4000; memory[2][4]=5000;
+    runtime_batch_entries[2].submit.word_count=5;
+    assert(!ps5_agc_gate2_batch_submit() && submits==1);
+    assert(ps5_agc_gate2_batch_retire(1)==1 && releases==3);
+    for (unsigned mode=0;mode<3;++mode) {
+        reset(9);
+        fail_submit=mode==0; fail_suspend=mode==1; never_complete=mode==2;
+        if (!setjmp(fatal)) { ps5_agc_gate2_batch_end(); assert(!"failure returned"); }
+        assert(!unmaps && !releases);
+        if (mode==2) assert(sleeps==2000);
+    }
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    exe = Path(tmp) / "command-groups"
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                    "-I" + str(root / "src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
+                   input=code, text=True, check=True)
+    subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
+print("PASS: command groups preserve bodies/barriers, bound capacity, retire all allocations from tail markers, and fail-stop before cleanup")
