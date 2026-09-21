@@ -55,6 +55,8 @@ ps5_runtime_printf(const char *format, ...)
 #include "indices/u_primconvert.h"
 #include "util/u_surface.h"
 #include "util/u_upload_mgr.h"
+#include "mesa/main/sse_minmax.h"
+#include "util/u_cpu_detect.h"
 
 /* This driver passes Mesa-owned NIR directly into the standalone backend. */
 _Static_assert(sizeof(nir_instr_type) == 1, "NIR enums must be packed");
@@ -2345,7 +2347,7 @@ ps5_hash32(const void *data, size_t size)
 }
 
 #ifdef PS5_DRAW_PROFILE
-static uint64_t ps5_cpu_flush_calls, ps5_cpu_flush_bytes, ps5_cpu_flush_ns;
+static uint64_t ps5_cpu_flush_calls, ps5_cpu_flush_bytes;
 #endif
 
 static void
@@ -2353,14 +2355,10 @@ ps5_flush_gpu_data(const void *address, size_t bytes)
 {
    if (!bytes)
       return;
-#ifdef PS5_DRAW_PROFILE
-   const int64_t start = os_time_get_nano();
-#endif
    util_flush_inval_range((void *)address, bytes);
 #ifdef PS5_DRAW_PROFILE
    __atomic_fetch_add(&ps5_cpu_flush_calls, 1, __ATOMIC_RELAXED);
    __atomic_fetch_add(&ps5_cpu_flush_bytes, bytes, __ATOMIC_RELAXED);
-   __atomic_fetch_add(&ps5_cpu_flush_ns, os_time_get_nano() - start, __ATOMIC_RELAXED);
 #endif
 }
 
@@ -8671,6 +8669,41 @@ ps5_index_value(const void *indices, unsigned index_size, unsigned index)
                             ((const uint32_t *)indices)[index];
 }
 
+/* Keep the original uint32 base-vertex wrap semantics. Only a range straddling
+ * the positive-bias wrap point needs per-index effective-bound calculation. */
+static bool
+ps5_index_bounds(const void *indices, unsigned index_size, unsigned count, int bias,
+                 unsigned *minimum, unsigned *maximum,
+                 unsigned *effective_minimum, unsigned *effective_maximum)
+{
+   if (index_size == 4 && util_get_cpu_caps()->has_sse4_1) {
+      _mesa_uint_array_min_max(indices, minimum, maximum, count);
+   } else {
+      *minimum = UINT32_MAX;
+      *maximum = 0;
+      for (unsigned i = 0; i < count; ++i) {
+         unsigned value = ps5_index_value(indices, index_size, i);
+         *minimum = MIN2(*minimum, value);
+         *maximum = MAX2(*maximum, value);
+      }
+   }
+   if (bias < 0 && *minimum < (uint64_t)-(int64_t)bias)
+      return false;
+   *effective_minimum = *minimum + (uint32_t)bias;
+   *effective_maximum = *maximum + (uint32_t)bias;
+   if (bias > 0 && *minimum <= UINT32_MAX - (uint32_t)bias &&
+       *maximum > UINT32_MAX - (uint32_t)bias) {
+      *effective_minimum = UINT32_MAX;
+      *effective_maximum = 0;
+      for (unsigned i = 0; i < count; ++i) {
+         uint32_t value = ps5_index_value(indices, index_size, i) + (uint32_t)bias;
+         *effective_minimum = MIN2(*effective_minimum, value);
+         *effective_maximum = MAX2(*effective_maximum, value);
+      }
+   }
+   return *effective_maximum != UINT32_MAX;
+}
+
 static void
 ps5_log_indices(const void *indices, unsigned index_size, unsigned count,
                 unsigned limit)
@@ -9338,22 +9371,9 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          ps5_log_indices(indices, info->index_size, draws[0].count, 16);
       }
 #endif
-      for (unsigned i = 0; i < draws[0].count; ++i) {
-         unsigned index = ps5_index_value(indices, info->index_size, i);
-         uint32_t effective;
-
-         if (draws[0].index_bias < 0 &&
-             index < (uint64_t)-(int64_t)draws[0].index_bias) {
-            context->last_draw_status = -12;
-            return;
-         }
-         effective = index + (uint32_t)draws[0].index_bias;
-         min_index = MIN2(min_index, index);
-         max_index = MAX2(max_index, index);
-         min_effective = MIN2(min_effective, effective);
-         max_effective = MAX2(max_effective, effective);
-      }
-      if (max_effective == UINT32_MAX) {
+      if (!ps5_index_bounds(indices, info->index_size, draws[0].count,
+                            draws[0].index_bias, &min_index, &max_index,
+                            &min_effective, &max_effective)) {
          context->last_draw_status = -12;
          return;
       }
@@ -11143,11 +11163,16 @@ ps5_draw_batch_drain_buffer(struct pipe_resource *base)
 {
    struct ps5_resource *buffer = (struct ps5_resource *)base;
    simple_mtx_lock(&ps5_deferred_mutex);
-   if (buffer)
+   if (buffer) {
       buffer->texture_publication_epoch = 0;
-   /* Texture CPU access also invalidates aliases. Arena buffers cannot alias
-    * texture allocations; exported/display backings are never reusable. */
-   if (!buffer || buffer->base.target != PIPE_BUFFER)
+      buffer->stencil_publication_epoch = 0;
+   }
+   /* Dedicated direct allocations and owned arena slots cannot overlap other
+    * ordinary textures. Display aliases, exports and unknown backing retain
+    * global invalidation. Views of an ordinary texture share this resource. */
+   if (!buffer || (buffer->base.target != PIPE_BUFFER &&
+       ((buffer->base.bind & PIPE_BIND_DISPLAY_TARGET) || buffer->external_cpu_access ||
+        (buffer->direct_start < 0 && !buffer->render_arena_slot_count))))
       ++ps5_texture_publication_epoch;
    /* ponytail: whole allocations, bounded by the batch capacity. Range tracking only
     * if conservative alias/arena overlap becomes a measured bottleneck. */
@@ -15534,10 +15559,9 @@ ps5_context_destroy(struct pipe_context *base)
 
    ps5_draw_batch_drain();
 #ifdef PS5_DRAW_PROFILE
-   printf("[ps5-cpu-flush-summary] calls=%" PRIu64 " bytes=%" PRIu64 " ns=%" PRIu64 "\n",
+   printf("[ps5-cpu-flush-summary] calls=%" PRIu64 " bytes=%" PRIu64 "\n",
           __atomic_load_n(&ps5_cpu_flush_calls, __ATOMIC_RELAXED),
-          __atomic_load_n(&ps5_cpu_flush_bytes, __ATOMIC_RELAXED),
-          __atomic_load_n(&ps5_cpu_flush_ns, __ATOMIC_RELAXED));
+          __atomic_load_n(&ps5_cpu_flush_bytes, __ATOMIC_RELAXED));
    printf("[ps5-batch-summary] config gpu-present="
 #ifdef PS5_GPU_PRESENT_BATCH
           "1"

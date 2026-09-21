@@ -435,7 +435,8 @@ enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=1
 struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind, array_size, width0; };
 struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
     union { struct { unsigned first_level, last_level, first_layer, last_layer; } tex; } u; };
-struct ps5_resource { struct pipe_resource base; uint64_t texture_publication_epoch; unsigned render_staging_size, depth_staging_size;
+struct ps5_resource { struct pipe_resource base; uint64_t texture_publication_epoch, stencil_publication_epoch;
+    int64_t direct_start; unsigned render_arena_slot_count; bool external_cpu_access; unsigned render_staging_size, depth_staging_size;
     unsigned level_stride[16];
     uint8_t *data, *stencil_data; size_t size, allocation_size, stencil_allocation_size; };
 struct pipe_screen { struct pipe_resource *(*resource_create)(struct pipe_screen *, const struct pipe_resource *); };
@@ -918,8 +919,21 @@ int main(void) {
         if (kind==4) {
             cpu.base.target=PIPE_TEXTURE_2D;
             uint64_t epoch_before=ps5_texture_publication_epoch;
+            cpu.stencil_publication_epoch=epoch_before;
+            ps5_draw_batch_drain_buffer(&cpu.base);
+            assert(ps5_texture_publication_epoch==epoch_before && !cpu.stencil_publication_epoch);
+            cpu.direct_start=-1; /* Unowned alias stays conservative. */
             ps5_draw_batch_drain_buffer(&cpu.base);
             assert(ps5_texture_publication_epoch==epoch_before+1);
+            cpu.render_arena_slot_count=1;
+            ps5_draw_batch_drain_buffer(&cpu.base);
+            assert(ps5_texture_publication_epoch==epoch_before+1);
+            cpu.base.bind=PIPE_BIND_DISPLAY_TARGET;
+            ps5_draw_batch_drain_buffer(&cpu.base);
+            assert(ps5_texture_publication_epoch==epoch_before+2);
+            cpu.base.bind=0;cpu.external_cpu_access=true;
+            ps5_draw_batch_drain_buffer(&cpu.base);
+            assert(ps5_texture_publication_epoch==epoch_before+3);
             assert(!ended && staged==1); /* Unrelated texture upload stays asynchronous. */
             cpu.data=borrowed.data;
         }
