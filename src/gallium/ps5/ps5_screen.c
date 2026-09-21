@@ -11997,9 +11997,15 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
                                              ? target->size
                                              : target->allocation_size);
       }
-      printf("[ps5-gallium] clear-mrt-color targets=%u mask=%08x scissor=%u\n",
+      printf("[ps5-gallium] clear-mrt-color targets=%u mask=%08x scissor=%u"
+             " buffers=%x format=%u target=%u width=%u height=%u query=%u\n",
              context->framebuffer.nr_cbufs, color_clear_mask,
-             scissor_state != NULL);
+             scissor_state != NULL, buffers,
+             context->framebuffer.nr_cbufs ? context->framebuffer.cbufs[0].format : 0,
+             context->framebuffer.nr_cbufs && context->framebuffer.cbufs[0].texture
+                ? context->framebuffer.cbufs[0].texture->target : 0,
+             context->framebuffer.width, context->framebuffer.height,
+             context->active_occlusion_query != NULL);
       buffers &= ~PIPE_CLEAR_COLOR;
       if (!buffers)
          return;
