@@ -3114,7 +3114,7 @@ int main(void)
      * Keep the full flush for a new batch, pool, or nonbatched caller. */
     if (!runtime_batch_active || !runtime_batch_count || !runtime_video_registered ||
         framebuffer != runtime_video_framebuffer ||
-        framebuffer_pool_bytes != runtime_video_framebuffer_size)
+        framebuffer_pool_bytes > runtime_video_framebuffer_size)
 #endif
     flush_gpu_data(framebuffer, framebuffer_pool_bytes);
     PS5_PROFILE_MARK(2);

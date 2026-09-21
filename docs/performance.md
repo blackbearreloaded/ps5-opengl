@@ -130,3 +130,15 @@ for its linear view of an sRGB resource. Frame20..30 elapsed fell from 10.844165
 to 8.375047s (22.77% reduction in one historical comparison). Startup unchanged;
 performance still inadequate. Remaining synchronous batch completion is the
 next investigation, not a reason to claim full performance qualification.
+
+### Oversized registration defeats scanout flush reuse
+
+`ps5_screen_prepare_present` registers the whole render-pool allocation, while
+native draw submission compares the smaller scanout span with exact equality.
+Registration reuse already accepts a containing size (`>=`). The draw flush
+gate now uses the same containment condition. CPU/drain, pointer changes,
+unregistered pools and insufficient spans still flush. The production-code
+regression covers 64 combinations and rejects the prior equality condition.
+This follow-up is not part of frozen Eden19a8d10 / OpenGL36de9b3 and has not yet
+been tested on hardware. Existing direct-format profile recorded ~0.365ms
+scanout flush per prepared draw; potential savings are not a measured speedup.
