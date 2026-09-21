@@ -470,7 +470,7 @@ struct ps5_resource { struct base base; size_t render_staging_size,allocation_si
 struct pipe_surface { unsigned level,first_layer,last_layer,format; };
 static unsigned flushes;
 static unsigned util_format_get_blocksize(unsigned format) { return format; }
-static void util_memset32(void *p,uint32_t v,size_t n) { for(size_t i=0;i<n;++i) ((uint32_t*)p)[i]=v; }
+static void ps5_clear_words(void *p,uint32_t v,size_t n) { for(size_t i=0;i<n;++i) ((uint32_t*)p)[i]=v; }
 static void ps5_flush_gpu_data(const void *p,size_t n) { assert(p && n==256); ++flushes; }
 """ + fill + r"""
 int main(void) {

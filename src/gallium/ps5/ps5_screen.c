@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 
 #ifdef PS5_RUNTIME_QUIET
 static int
@@ -12240,6 +12243,28 @@ ps5_clear_gpu_depth_stencil(struct ps5_context *context, unsigned buffers,
    return true; /* Handled even on failure: never replay an attempted GPU operation. */
 }
 
+/* Full aligned clears need not pull old attachment contents into CPU caches.
+ * Callers still drain GPU users and publish the cleared allocation as before. */
+static void
+ps5_clear_words(void *data, uint32_t value, size_t count)
+{
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(__SSE2__)
+   if (count >= 16384 && !(count & 15u) && !((uintptr_t)data & 63u)) {
+      __m128i *out = data;
+      const __m128i fill = _mm_set1_epi32((int)value);
+      for (size_t i = 0; i < count / 4; i += 4) {
+         _mm_stream_si128(out + i, fill);
+         _mm_stream_si128(out + i + 1, fill);
+         _mm_stream_si128(out + i + 2, fill);
+         _mm_stream_si128(out + i + 3, fill);
+      }
+      _mm_sfence();
+      return;
+   }
+#endif
+   util_memset32(data, value, count);
+}
+
 static bool
 ps5_clear_depth_stencil(struct ps5_context *context, unsigned buffers,
                          uint8_t stencil_clear_mask,
@@ -12368,7 +12393,7 @@ reject:
          uint8_t *layer_data = resource->data + layer * depth_layer_size;
 
          if (!scissor_state) {
-            util_memset32(layer_data, clear_bits,
+            ps5_clear_words(layer_data, clear_bits,
                           depth_layer_size / sizeof(clear_bits));
          } else {
             unsigned min_x, min_y, max_x, max_y;
@@ -12480,7 +12505,7 @@ ps5_clear_full_tiled_color(struct ps5_resource *target,
       return false;
    uint32_t pixel;
    memcpy(&pixel, packed, sizeof(pixel));
-   util_memset32(target->data, pixel, target->allocation_size / sizeof(pixel));
+   ps5_clear_words(target->data, pixel, target->allocation_size / sizeof(pixel));
    ps5_flush_gpu_data(target->data, target->allocation_size);
    return true;
 }

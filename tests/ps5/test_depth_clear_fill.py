@@ -16,12 +16,17 @@ source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 start = source.index("static bool\nps5_clear_depth_stencil(")
 start = source.index("         if (!scissor_state) {", start)
 fill = source[start:source.index("         } else {", start)] + "         }\n"
+helper_start = source.index("static void\nps5_clear_words(")
+helper = source[helper_start:source.index("static bool\nps5_clear_depth_stencil(", helper_start)]
 code = r'''
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include "util/u_memset.h"
+#include <emmintrin.h>
+#define PS5_NATIVE_TITLE_RUNTIME 1
+''' + helper + r'''
 static void fill_layer(uint8_t *layer_data, size_t depth_layer_size, uint32_t clear_bits)
 {
     const void *scissor_state = NULL;
@@ -29,17 +34,19 @@ static void fill_layer(uint8_t *layer_data, size_t depth_layer_size, uint32_t cl
 }
 int main(void)
 {
-    const size_t counts[] = {0, 1, 15, 16, 17, 4096, 8388608};
+    const size_t counts[] = {0, 1, 15, 16, 17, 4096, 16383, 16384, 16385, 32768, 8388608};
     const uint32_t values[] = {0, 0x80000000, 0x3f800000, 0x3eaaaaab};
     for (size_t n = 0; n < sizeof(counts) / sizeof(counts[0]); ++n) {
-        size_t count = counts[n], total = count + 32;
-        uint32_t *p = malloc(total * sizeof(*p));
+        size_t count = counts[n], total = (count + 64 + 15) & ~(size_t)15;
+        uint32_t *p = aligned_alloc(64, total * sizeof(*p));
         assert(p);
         for (size_t v = 0; v < sizeof(values) / sizeof(values[0]); ++v) {
-            memset(p, 0xa5, total * sizeof(*p));
-            fill_layer((uint8_t *)(p + 16), count * sizeof(*p), values[v]);
-            for (size_t i = 0; i < total; ++i)
-                assert(p[i] == (i >= 16 && i < count + 16 ? values[v] : 0xa5a5a5a5));
+            for (unsigned offset = 16; offset <= 17; ++offset) {
+                memset(p, 0xa5, total * sizeof(*p));
+                fill_layer((uint8_t *)(p + offset), count * sizeof(*p), values[v]);
+                for (size_t i = 0; i < total; ++i)
+                    assert(p[i] == (i >= offset && i < count + offset ? values[v] : 0xa5a5a5a5));
+            }
         }
         free(p);
     }
@@ -47,7 +54,7 @@ int main(void)
 '''
 with tempfile.TemporaryDirectory() as temporary:
     executable = str(Path(temporary) / "depth-clear-fill")
-    subprocess.run(["cc", "-std=c11", "-Os", "-Wall", "-Wextra", "-Werror",
+    subprocess.run(["cc", "-std=c11", "-O3", "-Wall", "-Wextra", "-Werror",
                     "-DHAVE_ENDIAN_H=1", "-I" + str(root / "third_party/mesa-26.2.0/src"),
                     "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], check=True)
