@@ -12095,7 +12095,8 @@ ps5_clear_full_tiled_color(struct ps5_resource *target,
 {
    /* A uniform four-byte pixel is identical in every tiled address. Include
     * padding only for an entire single-level, single-layer allocation. */
-   if (target->render_staging_size || target->base.last_level ||
+   if ((target->base.bind & PIPE_BIND_DISPLAY_TARGET) ||
+       target->render_staging_size || target->base.last_level ||
        target->base.array_size != 1 || target->base.depth0 != 1 ||
        target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
        surface->level || surface->first_layer || surface->last_layer ||

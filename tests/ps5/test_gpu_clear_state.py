@@ -464,7 +464,8 @@ code = r"""
 #include <stddef.h>
 #include <string.h>
 #define PIPE_MASK_RGBA 15
-struct base { unsigned last_level,array_size,depth0,nr_samples,nr_storage_samples,width0,height0,format; };
+#define PIPE_BIND_DISPLAY_TARGET 8
+struct base { unsigned bind,last_level,array_size,depth0,nr_samples,nr_storage_samples,width0,height0,format; };
 struct ps5_resource { struct base base; size_t render_staging_size,allocation_size; void *data; };
 struct pipe_surface { unsigned level,first_layer,last_layer,format; };
 static unsigned flushes;
@@ -477,7 +478,7 @@ int main(void) {
  for(unsigned i=0;i<66;++i) data[i]=0xabcdef01;
  struct ps5_resource good={.base={.array_size=1,.depth0=1,.width0=8,.height0=4,.format=4},.allocation_size=256,.data=data+1};
  struct pipe_surface surface={.format=4}; uint8_t packed[16]={0x12,0x34,0x56,0x78};
- for(unsigned test=0;test<17;++test) {
+ for(unsigned test=0;test<18;++test) {
   struct ps5_resource r=good;struct pipe_surface v=surface;unsigned mask=15,x=0,y=0,w=8,h=4;
   switch(test) {
    case 0:r.render_staging_size=1;break;case 1:r.base.last_level=1;break;
@@ -486,7 +487,7 @@ int main(void) {
    case 6:v.level=1;break;case 7:v.first_layer=1;break;case 8:v.last_layer=1;break;
    case 9:mask=7;break;case 10:x=1;break;case 11:y=1;break;
    case 12:w=7;break;case 13:h=3;break;case 14:v.format=8;break;
-   case 15:r.base.format=8;break;case 16:r.allocation_size=255;break;
+   case 15:r.base.format=8;break;case 16:r.allocation_size=255;break;case 17:r.base.bind=PIPE_BIND_DISPLAY_TARGET;break;
   }
   assert(!ps5_clear_full_tiled_color(&r,&v,mask,x,y,w,h,packed));
   for(unsigned i=0;i<66;++i) assert(data[i]==0xabcdef01);
