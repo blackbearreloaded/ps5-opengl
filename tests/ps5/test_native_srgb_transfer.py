@@ -23,6 +23,7 @@ code = r'''
 #define _GNU_SOURCE
 #include <assert.h>
 #define PIPE_MAP_UNSYNCHRONIZED (1u<<8)
+#define PIPE_MAP_PERSISTENT (1u<<9)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

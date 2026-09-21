@@ -153,11 +153,14 @@ ps5_screen_submit_unlock(struct pipe_screen *base)
 #endif
 }
 
+static uint64_t ps5_texture_publication_epoch = 1;
+
 static void
 ps5_draw_batch_drain(void)
 {
 #ifdef PS5_DEFERRED_DRAW_BATCH
    ps5_screen_submit_lock(NULL);
+   ++ps5_texture_publication_epoch;
    ps5_screen_submit_unlock(NULL);
 #endif
 }
@@ -425,6 +428,9 @@ _Static_assert(sizeof(struct ps5_streamout_control) ==
 
 struct ps5_resource {
    struct pipe_resource base;
+   uint64_t texture_publication_epoch;
+   size_t texture_published_bytes;
+   bool external_cpu_access;
    struct pipe_resource *render_pool_owner;
    struct pipe_resource *stencil_sample;
    uint8_t *data;
@@ -2456,6 +2462,27 @@ ps5_flush_batch_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
 #endif
 }
 
+static void
+ps5_flush_texture_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
+                           struct ps5_resource *texture, size_t bytes)
+{
+   /* Retained, unstaged fragment textures cannot be CPU-modified without a
+    * resource drain. Explicit drains invalidate all publications; raw-pointer
+    * exports and persistent maps retain the original per-batch behavior. */
+   const bool reusable = batch && !texture->external_cpu_access &&
+      texture->base.target != PIPE_BUFFER &&
+      !(texture->base.bind & PIPE_BIND_DISPLAY_TARGET) &&
+      !texture->depth_staging_size;
+   if (reusable && texture->texture_publication_epoch == ps5_texture_publication_epoch &&
+       texture->texture_published_bytes >= bytes)
+      return;
+   ps5_flush_batch_backing(batch, slot, texture->data, bytes);
+   if (reusable) {
+      texture->texture_publication_epoch = ps5_texture_publication_epoch;
+      texture->texture_published_bytes = bytes;
+   }
+}
+
 static bool
 ps5_stage_packed_depth_samples(struct ps5_resource *resource,
                                unsigned *base_stride)
@@ -4014,9 +4041,9 @@ ps5_prepare_texture(struct ps5_context *context,
 
          /* Batch eligibility excludes attachment aliases and per-draw staging.
           * Array/MSAA backings obey the same retention and CPU-access drains. */
-         ps5_flush_batch_backing(
+         ps5_flush_texture_backing(
             slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
-            texture->data,
+            texture,
             !multisampled && texture->base.target == PIPE_TEXTURE_2D
                ? tiled_size
                : tiled_depth_target || texture->base.target == PIPE_TEXTURE_2D_ARRAY
@@ -4024,9 +4051,9 @@ ps5_prepare_texture(struct ps5_context *context,
       } else {
          /* Eligible batches retain read-only linear fragment textures. Any CPU
           * texture access drains the batch, invalidating this flush cache. */
-         ps5_flush_batch_backing(
+         ps5_flush_texture_backing(
             slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
-            texture->data, texture->size);
+            texture, texture->size);
       }
    }
    if (texture_count != expected_texture_count) {
@@ -4988,8 +5015,10 @@ ps5_resource_info(struct pipe_resource *base, void **address,
    ps5_draw_batch_drain();
    if (!resource)
       return -1;
-   if (address)
+   if (address) {
+      resource->external_cpu_access = true;
       *address = resource->data;
+   }
    if (logical_size)
       *logical_size = resource->size;
    if (allocation_size)
@@ -5456,8 +5485,10 @@ ps5_resource_stencil_info(struct pipe_resource *base, void **address,
        resource->base.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT ||
        !resource->stencil_data)
       return -1;
-   if (address)
+   if (address) {
+      resource->external_cpu_access = true;
       *address = resource->stencil_data;
+   }
    if (allocation_size)
       *allocation_size = resource->stencil_allocation_size;
    return 0;
@@ -6451,6 +6482,9 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
    if (base->target != PIPE_BUFFER || (usage & PIPE_MAP_READ) ||
        !(usage & PIPE_MAP_UNSYNCHRONIZED))
       ps5_draw_batch_drain_buffer(base);
+
+   if (usage & PIPE_MAP_PERSISTENT)
+      resource->external_cpu_access = true;
 
    transfer = calloc(1, sizeof(*transfer));
    if (!transfer)
@@ -11060,8 +11094,14 @@ ps5_deferred_batch_overlaps(const struct ps5_deferred_batch *batch,
 static void
 ps5_draw_batch_drain_buffer(struct pipe_resource *base)
 {
-   const struct ps5_resource *buffer = (const struct ps5_resource *)base;
+   struct ps5_resource *buffer = (struct ps5_resource *)base;
    simple_mtx_lock(&ps5_deferred_mutex);
+   if (buffer)
+      buffer->texture_publication_epoch = 0;
+   /* Texture CPU access also invalidates aliases. Arena buffers cannot alias
+    * texture allocations; exported/display backings are never reusable. */
+   if (!buffer || buffer->base.target != PIPE_BUFFER)
+      ++ps5_texture_publication_epoch;
    /* ponytail: whole allocations, bounded by the batch capacity. Range tracking only
     * if conservative alias/arena overlap becomes a measured bottleneck. */
    if (ps5_deferred_batch_overlaps(&ps5_deferred, buffer)) {

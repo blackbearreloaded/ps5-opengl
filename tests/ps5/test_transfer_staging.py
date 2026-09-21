@@ -34,6 +34,7 @@ code = r'''
 #define _GNU_SOURCE
 #include <assert.h>
 #define PIPE_MAP_UNSYNCHRONIZED (1u<<8)
+#define PIPE_MAP_PERSISTENT (1u<<9)
 #include <stdbool.h>
 #include <stdint.h>
 #include <limits.h>
@@ -299,7 +300,8 @@ static void check(unsigned format, unsigned width, unsigned height, unsigned lay
     struct pipe_box box={0,0,0,(int)width,(int)height,(int)layers};
     struct pipe_transfer *t=NULL;
     unsigned before=maps, before_drains=drains;
-    uint8_t *p=ps5_transfer_map(NULL,&r.base,0,PIPE_MAP_READ|PIPE_MAP_WRITE,&box,&t);
+    uint8_t *p=ps5_transfer_map(NULL,&r.base,0,PIPE_MAP_READ|PIPE_MAP_WRITE|PIPE_MAP_PERSISTENT,&box,&t);
+    assert(r.external_cpu_access);
     assert(p && t); /* Red before fix: full-image staging cannot fit the simulated heap. */
     assert(drains == before_drains + 1);
     assert(maps == before + (r.size >= 65536));

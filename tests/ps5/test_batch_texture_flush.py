@@ -13,6 +13,11 @@ code = (root / 'src/gallium/ps5/ps5_screen.c').read_text()
 start = code.index('struct ps5_batch_flush_cache {')
 end = code.index('\n}\n', code.index('ps5_flush_batch_backing(', start)) + 3
 helper = code[start:end]
+start = code.index('static void\nps5_flush_texture_backing(')
+publication = code[start:code.index('\n}\n', start)+3]
+assert 'buffer->texture_publication_epoch = 0;' in code
+assert '++ps5_texture_publication_epoch;' in code
+assert code.count('resource->external_cpu_access = true;') == 3
 assert 'ps5_deferred_batch_overlaps(&ps5_deferred, buffer)' in code
 assert '&ps5_inflight[(ps5_inflight_head + i) % PS5_INFLIGHT_BATCH_CAPACITY], buffer)' in code
 assert 'memset(batch, 0, sizeof(*batch));' in code
@@ -30,6 +35,8 @@ tiled_dispatch = code[start:code.index('\n      } else {', start)]
 harness = r'''
 #include <assert.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 #define PS5_MAX_TEXTURE_UNITS 16
 #define PIPE_MAX_ATTRIBS 16
@@ -39,19 +46,24 @@ static void ps5_flush_gpu_data(const void *data, size_t bytes) {
 }
 ''' + helper + r'''
 enum { PIPE_TEXTURE_2D=2, PIPE_TEXTURE_2D_ARRAY=7 };
-struct resource { struct { unsigned target; } base; void *data; size_t allocation_size; };
+#define PIPE_BUFFER 0
+#define PIPE_BIND_DISPLAY_TARGET 8
+static uint64_t ps5_texture_publication_epoch=1;
+struct ps5_resource { struct { unsigned target,bind; } base; void *data; size_t allocation_size,depth_staging_size,texture_published_bytes; uint64_t texture_publication_epoch; int external_cpu_access; };
+''' + publication + r'''
 static void tiled(struct ps5_batch_flush_cache *flush_cache, unsigned slot,
                   unsigned unit, int merged_geometry, int multisampled,
-                  int tiled_depth_target, struct resource *texture, size_t tiled_size) {
+                  int tiled_depth_target, struct ps5_resource *texture, size_t tiled_size) {
 ''' + tiled_dispatch + r'''
 }
 static void tiled_checks(void) {
     char backing[256];
-    struct resource texture={{PIPE_TEXTURE_2D},backing,sizeof(backing)};
+    struct ps5_resource texture={.base={.target=PIPE_TEXTURE_2D},.data=backing,.allocation_size=sizeof(backing)};
     for (unsigned array=0; array<2; ++array)
         for (unsigned msaa=0; msaa<2; ++msaa)
             for (unsigned depth=0; depth<2; ++depth) {
                 struct ps5_batch_flush_cache cache={0};
+                texture.texture_publication_epoch=0;
                 texture.base.target=array ? PIPE_TEXTURE_2D_ARRAY : PIPE_TEXTURE_2D;
                 unsigned before=flushes;
                 for (unsigned draw=0; draw<100; ++draw)
@@ -60,13 +72,42 @@ static void tiled_checks(void) {
                 assert(flushes==before+1);
                 assert(cache.size[2]==(!msaa && !array ? 64u : depth || array ? 256u : 64u));
 #else
-                assert(flushes==before+100);
+                assert(flushes==before+1);
 #endif
                 before=flushes;
                 tiled(&cache,0,0,0,msaa,depth,&texture,64);
                 tiled(&cache,1,0,1,msaa,depth,&texture,64);
                 assert(flushes==before+2); /* Vertex/merged stages remain uncached. */
             }
+    struct ps5_batch_flush_cache cache={0};
+    texture.texture_publication_epoch=0;
+    unsigned before=flushes;
+    ps5_flush_texture_backing(&cache,2,&texture,64);
+    memset(&cache,0,sizeof(cache));
+    ps5_flush_texture_backing(&cache,2,&texture,64);
+    assert(flushes==before+1); /* A fresh batch can reuse unchanged publication. */
+    texture.texture_publication_epoch=0;
+    memset(&cache,0,sizeof(cache));
+    ps5_flush_texture_backing(&cache,2,&texture,64);
+    assert(flushes==before+2); /* CPU resource access invalidates it. */
+    ++ps5_texture_publication_epoch;
+    memset(&cache,0,sizeof(cache));
+    ps5_flush_texture_backing(&cache,2,&texture,64);
+    assert(flushes==before+3); /* A full drain invalidates every texture. */
+    ps5_flush_texture_backing(&cache,2,&texture,128);
+    assert(flushes==before+4); /* Larger extent must be published. */
+    for(unsigned exclusion=0;exclusion<4;++exclusion) {
+        texture.external_cpu_access=exclusion==0;
+        texture.base.target=exclusion==1 ? PIPE_BUFFER : PIPE_TEXTURE_2D;
+        texture.base.bind=exclusion==2 ? PIPE_BIND_DISPLAY_TARGET : 0;
+        texture.depth_staging_size=exclusion==3;
+        before=flushes;
+        for(unsigned batch=0;batch<2;++batch) {
+            memset(&cache,0,sizeof(cache));
+            ps5_flush_texture_backing(&cache,2,&texture,64);
+        }
+        assert(flushes==before+2);
+    }
     flushes=0;
 }
 int main(void) {

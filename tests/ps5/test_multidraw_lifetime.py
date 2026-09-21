@@ -435,7 +435,7 @@ enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=1
 struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind, array_size, width0; };
 struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
     union { struct { unsigned first_level, last_level, first_layer, last_layer; } tex; } u; };
-struct ps5_resource { struct pipe_resource base; unsigned render_staging_size, depth_staging_size;
+struct ps5_resource { struct pipe_resource base; uint64_t texture_publication_epoch; unsigned render_staging_size, depth_staging_size;
     unsigned level_stride[16];
     uint8_t *data, *stencil_data; size_t size, allocation_size, stencil_allocation_size; };
 struct pipe_screen { struct pipe_resource *(*resource_create)(struct pipe_screen *, const struct pipe_resource *); };
@@ -831,6 +831,7 @@ fence_helpers = source[source.index("static uint64_t\nps5_draw_batch_fence_submi
 deferred = deferred.replace(fence_helpers, "")
 deferred_code = code[:code.index("int main(void) {")] + r'''
 static unsigned ps5_deferred_mutex;
+static uint64_t ps5_texture_publication_epoch=1;
 static void simple_mtx_lock(unsigned *m) { assert(m == &ps5_deferred_mutex && !locked); locked=1; }
 static void simple_mtx_unlock(unsigned *m) { assert(m == &ps5_deferred_mutex && locked); locked=0; }
 #ifdef PS5_GPU_PRESENT_BATCH
@@ -908,13 +909,17 @@ int main(void) {
         uint8_t unrelated[64];
         struct ps5_resource cpu={.base={.target=PIPE_BUFFER}, .data=unrelated, .allocation_size=64};
         assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+        cpu.texture_publication_epoch=1;
         ps5_draw_batch_drain_buffer(&cpu.base);
+        assert(!cpu.texture_publication_epoch);
         assert(!locked && !ended && staged==1); /* Unrelated uploads leave the batch queued. */
         if (kind<3) cpu.data=copies[kind].data+1; /* Each private descriptor allocation. */
         if (kind==3) cpu.data=borrowed.data+63; /* Distinct object, last-byte overlap. */
         if (kind==4) {
             cpu.base.target=PIPE_TEXTURE_2D;
+            uint64_t epoch_before=ps5_texture_publication_epoch;
             ps5_draw_batch_drain_buffer(&cpu.base);
+            assert(ps5_texture_publication_epoch==epoch_before+1);
             assert(!ended && staged==1); /* Unrelated texture upload stays asynchronous. */
             cpu.data=borrowed.data;
         }

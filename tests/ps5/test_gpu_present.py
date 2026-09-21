@@ -293,7 +293,7 @@ print("PASS: registered GPU pool survives queue splits; CPU publication, replace
 
 screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 start = screen.index("struct ps5_batch_flush_cache {")
-flush_cache = screen[start:screen.index("\nstatic bool\nps5_stage_packed_depth_samples", start)]
+flush_cache = screen[start:screen.index("\nstatic void\nps5_flush_texture_backing", start)]
 start = screen.index("#ifdef PS5_GPU_PRESENT_BATCH\n      /* Disabled depth AND stencil")
 policy = screen[start:screen.index("#endif", start) + len("#endif")] + "\n"
 start = screen.index("      if (flush_depth_stencil)")
