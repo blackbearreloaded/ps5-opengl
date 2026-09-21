@@ -40,3 +40,27 @@ targets, query collection and readback after the batch. Do not remove cache
 operations based solely on fewer API calls or assume polling time proves GPU
 saturation. No hardware run should be spent solely measuring this no-op binding
 change; combine it with a validated submission change.
+
+## Implemented candidate
+
+OpenGL `3509265` implements bounded grouping within an existing leader draw's
+command allocation. Capacity stops at `command.down`, preserving separately
+reserved data. Compatible adjacent command bodies are copied into that space;
+all original allocations remain retained. Interior completion-release tails
+are omitted, leaving the final draw's tail and marker per group. Color releases
+and explicit texture/depth dependency barriers remain in each body. This moves
+the completion release's cache operations to group boundaries and therefore
+requires GPU cache-visibility qualification, not only host ownership tests.
+Unannotated streams, incompatible flags and capacity boundaries retain separate
+submissions. Appended presentation commands and their final marker stay last.
+
+Full host suite and PS5 SDK build passed. The new production-source host test
+covers1..256 draws, bounded groups, exact capacity, opt-out/flag boundaries,
+presentation tails, delayed completion, and submit/suspend/timeout failure
+without premature cleanup. It does not simulate GPU caches.
+
+Eden candidate `2699169` includes grouping and the prior binding no-op fix.
+Case `results/headless-fw602-20260920-223124` acquired the shared lock, then
+foreground preflight found `PPSA99003` active. No deployment or launch occurred;
+post-case services passed and the owned lock was released. Installed Eden
+remains the resource/clear candidate. Hardware correctness/performance pending.
