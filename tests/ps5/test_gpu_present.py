@@ -299,7 +299,7 @@ int main(void) {
     for (unsigned state = 0; state < 64; ++state) {
         int active = state & 1, queued = state & 2, registered = state & 4;
         int same_pointer = state & 8, same_size = state & 16;
-        int larger_registration = state & 32; /* Eden registers its entire render arena. */
+        int larger_registration = state & 32; /* The application registers its entire render arena. */
         flushes = 0;
         run(active, queued ? 2 : 0, registered, pools, 64,
             pools + !same_pointer, larger_registration ? 128 : same_size ? 64 : 32);
