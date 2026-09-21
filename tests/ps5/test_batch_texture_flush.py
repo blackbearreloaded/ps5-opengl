@@ -49,7 +49,7 @@ enum { PIPE_TEXTURE_2D=2, PIPE_TEXTURE_2D_ARRAY=7 };
 #define PIPE_BUFFER 0
 #define PIPE_BIND_DISPLAY_TARGET 8
 static uint64_t ps5_texture_publication_epoch=1;
-struct ps5_resource { struct { unsigned target,bind; } base; void *data; size_t allocation_size,depth_staging_size,texture_published_bytes; uint64_t texture_publication_epoch; int external_cpu_access; };
+struct ps5_resource { struct { unsigned target,bind; } base; void *data,*stencil_data; size_t allocation_size,depth_staging_size,texture_published_bytes,stencil_published_bytes; uint64_t texture_publication_epoch,stencil_publication_epoch; int external_cpu_access; };
 ''' + publication + r'''
 static void tiled(struct ps5_batch_flush_cache *flush_cache, unsigned slot,
                   unsigned unit, int merged_geometry, int multisampled,
@@ -82,20 +82,31 @@ static void tiled_checks(void) {
     struct ps5_batch_flush_cache cache={0};
     texture.texture_publication_epoch=0;
     unsigned before=flushes;
-    ps5_flush_texture_backing(&cache,2,&texture,64);
+    ps5_flush_texture_backing(&cache,2,&texture,64, false);
     memset(&cache,0,sizeof(cache));
-    ps5_flush_texture_backing(&cache,2,&texture,64);
+    ps5_flush_texture_backing(&cache,2,&texture,64, false);
     assert(flushes==before+1); /* A fresh batch can reuse unchanged publication. */
     texture.texture_publication_epoch=0;
     memset(&cache,0,sizeof(cache));
-    ps5_flush_texture_backing(&cache,2,&texture,64);
+    ps5_flush_texture_backing(&cache,2,&texture,64, false);
     assert(flushes==before+2); /* CPU resource access invalidates it. */
     ++ps5_texture_publication_epoch;
     memset(&cache,0,sizeof(cache));
-    ps5_flush_texture_backing(&cache,2,&texture,64);
+    ps5_flush_texture_backing(&cache,2,&texture,64, false);
     assert(flushes==before+3); /* A full drain invalidates every texture. */
-    ps5_flush_texture_backing(&cache,2,&texture,128);
+    ps5_flush_texture_backing(&cache,2,&texture,128, false);
     assert(flushes==before+4); /* Larger extent must be published. */
+    texture.stencil_data=backing+128;
+    before=flushes;
+    ps5_flush_texture_backing(&cache,1,&texture,64,true);
+    memset(&cache,0,sizeof(cache));
+    ps5_flush_texture_backing(&cache,1,&texture,64,true);
+    assert(flushes==before+1); /* Independent stencil-plane publication. */
+    ++ps5_texture_publication_epoch;
+    memset(&cache,0,sizeof(cache));
+    ps5_flush_texture_backing(&cache,1,&texture,64,true);
+    ps5_flush_texture_backing(&cache,2,&texture,128,false);
+    assert(flushes==before+3); /* CPU writes invalidate both planes. */
     for(unsigned exclusion=0;exclusion<4;++exclusion) {
         texture.external_cpu_access=exclusion==0;
         texture.base.target=exclusion==1 ? PIPE_BUFFER : PIPE_TEXTURE_2D;
@@ -104,7 +115,7 @@ static void tiled_checks(void) {
         before=flushes;
         for(unsigned batch=0;batch<2;++batch) {
             memset(&cache,0,sizeof(cache));
-            ps5_flush_texture_backing(&cache,2,&texture,64);
+            ps5_flush_texture_backing(&cache,2,&texture,64, false);
         }
         assert(flushes==before+2);
     }

@@ -428,8 +428,8 @@ _Static_assert(sizeof(struct ps5_streamout_control) ==
 
 struct ps5_resource {
    struct pipe_resource base;
-   uint64_t texture_publication_epoch;
-   size_t texture_published_bytes;
+   uint64_t texture_publication_epoch, stencil_publication_epoch;
+   size_t texture_published_bytes, stencil_published_bytes;
    bool external_cpu_access;
    struct pipe_resource *render_pool_owner;
    struct pipe_resource *stencil_sample;
@@ -2464,8 +2464,11 @@ ps5_flush_batch_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
 
 static void
 ps5_flush_texture_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
-                           struct ps5_resource *texture, size_t bytes)
+                           struct ps5_resource *texture, size_t bytes, bool stencil)
 {
+   uint64_t *epoch = stencil ? &texture->stencil_publication_epoch : &texture->texture_publication_epoch;
+   size_t *published = stencil ? &texture->stencil_published_bytes : &texture->texture_published_bytes;
+   const void *data = stencil ? texture->stencil_data : texture->data;
    /* Retained, unstaged fragment textures cannot be CPU-modified without a
     * resource drain. Explicit drains invalidate all publications; raw-pointer
     * exports and persistent maps retain the original per-batch behavior. */
@@ -2473,13 +2476,13 @@ ps5_flush_texture_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
       texture->base.target != PIPE_BUFFER &&
       !(texture->base.bind & PIPE_BIND_DISPLAY_TARGET) &&
       !texture->depth_staging_size;
-   if (reusable && texture->texture_publication_epoch == ps5_texture_publication_epoch &&
-       texture->texture_published_bytes >= bytes)
+   if (reusable && *epoch == ps5_texture_publication_epoch &&
+       *published >= bytes)
       return;
-   ps5_flush_batch_backing(batch, slot, texture->data, bytes);
+   ps5_flush_batch_backing(batch, slot, data, bytes);
    if (reusable) {
-      texture->texture_publication_epoch = ps5_texture_publication_epoch;
-      texture->texture_published_bytes = bytes;
+      *epoch = ps5_texture_publication_epoch;
+      *published = bytes;
    }
 }
 
@@ -4022,8 +4025,9 @@ ps5_prepare_texture(struct ps5_context *context,
 #endif
       flush_size = MAX2(flush_size, binding->offset + binding->stride);
       if (stencil_texture) {
-          ps5_flush_gpu_data(texture->stencil_data,
-                             texture->stencil_allocation_size);
+          ps5_flush_texture_backing(
+             slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
+             texture, texture->stencil_allocation_size, true);
       } else if (tiled_render_target || tiled_depth_target) {
          size_t tiled_size = multisampled
             ? tiled_depth_target
@@ -4047,13 +4051,13 @@ ps5_prepare_texture(struct ps5_context *context,
             !multisampled && texture->base.target == PIPE_TEXTURE_2D
                ? tiled_size
                : tiled_depth_target || texture->base.target == PIPE_TEXTURE_2D_ARRAY
-                  ? texture->allocation_size : tiled_size);
+                  ? texture->allocation_size : tiled_size, false);
       } else {
          /* Eligible batches retain read-only linear fragment textures. Any CPU
           * texture access drains the batch, invalidating this flush cache. */
          ps5_flush_texture_backing(
             slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
-            texture, texture->size);
+            texture, texture->size, false);
       }
    }
    if (texture_count != expected_texture_count) {
@@ -10169,7 +10173,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       }
       if (flush_depth_stencil) {
          if (depth_data == depth->data)
-            ps5_flush_texture_backing(flush_cache, 0, depth, depth_allocation);
+            ps5_flush_texture_backing(flush_cache, 0, depth, depth_allocation, false);
          else
             ps5_flush_batch_backing(flush_cache, 0, depth_data, depth_allocation);
       }
@@ -10182,8 +10186,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             return;
          }
          if (flush_depth_stencil)
-            ps5_flush_batch_backing(flush_cache, 1, depth->stencil_data,
-                                     depth->stencil_allocation_size);
+            ps5_flush_texture_backing(flush_cache, 1, depth,
+                                       depth->stencil_allocation_size, true);
 #ifdef AGC_RUNTIME_DIAGNOSTICS
          printf("[ps5-gallium] stencil-state format=%u depth=%p/%zu stencil=%p/%zu control=%08x refmask=%08x refmask-bf=%08x\n",
                 depth->base.format, depth_data, depth_allocation,

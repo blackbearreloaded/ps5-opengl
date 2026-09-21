@@ -314,8 +314,8 @@ static void ps5_flush_gpu_data(const void *p, size_t n) { assert(p && n); ++flus
 static uint64_t ps5_texture_publication_epoch=1;
 struct ps5_resource {
     struct { unsigned target,bind; } base;
-    void *data,*stencil_data; size_t stencil_allocation_size,depth_staging_size,texture_published_bytes;
-    uint64_t texture_publication_epoch; bool external_cpu_access;
+    void *data,*stencil_data; size_t stencil_allocation_size,depth_staging_size,texture_published_bytes,stencil_published_bytes;
+    uint64_t texture_publication_epoch,stencil_publication_epoch; bool external_cpu_access;
 };
 ''' + flush_cache + r'''
 static void run(uint32_t control, struct ps5_batch_flush_cache *flush_cache,
