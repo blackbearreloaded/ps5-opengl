@@ -100,7 +100,14 @@ A 30-second profile is suitable for a focused comparison; the standard sustained
 check is bounded at two minutes. Neither is a claim about every application.
 See [testing](testing.md) and [limitations](limitations.md).
 
-### Eden staged-format diagnosis (local branch)
+## Eden submission and preparation improvements
+
+See the [September 21 workload report](eden-performance-2026-09-21.md) for the
+current implementation, recorded 30 FPS menu result, checks and qualification
+limits. The combined result includes Eden CPU/JIT changes outside this repository.
+The dated observations below are historical comparisons, not the current status.
+
+### Eden staged-format diagnosis (historical)
 
 Eden candidate3aefeb2 / OpenGLc48fcad on firmware6.02 classified all823
 framebuffer rejects without overflow in

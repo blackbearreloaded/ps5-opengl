@@ -31,6 +31,7 @@ code = r'''
 #include <assert.h>
 #define PIPE_MAP_UNSYNCHRONIZED (1u<<8)
 #define PIPE_MAP_PERSISTENT (1u<<9)
+#define PIPE_MAP_FLUSH_EXPLICIT (1u<<6)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -98,7 +99,7 @@ for name in ('ps5_float_bits', 'ps5_tiled_depth_layer_xor', 'ps5_tiled_surface_s
              'ps5_surface_layer_count', 'ps5_stage_depth_surface',
              'ps5_transfer_alloc_staging', 'ps5_transfer_free_staging',
              'ps5_transfer_map', 'ps5_publish_transfer_write', 'ps5_transfer_unmap', 'ps5_clear_bounds',
-             'ps5_clear_depth_stencil'):
+             'ps5_clear_words', 'ps5_clear_depth_stencil'):
     code += function(name)
 for samples, bpe, name, tile in ((1,4,'depth',128), (1,1,'stencil',256),
                                 (4,4,'depth_msaa4',64), (4,1,'stencil_msaa4',128)):

@@ -2497,8 +2497,9 @@ static void
 ps5_flush_batch_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
                          const void *data, size_t bytes)
 {
-   /* Only unsubmitted, retained batch resources may reuse a CPU flush. CPU
-    * access drains that batch; its cache is discarded before the next draw.
+   /* Only unsubmitted, retained batch resources may reuse a CPU flush. Ordinary
+    * CPU access drains the batch; unsynchronized writes publish at the write.
+    * Persistent mappings bypass this cache because writes have no callback.
     * ponytail: one published interval per plane/texture unit, reset at batch drain. */
 #ifdef PS5_GPU_PRESENT_BATCH
    if (batch && data && bytes && batch->data[slot] && batch->size[slot]) {
@@ -2539,7 +2540,7 @@ ps5_flush_texture_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
    const void *data = stencil ? texture->stencil_data : texture->data;
    /* Retained, unstaged fragment textures cannot be CPU-modified without a
     * resource drain. Explicit drains invalidate all publications; raw-pointer
-    * exports and persistent maps retain the original per-batch behavior. */
+    * exports and persistent maps publish on each use. */
    const bool reusable = batch && !texture->external_cpu_access &&
       texture->base.target != PIPE_BUFFER &&
       !(texture->base.bind & PIPE_BIND_DISPLAY_TARGET) &&
