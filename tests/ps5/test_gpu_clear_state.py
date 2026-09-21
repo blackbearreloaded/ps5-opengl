@@ -165,7 +165,10 @@ int main(void) {
     REJECT(framebuffer.cbufs[0].level, 1); REJECT(framebuffer.cbufs[0].first_layer, 1);
     REJECT(framebuffer.cbufs[0].last_layer, 1); REJECT(framebuffer.cbufs[0].format, 2);
     REJECT(render_condition_query, 1); REJECT(stream_output_target_count, 1);
-    REJECT(active_occlusion_query, 1); REJECT(active_primitives_generated_query, 1);
+    good.active_occlusion_query = 1;
+    assert(ps5_clear_gpu_color(&good, 4, 15, NULL, &color));
+    good.active_occlusion_query = 0;
+    REJECT(active_primitives_generated_query, 1);
     REJECT(active_primitives_emitted_query, 1);
 #define REJECT_TARGET(field, value) do { target.field = value; \
     assert(!ps5_clear_gpu_color(&good, 4, 15, 0, &color)); target.field = 0; } while (0)

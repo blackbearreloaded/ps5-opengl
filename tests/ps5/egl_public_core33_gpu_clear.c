@@ -158,7 +158,7 @@ int main(void)
       const uint8_t expected[] = {255, 0, 0, 255};
       if (memcmp(pixels + i * 4, expected, 4)) goto cleanup;
    }
-   printf("[ps5-gpu-clear] active-query fallback samples=%u PASS\n", samples);
+   printf("[ps5-gpu-clear] active-query exclusion samples=%u PASS\n", samples);
    passed = 1;
 cleanup:
    if (current) {

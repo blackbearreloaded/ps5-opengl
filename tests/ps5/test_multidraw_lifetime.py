@@ -924,6 +924,20 @@ int main(void) {
     ps5_screen_submit_unlock(&screen.base);
     idle(); assert(submitted && !context.last_draw_status && calls==3 &&
                    occlusion.value==11 && primitives.value==4);
+    reset();
+    occlusion=(struct ps5_query){.buffer=&query_backing.base};
+    context.active_occlusion_query=&occlusion;
+    context.queries_enabled=true;
+    draw.start=2;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    drain(); assert(occlusion.value==3);
+    context.queries_enabled=false; /* u_blitter internal clear */
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    assert(!ps5_deferred.slots[0].occlusion_buffer && !ps5_deferred.slots[0].occlusion_query);
+    drain(); assert(occlusion.value==3);
+    context.queries_enabled=true;
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    drain(); assert(occlusion.value==6 && query_backing.base.refs==1);
     reset(); draw.count=0;
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     idle(); assert(!begun && !allocated);

@@ -11464,7 +11464,7 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        (buffers & PIPE_CLEAR_COLOR) != PIPE_CLEAR_COLOR0 ||
        (color_clear_mask & PIPE_MASK_RGBA) != PIPE_MASK_RGBA ||
        context->framebuffer.nr_cbufs != 1 || context->render_condition_query ||
-       context->stream_output_target_count || context->active_occlusion_query ||
+       context->stream_output_target_count ||
        ps5_any_primitive_query(context))
       return false;
 
@@ -11554,7 +11554,9 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    union pipe_color_union quantized;
    util_format_pack_rgba(surface->format, packed, color->ui, 1);
    util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
-   /* Only this validated color operation may defer its internal fan. The
+   /* u_blitter disables query accounting around its internal draws. The query
+    * state callback retires pending samples before disable and before restore.
+    * Only this validated color operation may defer its internal fan. The
     * caller has already completed any CPU depth/stencil part of a mixed clear. */
    context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0 && !scissor_state;
    if (scissor_state) {
