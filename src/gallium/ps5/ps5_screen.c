@@ -15927,6 +15927,8 @@ ps5_context_destroy(struct pipe_context *base)
    printf("[ps5-cpu-flush-summary] calls=%" PRIu64 " bytes=%" PRIu64 "\n",
           __atomic_load_n(&ps5_cpu_flush_calls, __ATOMIC_RELAXED),
           __atomic_load_n(&ps5_cpu_flush_bytes, __ATOMIC_RELAXED));
+#endif
+   /* Build/lifecycle receipt remains available without hot-path profiling. */
    printf("[ps5-batch-summary] config gpu-present="
 #ifdef PS5_GPU_PRESENT_BATCH
           "1"
@@ -15945,6 +15947,7 @@ ps5_context_destroy(struct pipe_context *base)
 #else
           "0"
 #endif
+#ifdef PS5_DRAW_PROFILE
           " eligible=%" PRIu64 " reject-input=%" PRIu64
           " reject-shader=%" PRIu64 " reject-query=%" PRIu64
           " reject-framebuffer=%" PRIu64 " reject-depth=%" PRIu64
@@ -15953,6 +15956,10 @@ ps5_context_destroy(struct pipe_context *base)
           context->batch_reject[1], context->batch_reject[2],
           context->batch_reject[3], context->batch_reject[4],
           context->batch_reject[5], context->batch_reject[6]);
+#else
+          " profile=0\n");
+#endif
+#ifdef PS5_DRAW_PROFILE
    for (unsigned i = 0; i < 32 && context->framebuffer_fallbacks[i].count; ++i) {
       const unsigned *k = context->framebuffer_fallbacks[i].key;
       printf("[ps5-framebuffer-fallback] count=%" PRIu64

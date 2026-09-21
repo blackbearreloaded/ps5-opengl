@@ -149,3 +149,28 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "scanout_flush_ms=2.000000" in output and "total_ms=6.000000" in output
     assert "[ps5-present-perf] calls=2 failures=5 warmup_frames=30 idle_ms=1.000000 flip_ms=2.000000 vblank_ms=3.000000 total_ms=6.000000" in output
 print("PASS: draw/present timing, warmup, call order, failures, invalid clocks, report/reset")
+
+# Package validation needs the configuration receipt even in profile-off builds.
+screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()
+a = screen.index('   printf("[ps5-batch-summary] config gpu-present=')
+receipt = screen[a:screen.index('\n#ifdef PS5_DRAW_PROFILE\n   for (unsigned i = 0; i < 32', a)]
+with tempfile.TemporaryDirectory() as tmp:
+    exe = Path(tmp) / "receipt"
+    for profile in (False, True):
+        for batched in (False, True):
+            prefix = '#include <stdio.h>\n#include <inttypes.h>\n'
+            if profile:
+                prefix += '#define PS5_DRAW_PROFILE 1\n'
+            if batched:
+                prefix += '#define PS5_GPU_PRESENT_BATCH 1\n#define PS5_MULTIDRAW_BATCH 1\n#define PS5_DEFERRED_DRAW_BATCH 1\n'
+            prefix += 'int main(void) {\n'
+            if profile:
+                prefix += 'struct { uint64_t batch_eligible, batch_reject[7]; } value = {0}, *context = &value;\n'
+            subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-x', 'c', '-', '-o', str(exe)],
+                           input=prefix + receipt + '\nreturn 0; }\n', text=True, check=True)
+            output = subprocess.check_output([str(exe)], text=True)
+            n = int(batched)
+            assert output.startswith(f'[ps5-batch-summary] config gpu-present={n} multidraw={n} deferred={n} ')
+            assert ('eligible=' in output) == profile
+            assert ('profile=0' in output) != profile
+print('PASS: batching configuration remains verifiable with profiling on/off')
