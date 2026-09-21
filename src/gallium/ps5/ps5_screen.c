@@ -10951,13 +10951,8 @@ ps5_draw_batch_fence_finish(uint64_t sequence, uint64_t timeout)
       uint64_t elapsed = (uint64_t)os_time_get_nano() - start;
       if (elapsed >= timeout)
          return false;
-      /* Catch a prompt GPU completion before yielding. Zero-timeout probes
-       * return above; no driver lock is held during this bounded 200us spin. */
-      if (elapsed < 200000) {
-         __builtin_ia32_pause();
-         continue;
-      }
-      /* ponytail: sleep-poll after the spin; use a verified event when available. */
+      /* No driver lock held while waiting; zero-timeout probes never sleep.
+       * ponytail: poll at 100us; use an event when a verified completion event exists. */
       uint64_t remaining = timeout - elapsed;
       os_time_sleep(MIN2(100u, remaining / 1000u));
    }
