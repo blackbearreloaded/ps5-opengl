@@ -902,8 +902,22 @@ static uint32_t *runtime_release_completion(const agc_api_t *agc,
                                             volatile uint64_t *marker,
                                             uint32_t value)
 {
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+    extern uint32_t *sceAgcDcbAcquireMem(void *, uint8_t, uint32_t, uint32_t,
+                                        uintptr_t, uint64_t, uint32_t);
+    /* Flush shader outputs before publishing the CPU fence. The native GL
+     * completion path acquires the marker range, then uses cache policy 3
+     * through the L2 destination so publication does not retain a cached line. */
+    if (!agc->release_mem(command, 40, 0x30c, 0, 0, NULL, 0,
+                          0, 0, 0, 0, 0) ||
+        !sceAgcDcbAcquireMem(command, 1, 0, 0x9000, (uintptr_t)marker, 32, 400))
+        return NULL;
+    return agc->release_mem(command, 40, 0, 1, 3, (void *)marker, 2,
+                            value, 0, 1, 0, 0);
+#else
     return agc->release_mem(command, 40, 0x30c, 0, 0, (void *)marker, 2,
                             value, 0, 0, 3, 0);
+#endif
 }
 
 /* SuspendPoint ends a native submission period and stages the next period's
@@ -1398,9 +1412,8 @@ int ps5_agc_gate2_batch_present(unsigned buffer_index)
      * keeps this command allocation alive until the GPU consumed the tail. */
     if (!runtime_batch_api.set_flip(&command, (uint32_t)runtime_video_handle,
                                     (int)buffer_index, 1, (int64_t)marker) ||
-        !runtime_batch_api.release_mem(&command, 40, 0x30c, 0, 0,
-                                       (void *)entry->marker, 1,
-                                       (uint32_t)marker, 0, 0, 0, 0) ||
+        !runtime_release_completion(&runtime_batch_api, &command, entry->marker,
+                                     (uint32_t)marker) ||
         out_of_space || command.up <= words + entry->submit.word_count ||
         command.up > command.top)
         return -1;

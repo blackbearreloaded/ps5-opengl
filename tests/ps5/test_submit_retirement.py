@@ -21,6 +21,7 @@ code = r'''
 #define _GNU_SOURCE
 #include <assert.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -129,25 +130,32 @@ assert "runtime_release_completion(&agc, &command, marker, expected)" in (root/"
 fence_code = r"""
 #include <assert.h>
 #include <stdint.h>
+#include <stddef.h>
 typedef struct { int unused; } agc_command_buffer_t;
 typedef struct { uint32_t *(*release_mem)(void *,uint8_t,int16_t,uint64_t,int8_t,void *,uint32_t,uint64_t,uint16_t,uint16_t,int8_t,int32_t); } agc_api_t;
 static uint64_t marker;
-static int fail;
+static int fail, calls;
+uint32_t *sceAgcDcbAcquireMem(void *cb,uint8_t engine,uint32_t flags,uint32_t gcr,uintptr_t address,uint64_t size,uint32_t poll) {
+    assert(++calls==2 && cb && engine==1 && !flags && gcr==0x9000);
+    assert(address==(uintptr_t)&marker && size==32 && poll==400);
+    return fail==calls ? 0 : (uint32_t *)&marker;
+}
 static uint32_t *release(void *cb,uint8_t event,int16_t gcr,uint64_t dst,int8_t cache,void *address,uint32_t data,uint64_t value,uint16_t lo,uint16_t hi,int8_t interrupt,int32_t reserved) {
-    assert(cb && event==40 && gcr==0x30c && !dst && !cache && address==&marker);
-    assert(data==2 && value==123 && !lo && !hi && interrupt==3 && !reserved);
-    return fail ? 0 : (uint32_t *)&marker;
+    ++calls; assert(cb && event==40 && !lo && !interrupt && !reserved);
+    if (calls==1) assert(gcr==0x30c && !dst && !cache && !address && !data && !value && !hi);
+    else assert(calls==3 && !gcr && dst==1 && cache==3 && address==&marker && data==2 && value==123 && hi==1);
+    return fail==calls ? 0 : (uint32_t *)&marker;
 }
 """ + emitter + r"""
 int main(void) {
     agc_api_t agc={release}; agc_command_buffer_t cb={0};
     assert(runtime_release_completion(&agc,&cb,&marker,123)==(uint32_t *)&marker);
-    fail=1; assert(runtime_release_completion(&agc,&cb,&marker,123)==0);
+    for (fail=1;fail<=3;++fail) { calls=0; assert(runtime_release_completion(&agc,&cb,&marker,123)==0); assert(calls==fail); }
 }
 """
 with tempfile.TemporaryDirectory() as temporary:
     executable = str(Path(temporary) / "completion-packet")
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c",
-                    "-o", executable, "-"], input=fence_code, text=True, check=True)
+                    "-DPS5_NATIVE_TITLE_RUNTIME=1", "-o", executable, "-"], input=fence_code, text=True, check=True)
     subprocess.run([executable], check=True)
-print("PASS: graphics/compute completion emits write-confirmed 64-bit release and propagates packet failure")
+print("PASS: graphics/compute completion flushes outputs, acquires marker range, bypasses marker caching; every packet failure propagates")

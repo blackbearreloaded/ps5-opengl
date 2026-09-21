@@ -26,9 +26,9 @@ code = r'''
 #define COMMAND_BYTES 0x4000u
 typedef struct { uint32_t *bottom, *top, *up, *down; uintptr_t callback; } agc_command_buffer_t;
 static uint8_t memory[COMMAND_BYTES + 64];
-static uint32_t completion;
+static uint64_t completion;
 static struct runtime_batch_entry { struct { void *words; uint32_t word_count; } submit;
-    void *memory; size_t bytes; uint32_t *marker; uint32_t expected;
+    void *memory; size_t bytes; uint64_t *marker; uint32_t expected;
 } runtime_batch_entries[1];
 static unsigned runtime_batch_count, runtime_batch_active, runtime_batch_faulted,
                 runtime_pending_batches;
@@ -69,6 +69,14 @@ static struct {
     uint32_t *(*release_mem)(void *, uint8_t, int16_t, uint64_t, int8_t, void *, uint32_t,
         uint64_t, uint16_t, uint16_t, int8_t, int32_t);
 } runtime_batch_api = {set_flip, release_mem};
+/* Packet encoding/failure propagation is covered by test_submit_retirement.
+ * This mock checks presentation routes its final ownership marker through it. */
+static uint32_t *runtime_release_completion(void *api, agc_command_buffer_t *command,
+                                            volatile uint64_t *marker, uint32_t value) {
+    assert(api == &runtime_batch_api);
+    return release_mem(command,40,0x30c,0,0,(void *)marker,1,value,0,0,0,0);
+}
+
 static int status(int handle, void *p) {
     assert(handle == 7); ((uint64_t *)p)[3] = waits >= finish_after ? 101 : 99;
     return status_error;
