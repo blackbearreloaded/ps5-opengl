@@ -429,7 +429,7 @@ enum { PIPE_MAX_ATTRIBS=16, PS5_MAX_CONSTANT_BUFFERS=13, PS5_MAX_TEXTURE_UNITS=1
        PIPE_TEXTURE_2D=2, PIPE_TEXTURE_2D_ARRAY=3, PIPE_FORMAT_R8G8B8A8_UNORM=1, MESA_PRIM_TRIANGLES=4, MESA_PRIM_TRIANGLE_FAN=5, PIPE_BIND_DISPLAY_TARGET=1,
        PIPE_FORMAT_Z32_FLOAT=77, PIPE_FORMAT_Z32_FLOAT_S8X24_UINT=78, PIPE_MAX_VERTEX_STREAMS=4,
        PIPE_FORMAT_X32_S8X24_UINT=79, PIPE_BIND_RENDER_TARGET=2, PIPE_BIND_DEPTH_STENCIL=4 };
-struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind, array_size; };
+struct pipe_resource { unsigned target, format, nr_samples, nr_storage_samples, refs, last_level, bind, array_size, width0; };
 struct pipe_sampler_view { struct pipe_resource *texture; unsigned target, format;
     union { struct { unsigned first_level, last_level, first_layer, last_layer; } tex; } u; };
 struct ps5_resource { struct pipe_resource base; unsigned render_staging_size, depth_staging_size;
@@ -467,6 +467,8 @@ struct ps5_context {
     struct { unsigned key[16]; uint64_t count; } framebuffer_fallbacks[32];
     uint64_t framebuffer_fallback_overflow;
 };
+/* Snapshot sizing is exercised with real ranges in test_descriptor_snapshot.py. */
+static size_t ps5_descriptor_snapshot_size(const struct ps5_context *c, unsigned slot) { (void)c; (void)slot; return 64; }
 static bool ps5_any_primitive_query(const struct ps5_context *c)
 { for (unsigned i=0;i<PIPE_MAX_VERTEX_STREAMS;++i) {
       if (c->active_primitives_generated_query[i] || c->active_primitives_emitted_query[i]) return true;
@@ -638,7 +640,7 @@ static void reset(void) {
         .vertex_buffer_count=PIPE_MAX_ATTRIBS, .border_color_storage=&borrowed.base};
     for (unsigned i=0; i<3; ++i) {
         memset(original_bytes[i], 0xa0+i, 64);
-        original[i]=(struct ps5_resource){.base={.target=PIPE_BUFFER, .refs=1}, .data=original_bytes[i], .size=64, .allocation_size=64};
+        original[i]=(struct ps5_resource){.base={.target=PIPE_BUFFER, .refs=1, .width0=64}, .data=original_bytes[i], .size=64, .allocation_size=64};
     }
     context.vertex_descriptor_table=&original[0].base;
     context.descriptor_storage[0]=&original[1].base; context.descriptor_storage[1]=&original[2].base;

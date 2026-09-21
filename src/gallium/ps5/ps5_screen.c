@@ -2810,6 +2810,21 @@ ps5_copied_constant_offset(unsigned state_slot)
               ? (state_slot - 1u) * PS5_MAX_CONSTANT_BUFFER_SIZE : 0u);
 }
 
+/* Snapshots need only the ordinary descriptor bank and copied CB0. Geometry
+ * and tessellation retain their full multi-stage layout. */
+static size_t
+ps5_descriptor_snapshot_size(const struct ps5_context *context, unsigned slot)
+{
+   if (slot == 0 && (context->gs || context->tcs || context->tes))
+      return PS5_ENABLE_UBO_CANDIDATE ? PS5_DESCRIPTOR_STORAGE_BYTES
+                                      : PS5_DIRECT_ALIGNMENT;
+   const struct ps5_constant_state *state = &context->constants[slot][0];
+   return state->valid && state->copied
+      ? MAX2(PS5_DIRECT_ALIGNMENT,
+             PS5_CONSTANT_DATA_OFFSET + ((state->size + 15u) & ~15u))
+      : PS5_DIRECT_ALIGNMENT;
+}
+
 static unsigned
 ps5_shader_storage_count(const struct ps5_shader *shader)
 {
@@ -3150,9 +3165,7 @@ ps5_prepare_constant(struct ps5_context *context,
          !shader->nir->info.first_ubo_is_default_ubo)) ||
        !storage ||
        storage->base.target != PIPE_BUFFER ||
-       storage->size < (PS5_ENABLE_UBO_CANDIDATE
-                           ? PS5_DESCRIPTOR_STORAGE_BYTES
-                           : PS5_DIRECT_ALIGNMENT) ||
+       storage->size < ps5_descriptor_snapshot_size(context, slot) ||
       metadata->descriptor_binding_count !=
           (storage_fs ? 2u + (shader->nir->info.num_images != 0) :
                         expected_ubo_bindings + resource_bindings) +
@@ -10666,12 +10679,18 @@ ps5_batch_copy_descriptors(struct pipe_context *base,
       const struct ps5_resource *source = (const struct ps5_resource *)saved[stage];
       if (!source || !source->data || source->base.target != PIPE_BUFFER)
          return false;
-      storage[stage] = base->screen->resource_create(base->screen, &source->base);
+      struct pipe_resource templ = source->base;
+      if (stage)
+         templ.width0 = ps5_descriptor_snapshot_size(
+            (const struct ps5_context *)base, stage - 1);
+      if (templ.width0 > source->size)
+         return false;
+      storage[stage] = base->screen->resource_create(base->screen, &templ);
       struct ps5_resource *copy = (struct ps5_resource *)storage[stage];
-      if (!copy || !copy->data || copy->size != source->size ||
+      if (!copy || !copy->data || copy->size != templ.width0 ||
           (uintptr_t)copy->data >> 32 != (uintptr_t)source->data >> 32)
          return false;
-      memcpy(copy->data, source->data, source->size);
+      memcpy(copy->data, source->data, copy->size);
    }
    return true;
 }
