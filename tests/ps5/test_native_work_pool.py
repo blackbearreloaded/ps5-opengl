@@ -17,8 +17,8 @@ assert retire.index('if (!complete)') < retire.index('runtime_work_put(entry->me
 shutdown=s[s.index('int ps5_agc_gate2_shutdown_present(void)'):s.index('static int runtime_video_acquire')]
 assert shutdown.index('runtime_pending_batches') < shutdown.index('runtime_work_cache_clear()')
 assert 'runtime_require_retirement(runtime_work_cache_clear() == 0)' in shutdown
-assert 'if (work_reused && !runtime_acquire_reused_work(&command, memory, work_bytes))\n        goto receipt;' in s
-assert s.index('if (work_reused && !runtime_acquire_reused_work') < s.index('    agc.set_cx(&command, cx, cx_count);',s.index('    if (work_reused && !runtime_acquire_reused_work'))
+assert 'if (!runtime_acquire_cpu_uploads(&command, memory, work_bytes))\n        goto receipt;' in s
+assert s.index('if (!runtime_acquire_cpu_uploads') < s.index('    agc.set_cx(&command, cx, cx_count);',s.index('    if (!runtime_acquire_cpu_uploads'))
 code=r"""
 #include <assert.h>
 #include <stdint.h>
@@ -28,7 +28,7 @@ code=r"""
 typedef struct { unsigned unused; } agc_command_buffer_t;
 static unsigned acquires; static int fail_acquire;
 uint32_t *sceAgcDcbAcquireMem(void *c,uint8_t engine,uint32_t coher,uint32_t gcr,uintptr_t base,uint64_t bytes,uint32_t poll) {
- assert(c && !engine && !coher && gcr==0x5389 && base==0x10000 && bytes==16384 && poll==0xa0);
+ assert(c && !engine && !coher && gcr==0xc3b1 && base==0x10000 && bytes==16384 && poll==0xa0);
  ++acquires;return fail_acquire ? NULL : (uint32_t*)c;
 }
 static unsigned unmaps,releases;static int fail_unmap,fail_release;
@@ -37,8 +37,8 @@ static int sceKernelReleaseDirectMemory(int64_t p,size_t n) {assert(p>=0 && n);+
 """+body+r"""
 int main(void) {
  agc_command_buffer_t command={0};
- assert(runtime_acquire_reused_work(&command,(void*)0x10000,16384));
- fail_acquire=1;assert(!runtime_acquire_reused_work(&command,(void*)0x10000,16384) && acquires==2);
+ assert(runtime_acquire_cpu_uploads(&command,(void*)0x10000,16384));
+ fail_acquire=1;assert(!runtime_acquire_cpu_uploads(&command,(void*)0x10000,16384) && acquires==2);
  void *memory=(void*)123;int64_t direct=123;
  assert(!runtime_work_take(16384,&memory,&direct) && memory==(void*)123 && direct==123);
  for(unsigned i=0;i<8;++i) assert(!runtime_work_put((void*)(uintptr_t)(0x10000+i*0x4000),i,16384));

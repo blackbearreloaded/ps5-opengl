@@ -1031,15 +1031,15 @@ static int runtime_work_put(void *memory, int64_t direct, size_t bytes)
            sceKernelReleaseDirectMemory(direct, bytes) != 0 ? -1 : 0;
 }
 
-static uint32_t *runtime_acquire_reused_work(agc_command_buffer_t *command,
+static uint32_t *runtime_acquire_cpu_uploads(agc_command_buffer_t *command,
                                              void *memory, size_t bytes)
 {
     extern uint32_t *sceAgcDcbAcquireMem(void *, uint8_t, uint32_t, uint32_t,
                                         uintptr_t, uint64_t, uint32_t);
-    /* Mesa pkt3.json GCR_CNTL: GLI_ALL, GLK/GLV/GL1_INV, GL1_RANGE,
-     * GL2_INV + GL2_RANGE. Restrict L2 invalidation to this retired allocation
-     * so unrelated in-flight render-target writes cannot be discarded. */
-    return sceAgcDcbAcquireMem(command, 0, 0, UINT32_C(0x5389),
+    /* Mesa gfx10_emit_barrier: instruction/scalar/vector/L1 invalidation,
+     * and L2/metadata writeback+invalidation. CPU uploads include descriptors
+     * outside the command allocation; writeback preserves GPU-produced data. */
+    return sceAgcDcbAcquireMem(command, 0, 0, UINT32_C(0xc3b1),
                                (uintptr_t)memory, bytes, 0xa0);
 }
 
@@ -2901,9 +2901,6 @@ int main(void)
     uintptr_t tf_ring_address = 0;
     uint32_t tf_ring_bytes = 0;
     int work_alloc_rc = -1, work_map_rc = -1;
-#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
-    int work_reused = 0;
-#endif
     int framebuffer_alloc_rc = -1, framebuffer_map_rc = -1;
 #ifdef AGC_OFFSCREEN_COLOR_VARIANT
     int offscreen_alloc_rc = -1, offscreen_map_rc = -1;
@@ -3111,7 +3108,6 @@ int main(void)
 #endif
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
     if (runtime_work_take(work_bytes, (void **)&memory, &work_start)) {
-        work_reused = 1;
         work_alloc_rc = work_map_rc = 0;
     } else
 #endif
@@ -3615,7 +3611,7 @@ int main(void)
         goto receipt;
 #endif
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
-    if (work_reused && !runtime_acquire_reused_work(&command, memory, work_bytes))
+    if (!runtime_acquire_cpu_uploads(&command, memory, work_bytes))
         goto receipt;
 #endif
     agc.set_cx(&command, cx, cx_count);
