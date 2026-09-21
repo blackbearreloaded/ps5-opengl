@@ -168,8 +168,11 @@ int main(void) {
     good.active_occlusion_query = 1;
     assert(ps5_clear_gpu_color(&good, 4, 15, NULL, &color));
     good.active_occlusion_query = 0;
-    REJECT(active_primitives_generated_query, 1);
-    REJECT(active_primitives_emitted_query, 1);
+    good.active_occlusion_query = good.active_primitives_generated_query =
+        good.active_primitives_emitted_query = 1;
+    assert(ps5_clear_gpu_color(&good, 4, 15, NULL, &color));
+    good.active_occlusion_query = good.active_primitives_generated_query =
+        good.active_primitives_emitted_query = 0;
 #define REJECT_TARGET(field, value) do { target.field = value; \
     assert(!ps5_clear_gpu_color(&good, 4, 15, 0, &color)); target.field = 0; } while (0)
     REJECT_TARGET(base.nr_samples, 4); REJECT_TARGET(base.nr_storage_samples, 4);

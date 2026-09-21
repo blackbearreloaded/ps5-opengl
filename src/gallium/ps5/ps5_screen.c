@@ -11464,8 +11464,7 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        (buffers & PIPE_CLEAR_COLOR) != PIPE_CLEAR_COLOR0 ||
        (color_clear_mask & PIPE_MASK_RGBA) != PIPE_MASK_RGBA ||
        context->framebuffer.nr_cbufs != 1 || context->render_condition_query ||
-       context->stream_output_target_count ||
-       ps5_any_primitive_query(context))
+       context->stream_output_target_count)
       return false;
 
    /* Tiny clears cost less on the CPU than the measured ~16 ms GPU round trip.

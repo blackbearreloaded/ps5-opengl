@@ -926,18 +926,20 @@ int main(void) {
                    occlusion.value==11 && primitives.value==4);
     reset();
     occlusion=(struct ps5_query){.buffer=&query_backing.base};
+    primitives=(struct ps5_query){0};
     context.active_occlusion_query=&occlusion;
+    context.active_primitives_generated_query[0]=&primitives;
     context.queries_enabled=true;
     draw.start=2;
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
-    drain(); assert(occlusion.value==3);
+    drain(); assert(occlusion.value==3 && primitives.value==2);
     context.queries_enabled=false; /* u_blitter internal clear */
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     assert(!ps5_deferred.slots[0].occlusion_buffer && !ps5_deferred.slots[0].occlusion_query);
-    assert(occlusion.value==3);
+    assert(occlusion.value==3 && primitives.value==2);
     context.queries_enabled=true; /* Restore must preserve the uncounted queued clear. */
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
-    drain(); assert(occlusion.value==6 && query_backing.base.refs==1);
+    drain(); assert(occlusion.value==6 && primitives.value==4 && query_backing.base.refs==1);
     reset(); draw.count=0;
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     idle(); assert(!begun && !allocated);
