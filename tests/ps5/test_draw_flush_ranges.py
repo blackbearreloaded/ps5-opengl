@@ -15,6 +15,9 @@ a=s.index('      uint32_t binding_records[PIPE_MAX_ATTRIBS] = {0};')
 a=s.index('         if (element->instance_divisor) {',a)
 b=s.index('         binding_mask |=',a)
 calc=s[a:b]
+runtime=(Path(__file__).resolve().parents[2]/'src/platform/ps5_agc_native_runtime.c').read_text()
+a=runtime.index('static void flush_gpu_data(const void *address, size_t bytes)\n{')
+native=runtime[a:runtime.index('\n}',a)+2]
 assert '(const void *)vertex_address, binding_bytes[binding]);' in s
 assert 'index_resource->data + index_offset,\n         (size_t)draws[0].count * info->index_size);' in s
 code=r'''
@@ -25,11 +28,12 @@ code=r'''
 #define MAX2(a,b) ((a)>(b)?(a):(b))
 #define PIPE_BUFFER 1
 #define HAVE___BUILTIN_IA32_CLFLUSHOPT 1
+#define PS5_NATIVE_TITLE_RUNTIME 1
 struct util_cpu_caps_t { unsigned has_clflushopt, cacheline; };
 static struct util_cpu_caps_t caps={0,64};
 static const struct util_cpu_caps_t *util_get_cpu_caps(void) { return &caps; }
 static uintptr_t lines[32]; static unsigned line_count,fences,optimized;
-'''+cache+flush+r'''
+'''+cache+flush+native+r'''
 struct ps5_resource { struct { unsigned target; } base; size_t size; };
 struct vertex_buffer { unsigned buffer_offset; struct { struct ps5_resource *resource; } buffer; };
 struct element { unsigned instance_divisor,src_offset,src_stride,vertex_buffer_index; };
@@ -42,8 +46,9 @@ static void calculate(struct context *context, struct info *info, struct element
 '''+calc+r'''
 }
 int main(void) {
- for(unsigned fast=0;fast<2;++fast) for(unsigned off=0;off<64;++off) for(unsigned n=0;n<=256;++n) {
-  caps.has_clflushopt=fast;line_count=fences=optimized=0; ps5_flush_gpu_data((void*)(uintptr_t)(4096+off),n);
+ void (*flushers[])(const void *,size_t)={ps5_flush_gpu_data,flush_gpu_data};
+ for(unsigned helper=0;helper<2;++helper) for(unsigned fast=0;fast<2;++fast) for(unsigned off=0;off<64;++off) for(unsigned n=0;n<=256;++n) {
+  caps.has_clflushopt=fast;line_count=fences=optimized=0; flushers[helper]((void*)(uintptr_t)(4096+off),n);
   unsigned count=n?(off+n+63)/64:0;
   assert(fences==(n?(fast?2:1):0)); assert(line_count==(n?count+1:0));
   for(unsigned j=0;j<count;++j) assert(lines[j]==4096+j*64);

@@ -18,6 +18,9 @@
 #include <sys/mman.h>
 
 #include <ps5/kernel.h>
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+#include "util/cache_ops.h"
+#endif
 
 #if defined(PS5_DRAW_PROFILE) && (!defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT))
 #error "Draw profiling requires the submitting runtime backend"
@@ -1966,11 +1969,16 @@ static int dump_depth_register_template(void *agc_module)
 
 static void flush_gpu_data(const void *address, size_t bytes)
 {
-    const uint8_t *at = address;
-    const uint8_t *end = at + bytes;
-    for (; at < end; at += 64)
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+    if (bytes)
+        util_flush_inval_range((void *)address, bytes);
+#else
+    const uintptr_t end = (uintptr_t)address + bytes;
+    uintptr_t at = (uintptr_t)address & ~(uintptr_t)63;
+    for (; bytes && at < end; at += 64)
         __asm__ volatile("clflush (%0)" : : "r"(at) : "memory");
     __asm__ volatile("mfence" ::: "memory");
+#endif
 }
 
 #if (defined(AGC_RENDER_TO_TEXTURE_VARIANT) || \
