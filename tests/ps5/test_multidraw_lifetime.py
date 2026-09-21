@@ -934,8 +934,8 @@ int main(void) {
     context.queries_enabled=false; /* u_blitter internal clear */
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     assert(!ps5_deferred.slots[0].occlusion_buffer && !ps5_deferred.slots[0].occlusion_query);
-    drain(); assert(occlusion.value==3);
-    context.queries_enabled=true;
+    assert(occlusion.value==3);
+    context.queries_enabled=true; /* Restore must preserve the uncounted queued clear. */
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     drain(); assert(occlusion.value==6 && query_backing.base.refs==1);
     reset(); draw.count=0;

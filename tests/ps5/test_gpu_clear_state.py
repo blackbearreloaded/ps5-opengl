@@ -95,11 +95,11 @@ int main(void) {
     query.active_occlusion_query = 1;
     ps5_set_active_query_state((struct pipe_context *)&query, true);
     ps5_set_active_query_state((struct pipe_context *)&query, true);
-    assert(query_drains == 1 && query.queries_enabled);
+    assert(query_drains == 0 && query.queries_enabled);
     query.active_occlusion_query = 0;
     query.active_primitives_generated_query = 1;
     ps5_set_active_query_state((struct pipe_context *)&query, false);
-    assert(query_drains == 2 && !query.queries_enabled);
+    assert(query_drains == 1 && !query.queries_enabled);
     uint8_t bytes[PS5_MAX_CONSTANT_BUFFER_SIZE + 16]; memset(bytes, 0xa5, sizeof(bytes));
     struct ps5_resource target = {.base = {.target=2, .format=1}};
     struct ps5_resource storage = {.data=bytes, .size=sizeof(bytes)};

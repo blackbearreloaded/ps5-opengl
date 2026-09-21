@@ -8338,9 +8338,9 @@ static void
 ps5_set_active_query_state(struct pipe_context *base, bool enable)
 {
    struct ps5_context *context = (struct ps5_context *)base;
-   /* u_blitter toggles this around internal draws even with no active query.
-    * Only a live query transition needs retirement before changing its state. */
-   if (context->queries_enabled != enable &&
+   /* Finish counted draws before disabling a live query. Re-enabling needs no
+    * drain: each deferred slot captured its query (or NULL) when it was built. */
+   if (context->queries_enabled && !enable &&
        (context->active_occlusion_query || ps5_any_primitive_query(context)))
       ps5_draw_batch_drain();
    context->queries_enabled = enable;
@@ -11555,7 +11555,8 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    util_format_pack_rgba(surface->format, packed, color->ui, 1);
    util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
    /* u_blitter disables query accounting around its internal draws. The query
-    * state callback retires pending samples before disable and before restore.
+    * state callback retires pending samples before disable; deferred slots keep
+    * that disabled accounting after query state is restored.
     * Only this validated color operation may defer its internal fan. The
     * caller has already completed any CPU depth/stencil part of a mixed clear. */
    context->deferred_color_clear = buffers == PIPE_CLEAR_COLOR0 && !scissor_state;
