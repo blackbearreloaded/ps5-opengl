@@ -97,7 +97,7 @@ for name in ('ps5_float_bits', 'ps5_tiled_depth_layer_xor', 'ps5_tiled_surface_s
              'ps5_tiled_rgba8_width', 'ps5_surface_width', 'ps5_surface_height',
              'ps5_surface_layer_count', 'ps5_stage_depth_surface',
              'ps5_transfer_alloc_staging', 'ps5_transfer_free_staging',
-             'ps5_transfer_map', 'ps5_transfer_unmap', 'ps5_clear_bounds',
+             'ps5_transfer_map', 'ps5_publish_transfer_write', 'ps5_transfer_unmap', 'ps5_clear_bounds',
              'ps5_clear_depth_stencil'):
     code += function(name)
 for samples, bpe, name, tile in ((1,4,'depth',128), (1,1,'stencil',256),

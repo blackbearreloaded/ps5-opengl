@@ -101,6 +101,7 @@ test:
 	python3 tests/ps5/test_resource_release.py
 	python3 tests/ps5/test_buffer_arena.py
 	python3 tests/ps5/test_draw_flush_ranges.py
+	python3 tests/ps5/test_buffer_publication.py
 	python3 tests/ps5/test_index_bounds.py
 	python3 tests/ps5/test_descriptor_reuse.py
 	python3 tests/ps5/test_used_buffer_retention.py

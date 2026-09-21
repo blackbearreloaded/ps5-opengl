@@ -2547,7 +2547,7 @@ ps5_flush_texture_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
    if (reusable && *epoch == ps5_texture_publication_epoch &&
        *published >= bytes)
       return;
-   ps5_flush_batch_backing(batch, slot, data, bytes);
+   ps5_flush_batch_backing(texture->external_cpu_access ? NULL : batch, slot, data, bytes);
    if (reusable) {
       *epoch = ps5_texture_publication_epoch;
       *published = bytes;
@@ -6833,6 +6833,23 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
 }
 
 static void
+ps5_publish_transfer_write(struct pipe_transfer *transfer, const struct pipe_box *box)
+{
+   if (!transfer || transfer->resource->target != PIPE_BUFFER ||
+       !(transfer->usage & PIPE_MAP_WRITE))
+      return;
+   struct ps5_resource *resource = (struct ps5_resource *)transfer->resource;
+   const int x = box ? box->x : 0;
+   const int width = box ? box->width : transfer->box.width;
+   if (transfer->box.x < 0 || x < 0 || width <= 0 ||
+       x > transfer->box.width || width > transfer->box.width - x)
+      return;
+   size_t offset = (size_t)transfer->box.x + (unsigned)x;
+   if (offset <= resource->size && (size_t)width <= resource->size - offset)
+      ps5_flush_gpu_data(resource->data + offset, (size_t)width);
+}
+
+static void
 ps5_transfer_flush_region(struct pipe_context *context,
                           struct pipe_transfer *transfer,
                           const struct pipe_box *box)
@@ -6843,7 +6860,7 @@ ps5_transfer_flush_region(struct pipe_context *context,
       ps5_draw_batch_drain_buffer(transfer ? transfer->resource : NULL);
    (void)context;
    (void)transfer;
-   (void)box;
+   ps5_publish_transfer_write(transfer, box);
 }
 
 static void
@@ -6942,6 +6959,8 @@ ps5_transfer_unmap(struct pipe_context *context,
       }
       ps5_flush_gpu_data(resource->data, resource->allocation_size);
    }
+   if (!(transfer->usage & PIPE_MAP_FLUSH_EXPLICIT))
+      ps5_publish_transfer_write(transfer, NULL);
    ps5_transfer_free_staging(ps5);
    free(ps5);
 }
@@ -9913,7 +9932,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
             return;
          }
          ps5_flush_batch_backing(
-            flush_cache, 2 + PS5_MAX_TEXTURE_UNITS + binding,
+            vertex_resource->external_cpu_access ? NULL : flush_cache,
+            2 + PS5_MAX_TEXTURE_UNITS + binding,
             (const void *)vertex_address, binding_bytes[binding]);
          descriptor_index++;
       }
@@ -10462,7 +10482,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       int rc;
 
       ps5_flush_batch_backing(
-         flush_cache, 2 + PS5_MAX_TEXTURE_UNITS + PIPE_MAX_ATTRIBS,
+         index_resource->external_cpu_access ? NULL : flush_cache,
+         2 + PS5_MAX_TEXTURE_UNITS + PIPE_MAX_ATTRIBS,
          index_resource->data + index_offset,
          (size_t)draws[0].count * info->index_size);
       if (ps5_agc_gate2_set_index_buffer_typed)
@@ -15762,6 +15783,9 @@ ps5_buffer_subdata(struct pipe_context *base, struct pipe_resource *resource,
    if (!(usage & PIPE_MAP_UNSYNCHRONIZED))
       ps5_draw_batch_drain_buffer(resource);
    memcpy(buffer->data + offset, data, size);
+   /* UNSYNCHRONIZED writes may fill previously unused holes inside an already
+    * published bounding range. Publish at the write, even without a drain. */
+   ps5_flush_gpu_data(buffer->data + offset, size);
 }
 
 /* Whole, identical single-level images need no detile/re-tile round trip. */

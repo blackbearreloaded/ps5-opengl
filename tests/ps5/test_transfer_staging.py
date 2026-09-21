@@ -35,6 +35,7 @@ code = r'''
 #include <assert.h>
 #define PIPE_MAP_UNSYNCHRONIZED (1u<<8)
 #define PIPE_MAP_PERSISTENT (1u<<9)
+#define PIPE_MAP_FLUSH_EXPLICIT (1u<<6)
 #include <stdbool.h>
 #include <stdint.h>
 #include <limits.h>

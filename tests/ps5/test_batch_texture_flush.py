@@ -22,8 +22,8 @@ assert 'ps5_deferred_batch_overlaps(&ps5_deferred, buffer)' in code
 assert '&ps5_inflight[(ps5_inflight_head + i) % PS5_INFLIGHT_BATCH_CAPACITY], buffer)' in code
 assert 'memset(batch, 0, sizeof(*batch));' in code
 assert 'slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit' in code
-assert 'flush_cache, 2 + PS5_MAX_TEXTURE_UNITS + binding' in code
-assert 'flush_cache, 2 + PS5_MAX_TEXTURE_UNITS + PIPE_MAX_ATTRIBS' in code
+assert 'vertex_resource->external_cpu_access ? NULL : flush_cache,' in code
+assert 'index_resource->external_cpu_access ? NULL : flush_cache,' in code
 assert 'user_data_count, vertex_metadata, NULL)' in code
 assert 'context->sampler_views[1][unit]->texture);' in code
 assert code.count('#ifdef AGC_RUNTIME_DIAGNOSTICS') >= 3
@@ -118,8 +118,13 @@ static void tiled_checks(void) {
         for(unsigned batch=0;batch<2;++batch) {
             memset(&cache,0,sizeof(cache));
             ps5_flush_texture_backing(&cache,2,&texture,64, false);
+            ps5_flush_texture_backing(&cache,2,&texture,64, false);
         }
-        assert(flushes==before+2);
+#ifdef PS5_GPU_PRESENT_BATCH
+        assert(flushes==before+(exclusion==0 ? 4u : 2u));
+#else
+        assert(flushes==before+4);
+#endif
     }
     flushes=0;
 }
