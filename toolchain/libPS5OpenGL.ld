@@ -19,6 +19,8 @@ GROUP (
   libcompiler.a
   libmesa_util.a
   libmesa_util_simd.a
+  libmesa_util_clflush.a
+  libmesa_util_clflushopt.a
   libblake3.a
   libmesa_util_c11.a
 )
