@@ -64,3 +64,16 @@ Case `results/headless-fw602-20260920-223124` acquired the shared lock, then
 foreground preflight found `PPSA99003` active. No deployment or launch occurred;
 post-case services passed and the owned lock was released. Installed Eden
 remains the resource/clear candidate. Hardware correctness/performance pending.
+
+Follow-up `results/headless-fw602-20260920-223632`, Eden `7db1441` (same frozen
+candidate), completed under the shared lock. Native acceptance, five combined
+query/clear checks and visible complete menu passed. This is game-specific
+coverage, not comprehensive qualification of every GPU dependency pattern.
+9583 draws used1020 submissions across920 batches including startup checks;
+225 batches merged. Frame20..30 took6.322992s versus6.156177s: no demonstrated
+speedup (2.71% longer in one historical comparison). First frame81.868s.
+Post-warmup57 batches averaged13.098ms polling; submit time averaged0.014453ms.
+Frontend errors806, critical0, native profile failures0. Title teardown,
+service health and lock release passed. This is now the installed candidate.
+The evidence shifts priority from submission-call overhead to forced completion
+boundaries; polling wall time alone still cannot prove GPU hardware saturation.
