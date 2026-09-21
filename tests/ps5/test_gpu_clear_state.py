@@ -249,9 +249,10 @@ code = r'''
 #define PIPE_CLEAR_COLOR0 4u
 #define PIPE_CLEAR_COLOR 0x3fcu
 struct pipe_context { int unused; };
-struct ps5_resource { struct { unsigned format; } base; };
-struct ps5_context { struct pipe_context base; int last_draw_status;
-    struct { struct { struct ps5_resource *texture; } zsbuf; } framebuffer; };
+struct pipe_resource { unsigned format; };
+struct ps5_resource { struct pipe_resource base; };
+struct ps5_context { struct pipe_context base; int last_draw_status; bool render_condition_query;
+    struct { unsigned nr_cbufs; struct { struct pipe_resource *texture; } cbufs[1]; struct { struct ps5_resource *texture; } zsbuf; } framebuffer; };
 struct pipe_scissor_state { unsigned unused; };
 union pipe_color_union { float f[4]; };
 static char order[16];
@@ -262,6 +263,7 @@ static bool gpu_depth;
 static int gpu_depth_status;
 static void record(char stage) { assert(used < 15); order[used++] = stage; }
 static __attribute__((unused)) void ps5_draw_batch_drain(void) { record('D'); pending = 0; }
+static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { (void)r; record('D'); pending=0; }
 static bool ps5_render_condition_passes(struct ps5_context *c)
 { assert(c); record('R'); return condition; }
 static bool ps5_clear_gpu_depth_stencil(struct ps5_context *c, unsigned buffers,
@@ -281,7 +283,7 @@ static bool ps5_clear_depth_stencil(struct ps5_context *c, unsigned buffers,
 static bool ps5_clear_gpu_color(struct ps5_context *c, unsigned buffers,
     uint32_t mask, const struct pipe_scissor_state *scissor, const union pipe_color_union *color)
 {
-    assert(c && !pending && buffers && !(buffers & 3) && mask == 15 && !scissor && color);
+    assert(c && buffers && !(buffers & 3) && mask == 15 && !scissor && color);
     record('C'); c->last_draw_status = gpu_status;
     if (gpu_ok) pending = 1;
     return gpu_ok;
@@ -291,25 +293,25 @@ static bool ps5_clear_gpu_color(struct ps5_context *c, unsigned buffers,
 }
 static void run(unsigned buffers, const char *expected, unsigned queued)
 {
-    struct ps5_context c = {0};
+    struct ps5_context c = {.render_condition_query=!condition, .framebuffer.nr_cbufs=1};
     union pipe_color_union color = {{0}};
-    memset(order, 0, sizeof(order)); used = 0; expected_depth = buffers & 3;
+    memset(order, 0, sizeof(order)); used = 0; pending = 1; expected_depth = buffers & 3;
     ps5_clear(&c.base, buffers, 15, 0x5a, NULL, &color, .25, 0x73);
     assert(!strcmp(order, expected) && pending == queued);
 }
 int main(void)
 {
-    run(4, "DRC", 1);
-    run(1, "DRZ", 0); /* Prior GPU work must retire before this CPU access. */
-    run(2, "DRZ", 0); run(3, "DRZ", 0); run(0, "DR", 0);
-    for (unsigned buffers = 5; buffers <= 7; ++buffers) run(buffers, "DRZC", 1);
+    run(4, "RC", 1);
+    run(1, "RDZ", 0); /* Prior GPU work must retire before this CPU access. */
+    run(2, "RDZ", 0); run(3, "RDZ", 0); run(0, "R", 1);
+    for (unsigned buffers = 5; buffers <= 7; ++buffers) run(buffers, "RDZC", 1);
     condition = false; run(7, "DR", 0); condition = true;
-    depth_ok = false; run(7, "DRZ", 0); depth_ok = true;
-    gpu_ok = false; run(7, "DRZCF", 0); gpu_ok = true;
-    gpu_status = -30; run(7, "DRZC", 1); /* No CPU replay after attempted GPU failure. */
+    depth_ok = false; run(7, "RDZ", 0); depth_ok = true;
+    gpu_ok = false; run(7, "RDZCDF", 0); gpu_ok = true;
+    gpu_status = -30; run(7, "RDZC", 1); /* No CPU replay after attempted GPU failure. */
     gpu_status = 0; gpu_depth = true;
-    run(3, "DRH", 0); run(7, "DRHC", 1);
-    gpu_depth_status = -30; run(7, "DRH", 0); /* No depth/color replay after GPU failure. */
+    run(3, "RDH", 0); run(7, "RDHC", 1);
+    gpu_depth_status = -30; run(7, "RDH", 0); /* No depth/color replay after GPU failure. */
 }
 '''
 with tempfile.TemporaryDirectory() as temporary:
@@ -317,7 +319,7 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
                     "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], check=True)
-print("PASS: shared mixed-clear dispatch drains prior work, completes CPU depth/stencil before GPU color, preserves failure/fallback ordering")
+print("PASS: GPU color clear preserves queued draws; CPU depth/color fallbacks and conditional rendering synchronize before access")
 
 # Compile the real depth/stencil admission boundary; no GPU or allocation occurs.
 start = source.index("static bool\nps5_clear_gpu_depth_stencil(")

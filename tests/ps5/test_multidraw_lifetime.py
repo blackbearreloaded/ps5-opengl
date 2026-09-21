@@ -817,7 +817,7 @@ int main(void) {
     assert(ps5_memory_overlaps((void *)100, 0, (void *)110, 10));
     assert(ps5_memory_overlaps(NULL, 10, (void *)110, 10));
     assert(ps5_memory_overlaps((void *)(UINTPTR_MAX-1), 4, (void *)100, 10));
-    for (unsigned kind=0; kind<10; ++kind) {
+    for (unsigned kind=0; kind<12; ++kind) {
         reset();
         uint8_t unrelated[64];
         struct ps5_resource cpu={.base={.target=PIPE_BUFFER}, .data=unrelated, .allocation_size=64};
@@ -826,7 +826,17 @@ int main(void) {
         assert(!locked && !ended && staged==1); /* Unrelated uploads leave the batch queued. */
         if (kind<3) cpu.data=copies[kind].data+1; /* Each private descriptor allocation. */
         if (kind==3) cpu.data=borrowed.data+63; /* Distinct object, last-byte overlap. */
-        if (kind==4) cpu.base.target=PIPE_TEXTURE_2D; /* Textures remain conservative. */
+        if (kind==4) {
+            cpu.base.target=PIPE_TEXTURE_2D;
+            ps5_draw_batch_drain_buffer(&cpu.base);
+            assert(!ended && staged==1); /* Unrelated texture upload stays asynchronous. */
+            cpu.data=borrowed.data;
+        }
+        if (kind==10) { cpu.stencil_data=borrowed.data; cpu.stencil_allocation_size=64; }
+        if (kind==11) {
+            borrowed.stencil_data=unrelated; borrowed.stencil_allocation_size=64;
+            cpu.data=(uint8_t *)1; cpu.stencil_data=unrelated; cpu.stencil_allocation_size=64;
+        }
         if (kind==5) cpu.data=NULL;
         if (kind==6) cpu.allocation_size=0;
         if (kind==7) { borrowed.stencil_data=cpu.data; borrowed.stencil_allocation_size=64; }
@@ -1072,6 +1082,16 @@ int main(void) {
     assert(ps5_begin_query(&context.base,(struct pipe_query *)&occlusion));
     assert(blocking_waits==3 && !occlusion.value); /* Reuse of an unsubmitted slot. */
     assert(ps5_end_query(&context.base,(struct pipe_query *)&occlusion));
+    idle();
+    reset();
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    ps5_draw_batch_submit();
+    struct pipe_resource *first_storage=ps5_inflight.slots[0].storage[0];
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    ps5_draw_batch_drain_buffer(first_storage);
+    assert(!in_flight && blocking_waits==4 && ps5_deferred.owner && staged==1);
+    drain();
+    assert(blocking_waits==5);
     idle();
 }
 '''

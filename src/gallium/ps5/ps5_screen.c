@@ -10921,9 +10921,15 @@ ps5_buffer_overlaps_resource(const struct ps5_resource *buffer,
        ps5_memory_overlaps(buffer->data, buffer->allocation_size,
                             resource->data, bytes))
       return true;
-   return (resource->stencil_data || resource->stencil_allocation_size) &&
-       ps5_memory_overlaps(buffer->data, buffer->allocation_size,
-                            resource->stencil_data, resource->stencil_allocation_size);
+   bool cpu_stencil = buffer->stencil_data || buffer->stencil_allocation_size;
+   bool gpu_stencil = resource->stencil_data || resource->stencil_allocation_size;
+   return (gpu_stencil && ps5_memory_overlaps(buffer->data, buffer->allocation_size,
+                             resource->stencil_data, resource->stencil_allocation_size)) ||
+       (cpu_stencil && ps5_memory_overlaps(buffer->stencil_data, buffer->stencil_allocation_size,
+                          resource->data, bytes)) ||
+       (cpu_stencil && gpu_stencil &&
+        ps5_memory_overlaps(buffer->stencil_data, buffer->stencil_allocation_size,
+                           resource->stencil_data, resource->stencil_allocation_size));
 }
 
 static bool
@@ -10932,7 +10938,7 @@ ps5_deferred_batch_overlaps(const struct ps5_deferred_batch *batch,
 {
    if (!batch->owner)
       return false;
-   if (!buffer || buffer->base.target != PIPE_BUFFER)
+   if (!buffer)
       return true;
    for (unsigned slot = 0; slot < batch->count; ++slot) {
       for (unsigned stage = 0; stage < 3; ++stage)
@@ -10952,9 +10958,11 @@ ps5_draw_batch_drain_buffer(struct pipe_resource *base)
    simple_mtx_lock(&ps5_deferred_mutex);
    /* ponytail: whole allocations, bounded by the batch capacity. Range tracking only
     * if conservative alias/arena overlap becomes a measured bottleneck. */
-   if (ps5_deferred_batch_overlaps(&ps5_deferred, buffer) ||
-       ps5_deferred_batch_overlaps(&ps5_inflight, buffer)) {
+   if (ps5_deferred_batch_overlaps(&ps5_deferred, buffer)) {
       ps5_draw_batch_flush_locked();
+      ps5_draw_batch_retire_locked(true);
+   } else if (ps5_deferred_batch_overlaps(&ps5_inflight, buffer)) {
+      /* Do not submit unrelated queued work just to make a CPU access safe. */
       ps5_draw_batch_retire_locked(true);
    }
    simple_mtx_unlock(&ps5_deferred_mutex);
@@ -11559,9 +11567,8 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        context->stream_output_target_count)
       return false;
 
-   /* Tiny clears cost less on the CPU than the measured ~16 ms GPU round trip.
-    * ponytail: conservative floor; tune PS5_GPU_CLEAR_MIN_PIXELS with paired
-    * measurements before extending the CPU preference to larger surfaces. */
+   /* ponytail: retain the established small-clear cutoff; revisit with paired
+    * measurements now that eligible GPU clears need not force a round trip. */
    unsigned left, bottom, right, top;
    ps5_clear_bounds(scissor_state, context->framebuffer.width, context->framebuffer.height,
                      &left, &bottom, &right, &top);
@@ -11645,8 +11652,7 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
    union pipe_color_union quantized;
    util_format_pack_rgba(surface->format, packed, color->ui, 1);
    util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
-   /* u_blitter disables query accounting around its internal draws. The query
-    * state callback retires pending samples before disable; deferred slots keep
+   /* u_blitter disables query accounting around its internal draws. Deferred slots keep
     * that disabled accounting after query state is restored.
     * Only this validated color operation may defer its internal fan. The
     * caller has already completed any CPU depth/stencil part of a mixed clear. */
@@ -11970,7 +11976,8 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
    struct ps5_context *context = (struct ps5_context *)base;
    struct ps5_resource *resource;
 
-   ps5_draw_batch_drain();
+   if (context && context->render_condition_query)
+      ps5_draw_batch_drain();
    resource = context && context->framebuffer.zsbuf.texture
                  ? (struct ps5_resource *)context->framebuffer.zsbuf.texture
                  : NULL;
@@ -11980,6 +11987,7 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
     * queue. No later CPU attachment clear may drain that new color/draw batch. */
    unsigned depth_buffers = buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL);
    if (depth_buffers) {
+      ps5_draw_batch_drain_buffer(resource ? &resource->base : NULL);
       if (ps5_clear_gpu_depth_stencil(context, depth_buffers, stencil_clear_mask,
                                       scissor_state, depth, stencil)) {
          if (context->last_draw_status != 0)
@@ -11996,6 +12004,12 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
       if (!buffers || context->last_draw_status != 0)
          return;
    }
+   /* GPU-only color clears stay ordered in the queue. CPU fallback writes
+    * must wait for any draw using the attachments they are about to modify. */
+   if (context)
+      for (unsigned i = 0; i < context->framebuffer.nr_cbufs; ++i)
+         if (buffers & (PIPE_CLEAR_COLOR0 << i))
+            ps5_draw_batch_drain_buffer(context->framebuffer.cbufs[i].texture);
    if (PS5_ENABLE_MSAA4_CANDIDATE && context &&
        context->framebuffer_valid &&
        ps5_clear_msaa4_color(context, buffers, color_clear_mask,
