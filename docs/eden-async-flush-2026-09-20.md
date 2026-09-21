@@ -47,3 +47,14 @@ speedup to this patch without a frozen candidate and a hardware comparison.
 Audit these remaining waits before spending another full game run; the
 current patch establishes bounded safe overlap rather than completing
 asynchronous fences or query availability.
+
+Hardware follow-up: Eden candidate `9c8bed4`, OpenGL `5d3e5b3`, case
+`workspace/dev/ps5-eden-feasibility/results/headless-fw602-20260920-213635`.
+Menu inspected; native acceptance and all five combined-query checks passed.
+Frame20..30 took 6.573240 seconds versus 6.623299 previously: no material gain.
+Shared lock acquisition, title teardown, service health and lock release passed.
+The async batch profiler incorrectly started reconstructed timestamps at zero,
+so all 60 post-warmup records were rejected (not GPU submission failures).
+Preserving the submission's real timestamp fixes this offline; the lifetime
+check now asserts the accumulator's positive-origin requirement. This fix is
+not in the installed candidate. Do not repeat the hardware run just for metrics.

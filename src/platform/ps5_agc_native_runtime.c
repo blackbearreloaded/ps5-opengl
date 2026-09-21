@@ -916,7 +916,7 @@ static unsigned runtime_pending_count, runtime_pending_attempted;
 static int runtime_batch_active, runtime_batch_faulted;
 #ifdef PS5_DRAW_PROFILE
 static int runtime_pending_profile;
-static int64_t runtime_pending_submit_ns, runtime_pending_suspend_ns;
+static int64_t runtime_pending_start_ns, runtime_pending_submit_ns, runtime_pending_suspend_ns;
 #endif
 
 int ps5_agc_gate2_batch_begin(void)
@@ -986,6 +986,7 @@ int ps5_agc_gate2_batch_submit(void)
     runtime_batch_count = 0;
 #ifdef PS5_DRAW_PROFILE
     runtime_pending_profile = profile;
+    runtime_pending_start_ns = ticks[0];
     runtime_pending_submit_ns = ticks[1] - ticks[0];
     runtime_pending_suspend_ns = ticks[2] - ticks[1];
 #endif
@@ -1041,7 +1042,8 @@ int ps5_agc_gate2_batch_retire(int wait)
     if (runtime_pending_profile) {
         int64_t ticks[5] = {0};
         cleanup_end = os_time_get_nano();
-        ticks[1] = runtime_pending_submit_ns;
+        ticks[0] = runtime_pending_start_ns;
+        ticks[1] = ticks[0] + runtime_pending_submit_ns;
         ticks[2] = ticks[1] + runtime_pending_suspend_ns;
         ticks[3] = ticks[2] + poll_end - poll_start;
         ticks[4] = ticks[3] + cleanup_end - poll_end;

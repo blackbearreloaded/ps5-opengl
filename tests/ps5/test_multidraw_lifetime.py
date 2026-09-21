@@ -210,6 +210,7 @@ static int64_t os_time_get_nano(void) { static int64_t ticks = 1; return ticks++
 static void runtime_batch_profile_record(const int64_t ticks[5], unsigned waits, int result) {
     assert(waits == sleeps);
     if (!result) {
+        assert(ticks[0] > 0); /* The production accumulator rejects zero origin. */
         for (unsigned i = 1; i < 5; ++i) assert(ticks[i] > ticks[i - 1]);
         assert(unmaps == submits && releases == submits);
     }
