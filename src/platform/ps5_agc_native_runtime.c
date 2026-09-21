@@ -937,18 +937,26 @@ static void runtime_batch_profile_record(const int64_t ticks[5], unsigned sleeps
 #endif
 #ifdef PS5_DRAW_GPU_TIMESTAMPS
 /* Diagnostic page follows all shader/tessellation storage; never shares state. */
+static void runtime_draw_gpu_observe(void *memory, size_t bytes)
+{
+    volatile uint64_t *t = (volatile uint64_t *)((uint8_t *)memory + bytes - 0x4000);
+    flush_gpu_data((const void *)t, 64);
+    if (t[0] && !t[9]) t[9] = os_time_get_nano();
+    if (t[2] && !t[10]) t[10] = os_time_get_nano();
+}
 static void runtime_draw_gpu_timing(void *memory, size_t bytes)
 {
     static unsigned samples;
-    volatile uint64_t *timestamps = (volatile uint64_t *)((uint8_t *)memory + bytes - 0x4000);
-    flush_gpu_data((const void *)timestamps, 64);
-    uint64_t begin = timestamps[0], end = timestamps[1];
+    volatile uint64_t *t = (volatile uint64_t *)((uint8_t *)memory + bytes - 0x4000);
+    runtime_draw_gpu_observe(memory, bytes);
     if (++samples <= 64 || samples % 128 == 0)
-        printf("[ps5-draw-gpu-time] sample=%u begin=%" PRIu64 " end=%" PRIu64
-               " ticks=%" PRIu64 " cpu_ns=%" PRId64 " valid=%u\n",
-               samples, begin, end, end - begin, os_time_get_nano(),
-               (unsigned)(begin != 0 && end >= begin));
+        printf("[ps5-draw-gpu-time] sample=%u begin=%" PRIu64 " draw=%" PRIu64
+               " end=%" PRIu64 " submit_ns=%" PRIu64 " first_ns=%" PRIu64
+               " end_seen_ns=%" PRIu64 " cpu_ns=%" PRId64 " valid=%u\n",
+               samples, t[0], t[1], t[2], t[8], t[9], t[10], os_time_get_nano(),
+               (unsigned)(t[0] != 0 && t[2] >= t[1] && t[1] >= t[0]));
 }
+
 #endif
 /* The caller holds the queue lock and retains descriptors/resources until
  * the matching FIFO retirement. Queue-full rejection never transfers ownership. */
@@ -1061,6 +1069,13 @@ int ps5_agc_gate2_batch_submit(void)
         return 0;
     BATCH_SUBMIT_MARK(0);
     unsigned groups = runtime_batch_combine();
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+    for (unsigned i = 0; i < runtime_batch_count; ++i) {
+        struct runtime_batch_entry *e = &runtime_batch_entries[i];
+        /* CPU fields occupy a separate cache line from GPU-written timestamps. */
+        ((volatile uint64_t *)((uint8_t *)e->memory + e->bytes - 0x4000))[8] = os_time_get_nano();
+    }
+#endif
     for (unsigned i = 0; i < runtime_batch_count; ++i) {
         ++attempted; /* A failed submit is conservatively treated as in flight. */
         if (!runtime_batch_entries[i].submit.word_count)
@@ -1122,6 +1137,9 @@ int ps5_agc_gate2_batch_retire(int wait)
         complete = 1;
         for (unsigned i = 0; i < pending->attempted; ++i) {
             struct runtime_batch_entry *entry = &pending->entries[i];
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+            runtime_draw_gpu_observe(entry->memory, entry->bytes);
+#endif
             if (!entry->submit.word_count)
                 continue;
             flush_gpu_data((const void *)entry->marker, sizeof(*entry->marker));
@@ -3469,6 +3487,11 @@ int main(void)
     agc.wait_rendering(&command.up, agc.wait_size(), 0,
                        (uint32_t)video_handle, 0);
 #endif
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+    if (!agc.release_mem(&command, 40, 0, 0, 0,
+                         memory + work_bytes - 0x4000, 3, 0, 0, 0, 3, 0))
+        goto receipt;
+#endif
     agc.set_cx(&command, cx, cx_count);
 #if defined(AGC_BLEND_VARIANT)
     agc.set_cx(&command, memory + 0x4700, 1);
@@ -3709,7 +3732,7 @@ int main(void)
 #elif defined(AGC_RUNTIME_PACKAGES)
 #ifdef PS5_DRAW_GPU_TIMESTAMPS
     if (!agc.release_mem(&command, 40, 0, 0, 0,
-                         memory + work_bytes - 0x4000, 3, 0, 0, 0, 3, 0))
+                         memory + work_bytes - 0x4000 + 8, 3, 0, 0, 0, 3, 0))
         goto receipt;
 #endif
 #ifdef PS5_DRAW_BATCH_PROBE
@@ -3734,7 +3757,7 @@ int main(void)
 #endif
 #ifdef PS5_DRAW_GPU_TIMESTAMPS
     if (!agc.release_mem(&command, 40, 0, 0, 0,
-                         memory + work_bytes - 0x4000 + 8, 3, 0, 0, 0, 3, 0))
+                         memory + work_bytes - 0x4000 + 16, 3, 0, 0, 0, 3, 0))
         goto receipt;
 #endif
     draw_words = (uint32_t)(command.up - words);
@@ -3966,6 +3989,9 @@ int main(void)
 #ifdef PS5_DRAW_BATCH_PROBE
         const int64_t batch_start = os_time_get_nano();
 #endif
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+        ((volatile uint64_t *)(memory + work_bytes - 0x4000))[8] = os_time_get_nano();
+#endif
         int submit_rc = agc.submit(&submit);
         PS5_PROFILE_MARK(6);
 #ifdef PS5_FRAME_SUSPEND
@@ -3978,6 +4004,9 @@ int main(void)
         waits = 2000;
         if (submit_rc == 0) {
             for (waits = 0; waits < 2000; ++waits) {
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+                runtime_draw_gpu_observe(memory, work_bytes);
+#endif
                 flush_gpu_data((const void *)completion_marker,
                                sizeof(*completion_marker));
                 if (*completion_marker == (uint32_t)render_marker)
