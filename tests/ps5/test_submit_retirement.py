@@ -46,6 +46,9 @@ static int sceKernelUsleep(uint32_t us) {
     return 0;
 }
 static int unmap(void *p, size_t n) { assert(p && n == 64); ++seen->unmaps; return unmap_error; }
+static unsigned runtime_completion_pause(int64_t *deadline) {
+    (void)deadline; sceKernelUsleep(1000); return 1;
+}
 static int sceKernelReleaseDirectMemory(int64_t p, size_t n) {
     assert(p == 128 && n == 64 && !unmap_error); ++seen->releases; return release_error;
 }
@@ -151,3 +154,30 @@ with tempfile.TemporaryDirectory() as temporary:
                     "-o", executable, "-"], input=fence_code, text=True, check=True)
     subprocess.run([executable], check=True)
 print("PASS: graphics/compute completion emits write-confirmed 32-bit release and propagates packet failure")
+
+start = source.index("static unsigned runtime_completion_pause(")
+pause = source[start:source.index("\n}\n", start) + 3]
+pause_code = r"""
+#include <assert.h>
+#include <stdint.h>
+static int64_t now=1000000;
+static unsigned spins,sleeps;
+static int64_t os_time_get_nano(void) { return now; }
+static void mock_pause(void) { ++spins; now+=50000; }
+#define __builtin_ia32_pause() mock_pause()
+static int sceKernelUsleep(uint32_t us) { assert(us==1000); ++sleeps; now+=1000000; return 0; }
+""" + pause + r"""
+int main(void) {
+    int64_t deadline=0;
+    for (unsigned i=0;i<4;++i) assert(runtime_completion_pause(&deadline)==0);
+    assert(spins==4 && !sleeps && now==1200000);
+    for (unsigned i=0;i<3;++i) assert(runtime_completion_pause(&deadline)==1);
+    assert(spins==4 && sleeps==3); // A long wait never restarts the spin budget.
+}
+"""
+with tempfile.TemporaryDirectory() as temporary:
+    executable = str(Path(temporary) / "completion-pause")
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c",
+                    "-o", executable, "-"], input=pause_code, text=True, check=True)
+    subprocess.run([executable], check=True)
+print("PASS: blocking completion spin is bounded to 200us, then counts real sleeps toward timeout")

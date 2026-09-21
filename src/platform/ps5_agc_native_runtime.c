@@ -892,6 +892,22 @@ static void runtime_require_retirement(int completed)
 }
 #endif
 
+#include "util/os_time.h"
+/* Catch prompt completions before yielding: the console's sleeping path can
+ * defer visibility to a ~16ms interval. The CPU spin is bounded to 200us. */
+static unsigned runtime_completion_pause(int64_t *spin_deadline)
+{
+    int64_t now = os_time_get_nano();
+    if (!*spin_deadline)
+        *spin_deadline = now + 200000;
+    if (now < *spin_deadline) {
+        __builtin_ia32_pause();
+        return 0;
+    }
+    sceKernelUsleep(UINT32_C(1000));
+    return 1;
+}
+
 /* Match Mesa's AMD fence publication: SEND_DATA_AFTER_WR_CONFIRM, not an IRQ.
  * INT_SEL=0 can leave the final CPU-visible marker posted after GPU execution. */
 static uint32_t *runtime_release_completion(const agc_api_t *agc,
@@ -1090,6 +1106,7 @@ int ps5_agc_gate2_batch_retire(int wait)
 {
     struct runtime_pending_batch *pending = &runtime_pending[runtime_pending_head];
     unsigned waits = 0;
+    int64_t spin_deadline = 0;
     int complete = 0;
 #ifdef PS5_DRAW_PROFILE
     int64_t poll_start = 0, poll_end = 0, cleanup_end = 0;
@@ -1111,8 +1128,8 @@ int ps5_agc_gate2_batch_retire(int wait)
         }
         if (complete || !wait)
             break;
-        sceKernelUsleep(UINT32_C(1000));
-    } while (++waits < 2000);
+        waits += runtime_completion_pause(&spin_deadline);
+    } while (waits < 2000);
 #ifdef PS5_DRAW_PROFILE
     if (pending->profile)
         poll_end = os_time_get_nano();
@@ -3943,12 +3960,13 @@ int main(void)
 #ifdef AGC_RUNTIME_PACKAGES
         waits = 2000;
         if (submit_rc == 0) {
-            for (waits = 0; waits < 2000; ++waits) {
+            int64_t spin_deadline = 0;
+            for (waits = 0; waits < 2000;) {
                 flush_gpu_data((const void *)completion_marker,
                                sizeof(*completion_marker));
                 if (*completion_marker == (uint32_t)render_marker)
                     break;
-                sceKernelUsleep(UINT32_C(1000));
+                waits += runtime_completion_pause(&spin_deadline);
             }
         }
         status[3] = *completion_marker;

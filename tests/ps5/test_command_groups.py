@@ -63,6 +63,9 @@ static int munmap(void *p,size_t n) {
     for (unsigned i=0;i<completion_count;++i) assert(markers[completed[i]]==101+completed[i]);
     ++unmaps; return 0;
 }
+static unsigned runtime_completion_pause(int64_t *deadline) {
+    (void)deadline; sceKernelUsleep(1000); return 1;
+}
 static int sceKernelReleaseDirectMemory(int64_t p,size_t n) {
     assert(p>=0 && n==64 && unmaps>releases); ++releases; return 0;
 }

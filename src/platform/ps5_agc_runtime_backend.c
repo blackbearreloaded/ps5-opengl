@@ -889,11 +889,12 @@ ps5_agc_compute_execute(struct pipe_screen *screen,
    int suspend_rc = submit_rc == 0 ? agc.suspend_point() : -1;
 #endif
    unsigned polls = 0;
-   for (; submit_rc == 0 && polls < 2000; ++polls) {
+   int64_t spin_deadline = 0;
+   for (; submit_rc == 0 && polls < 2000;) {
       flush_gpu_data((const void *)marker, sizeof(*marker));
       if (*marker == expected)
          break;
-      sceKernelUsleep(1000);
+      polls += runtime_completion_pause(&spin_deadline);
    }
    runtime_require_retirement(submit_rc == 0 && suspend_rc == 0 && polls < 2000);
    if (auxiliary_size) {
