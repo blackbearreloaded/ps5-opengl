@@ -8538,9 +8538,14 @@ ps5_memory_barrier(struct pipe_context *context, unsigned flags)
    /* Compute already completes synchronously. Deferred graphics retains its
     * resources and emits cache releases at submission boundaries; GPU consumers
     * need that boundary, not a CPU completion wait. */
-   if (flags & (PIPE_BARRIER_MAPPED_BUFFER | ~PIPE_BARRIER_ALL))
+   if (flags & ~PIPE_BARRIER_ALL)
       ps5_draw_batch_drain();
-   else if (flags)
+   else if (flags & PIPE_BARRIER_MAPPED_BUFFER) {
+      /* Persistent mappings are excluded from publication reuse. Preserve the
+       * CPU/GPU wait without invalidating unrelated, unchanged textures. */
+      ps5_screen_submit_lock(context->screen);
+      ps5_screen_submit_unlock(context->screen);
+   } else if (flags)
       ps5_draw_batch_submit();
    (void)context;
 }
