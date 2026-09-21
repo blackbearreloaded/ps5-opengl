@@ -102,6 +102,7 @@ test:
 	python3 tests/ps5/test_buffer_arena.py
 	python3 tests/ps5/test_draw_flush_ranges.py
 	python3 tests/ps5/test_index_bounds.py
+	python3 tests/ps5/test_descriptor_reuse.py
 	python3 tests/ps5/test_batch_texture_flush.py
 	python3 tests/ps5/test_native_color_layout.py
 	python3 tests/ps5/test_native_srgb_transfer.py

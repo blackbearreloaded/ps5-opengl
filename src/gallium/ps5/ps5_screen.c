@@ -155,6 +155,25 @@ ps5_screen_submit_unlock(struct pipe_screen *base)
 #endif
 }
 
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+/* Raw invariant-TSC cycles: no per-draw OS clock calls. Phases overlap:
+ * 0=draw preparation, 1=descriptor copy, 2=whole deferred draw entry. */
+static uint64_t ps5_prepare_cycles[3], ps5_prepare_calls[3];
+static uint64_t ps5_prepare_clock(void)
+{
+   uint32_t low, high;
+   __asm__ volatile("lfence; rdtsc" : "=a"(low), "=d"(high) : : "memory");
+   return (uint64_t)high << 32 | low;
+}
+struct ps5_prepare_scope { unsigned phase; uint64_t start; };
+static void ps5_prepare_scope_end(struct ps5_prepare_scope *scope)
+{
+   uint64_t elapsed = ps5_prepare_clock() - scope->start;
+   __atomic_fetch_add(&ps5_prepare_cycles[scope->phase], elapsed, __ATOMIC_RELAXED);
+   __atomic_fetch_add(&ps5_prepare_calls[scope->phase], 1, __ATOMIC_RELAXED);
+}
+#endif
+
 static uint64_t ps5_texture_publication_epoch = 1;
 
 static void
@@ -246,6 +265,13 @@ struct ps5_compute_shader {
 
 struct ps5_context {
    struct pipe_context base;
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DEFERRED_DRAW_BATCH)
+   struct pipe_resource *descriptor_cache[3][PS5_MULTIDRAW_BATCH_CAPACITY];
+   unsigned descriptor_cache_count[3];
+   uint64_t descriptor_cache_hits, descriptor_cache_misses;
+#endif
+
+
    struct blitter_context *blitter;
    bool deferred_color_clear;
    int last_draw_status;
@@ -9184,6 +9210,11 @@ ps5_draw_vbo_locked(struct pipe_context *base,
                     struct ps5_batch_flush_cache *flush_cache,
                     bool *submitted)
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {0, ps5_prepare_clock()};
+#endif
+
    struct ps5_context *context = (struct ps5_context *)base;
    struct pipe_draw_start_count_bias draw;
    const PsbcShaderOutput *vertex_output;
@@ -10769,11 +10800,62 @@ ps5_multidraw_eligible(struct ps5_context *context,
    return ps5_batch_eligibility(context, rejects);
 }
 
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DEFERRED_DRAW_BATCH)
+/* Only confirmed-retired, exclusively owned descriptor snapshots enter here.
+ * The fixed 16KiB snapshot class bounds this cache to 12MiB per context. */
+static struct pipe_resource *
+ps5_descriptor_take(struct pipe_context *base, unsigned stage,
+                     const struct pipe_resource *templ)
+{
+   struct ps5_context *context = (struct ps5_context *)base;
+   for (unsigned i = 0; i < context->descriptor_cache_count[stage]; ++i) {
+      struct pipe_resource *r = context->descriptor_cache[stage][i];
+      if (r->width0 != templ->width0 || r->format != templ->format ||
+          r->bind != templ->bind || r->usage != templ->usage || r->flags != templ->flags)
+         continue;
+      context->descriptor_cache[stage][i] =
+         context->descriptor_cache[stage][--context->descriptor_cache_count[stage]];
+      ++context->descriptor_cache_hits;
+      return r;
+   }
+   ++context->descriptor_cache_misses;
+   return base->screen->resource_create(base->screen, templ);
+}
+
+static void
+ps5_descriptor_recycle(struct ps5_context *context, struct pipe_resource *storage[3])
+{
+   for (unsigned stage = 0; stage < 3; ++stage) {
+      struct pipe_resource *r = storage[stage];
+      if (!r || r->reference.count != 1 || r->target != PIPE_BUFFER ||
+          r->width0 != PS5_DIRECT_ALIGNMENT ||
+          context->descriptor_cache_count[stage] == PS5_MULTIDRAW_BATCH_CAPACITY)
+         continue;
+      context->descriptor_cache[stage][context->descriptor_cache_count[stage]++] = r;
+      storage[stage] = NULL; /* Transfer the existing reference. */
+   }
+}
+
+static void
+ps5_descriptor_cache_clear(struct ps5_context *context)
+{
+   for (unsigned stage = 0; stage < 3; ++stage)
+      while (context->descriptor_cache_count[stage])
+         pipe_resource_reference(
+            &context->descriptor_cache[stage][--context->descriptor_cache_count[stage]], NULL);
+}
+#endif
+
 static bool
 ps5_batch_copy_descriptors(struct pipe_context *base,
                            struct pipe_resource *const saved[3],
                            struct pipe_resource *storage[3])
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {1, ps5_prepare_clock()};
+#endif
+
    for (unsigned stage = 0; stage < 3; ++stage) {
       const struct ps5_resource *source = (const struct ps5_resource *)saved[stage];
       if (!source || !source->data || source->base.target != PIPE_BUFFER)
@@ -10784,7 +10866,11 @@ ps5_batch_copy_descriptors(struct pipe_context *base,
             (const struct ps5_context *)base, stage - 1);
       if (templ.width0 > source->size)
          return false;
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DEFERRED_DRAW_BATCH)
+      storage[stage] = ps5_descriptor_take(base, stage, &templ);
+#else
       storage[stage] = base->screen->resource_create(base->screen, &templ);
+#endif
       struct ps5_resource *copy = (struct ps5_resource *)storage[stage];
       if (!copy || !copy->data || copy->size != templ.width0 ||
           (uintptr_t)copy->data >> 32 != (uintptr_t)source->data >> 32)
@@ -10982,6 +11068,9 @@ ps5_deferred_batch_release(struct ps5_deferred_batch *batch)
          fflush(stderr);
          _Exit(EXIT_FAILURE);
       }
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+      ps5_descriptor_recycle(batch->owner, batch->slots[slot].storage);
+#endif
       ps5_deferred_slot_release(&batch->slots[slot]);
    }
    memset(batch, 0, sizeof(*batch));
@@ -11199,6 +11288,11 @@ ps5_try_deferred_draw(struct pipe_context *base,
                       const struct pipe_draw_start_count_bias *draws,
                       unsigned num_draws)
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {2, ps5_prepare_clock()};
+#endif
+
    struct ps5_context *context = (struct ps5_context *)base;
    struct pipe_resource *saved[3] = {context->vertex_descriptor_table,
       context->descriptor_storage[0], context->descriptor_storage[1]};
@@ -15558,7 +15652,21 @@ ps5_context_destroy(struct pipe_context *base)
    unsigned index;
 
    ps5_draw_batch_drain();
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DEFERRED_DRAW_BATCH)
+   printf("[ps5-descriptor-reuse] hits=%" PRIu64 " misses=%" PRIu64 " retained=%u\n",
+          context->descriptor_cache_hits, context->descriptor_cache_misses,
+          context->descriptor_cache_count[0] + context->descriptor_cache_count[1] +
+          context->descriptor_cache_count[2]);
+   ps5_descriptor_cache_clear(context);
+#endif
+
 #ifdef PS5_DRAW_PROFILE
+#ifdef PS5_NATIVE_TITLE_RUNTIME
+   for (unsigned phase = 0; phase < 3; ++phase)
+      printf("[ps5-driver-cycles] phase=%u calls=%" PRIu64 " cycles=%" PRIu64 "\n",
+             phase, __atomic_load_n(&ps5_prepare_calls[phase], __ATOMIC_RELAXED),
+             __atomic_load_n(&ps5_prepare_cycles[phase], __ATOMIC_RELAXED));
+#endif
    printf("[ps5-cpu-flush-summary] calls=%" PRIu64 " bytes=%" PRIu64 "\n",
           __atomic_load_n(&ps5_cpu_flush_calls, __ATOMIC_RELAXED),
           __atomic_load_n(&ps5_cpu_flush_bytes, __ATOMIC_RELAXED));
