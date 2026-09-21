@@ -119,3 +119,35 @@ with tempfile.TemporaryDirectory() as temporary:
                     "-o", executable, "-"], input=frame_code, text=True, check=True)
     subprocess.run([executable], cwd=temporary, check=True)
 print("PASS: frame policy preserves synchronous marker retirement and boundary failure stops lifecycle")
+
+# Execute the shared production fence emitter: graphics and compute must request
+# memory write confirmation, without requesting a CPU interrupt.
+start = source.index("static uint32_t *runtime_release_completion(")
+emitter = source[start:source.index("\n}\n", start) + 3]
+assert "runtime_release_completion(&agc, &command, completion_marker," in source
+assert "runtime_release_completion(&agc, &command, marker, expected)" in (root/"src/platform/ps5_agc_runtime_backend.c").read_text()
+fence_code = r"""
+#include <assert.h>
+#include <stdint.h>
+typedef struct { int unused; } agc_command_buffer_t;
+typedef struct { uint32_t *(*release_mem)(void *,uint8_t,int16_t,uint64_t,int8_t,void *,uint32_t,uint64_t,uint16_t,uint16_t,int8_t,int32_t); } agc_api_t;
+static uint32_t marker;
+static int fail;
+static uint32_t *release(void *cb,uint8_t event,int16_t gcr,uint64_t dst,int8_t cache,void *address,uint32_t data,uint64_t value,uint16_t lo,uint16_t hi,int8_t interrupt,int32_t reserved) {
+    assert(cb && event==40 && gcr==0x30c && !dst && !cache && address==&marker);
+    assert(data==1 && value==123 && !lo && !hi && interrupt==3 && !reserved);
+    return fail ? 0 : &marker;
+}
+""" + emitter + r"""
+int main(void) {
+    agc_api_t agc={release}; agc_command_buffer_t cb={0};
+    assert(runtime_release_completion(&agc,&cb,&marker,123)==&marker);
+    fail=1; assert(runtime_release_completion(&agc,&cb,&marker,123)==0);
+}
+"""
+with tempfile.TemporaryDirectory() as temporary:
+    executable = str(Path(temporary) / "completion-packet")
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c",
+                    "-o", executable, "-"], input=fence_code, text=True, check=True)
+    subprocess.run([executable], check=True)
+print("PASS: graphics/compute completion emits write-confirmed 32-bit release and propagates packet failure")

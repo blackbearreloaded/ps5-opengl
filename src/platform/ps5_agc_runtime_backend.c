@@ -878,8 +878,7 @@ ps5_agc_compute_execute(struct pipe_screen *screen,
       goto cleanup;
    if (!sceAgcCbDispatch(&command, groups[0], groups[1], groups[2],
                          m->compute_wave_size == 32 ? 0x8000 : 0) ||
-       !agc.release_mem(&command, 40, 0x30c, 0, 0, (void *)marker, 1,
-                        expected, 0, 0, 0, 0) || out_of_space)
+       !runtime_release_completion(&agc, &command, marker, expected) || out_of_space)
       goto cleanup;
    agc_submit_description_t submit = {words, (uint32_t)(command.up - words), 0, {0}};
    flush_gpu_data(memory, memory_size);

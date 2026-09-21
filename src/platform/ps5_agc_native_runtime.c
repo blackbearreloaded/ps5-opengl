@@ -892,6 +892,17 @@ static void runtime_require_retirement(int completed)
 }
 #endif
 
+/* Match Mesa's AMD fence publication: SEND_DATA_AFTER_WR_CONFIRM, not an IRQ.
+ * INT_SEL=0 can leave the final CPU-visible marker posted after GPU execution. */
+static uint32_t *runtime_release_completion(const agc_api_t *agc,
+                                            agc_command_buffer_t *command,
+                                            volatile uint32_t *marker,
+                                            uint32_t value)
+{
+    return agc->release_mem(command, 40, 0x30c, 0, 0, (void *)marker, 1,
+                            value, 0, 0, 3, 0);
+}
+
 /* SuspendPoint ends a native submission period and stages the next period's
  * prologue. It is a frame/lifecycle boundary, not a draw completion operation.
  * GPU release markers still govern every retirement and resource lifetime. */
@@ -3709,9 +3720,8 @@ int main(void)
 #ifdef PS5_MULTIDRAW_BATCH
     completion_offset = (uint32_t)(command.up - words);
 #endif
-    if (!agc.release_mem(&command, 40, 0x30c, 0, 0,
-                         (void *)completion_marker, 1,
-                         (uint32_t)render_marker, 0, 0, 0, 0))
+    if (!runtime_release_completion(&agc, &command, completion_marker,
+                                     (uint32_t)render_marker))
         goto receipt;
 #else
     agc.set_flip(&command, (uint32_t)video_handle, 0, 1, render_marker);
