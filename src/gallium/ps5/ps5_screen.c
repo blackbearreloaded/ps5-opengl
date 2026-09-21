@@ -13888,7 +13888,15 @@ ps5_set_shader_buffers(struct pipe_context *base, mesa_shader_stage stage,
          return;
    }
    /* Validate the entire update before releasing any previously owned buffer. */
-   if (stage != MESA_SHADER_COMPUTE)
+   bool changed = false;
+   for (unsigned i = 0; i < count; ++i) {
+      const struct pipe_shader_buffer *old = &bound_buffers[start + i];
+      const struct pipe_shader_buffer *next = buffers ? &buffers[i] : NULL;
+      struct pipe_resource *resource = next ? next->buffer : NULL;
+      changed |= old->buffer != resource || (resource &&
+         (old->buffer_offset != next->buffer_offset || old->buffer_size != next->buffer_size));
+   }
+   if (changed && stage != MESA_SHADER_COMPUTE)
       ps5_draw_batch_drain();
    for (unsigned i = 0; i < count; ++i) {
       struct pipe_shader_buffer *bound = &bound_buffers[start + i];
@@ -13985,7 +13993,17 @@ ps5_set_shader_images(struct pipe_context *base, mesa_shader_stage stage,
       } else if (ps5_storage_image_view_descriptor(v, descriptor))
          return;
    }
-   if (stage != MESA_SHADER_COMPUTE)
+   bool changed = false;
+   for (unsigned i = 0; i < count + unbind; ++i) {
+      const struct pipe_image_view *old = &bound_images[start + i];
+      const struct pipe_image_view *next = images && i < count ? &images[i] : NULL;
+      struct pipe_resource *resource = next ? next->resource : NULL;
+      /* Comparing padding may conservatively retain a wait, never omit one.
+       * Empty bindings have no image metadata that can affect GPU work. */
+      changed |= old->resource != resource ||
+         (resource && memcmp(old, next, sizeof(*old)) != 0);
+   }
+   if (changed && stage != MESA_SHADER_COMPUTE)
       ps5_draw_batch_drain();
    for (unsigned i = 0; i < count + unbind; ++i) {
       struct pipe_image_view next = images && i < count ? images[i] : (struct pipe_image_view){0};
