@@ -26,7 +26,7 @@ code = r'''
 #define COMMAND_BYTES 0x4000u
 #define FRAMEBUFFER_POOL_BYTES 128u
 static size_t runtime_video_framebuffer_size;
-static int runtime_gpu_present_deferred;
+static int runtime_gpu_present_deferred, runtime_gpu_present_is_cpu;
 int ps5_agc_gate2_wait_present(void);
 typedef struct { uint32_t *bottom, *top, *up, *down; uintptr_t callback; } agc_command_buffer_t;
 static uint8_t memory[COMMAND_BYTES + 64];
@@ -113,7 +113,7 @@ static void reset(void) {
     runtime_present_count = runtime_gpu_present_count = 0;
     idle_error = flip_error = status_error = pending_error = wait_error = tail_error = 0;
     finish_after = pending_after = polls = 0;
-    runtime_video_framebuffer_size = runtime_gpu_present_deferred = 0;
+    runtime_video_framebuffer_size = runtime_gpu_present_deferred = runtime_gpu_present_is_cpu = 0;
 }
 int main(void) {
     for (unsigned n = 0; n <= 2001; ++n) {
@@ -150,6 +150,20 @@ int main(void) {
     runtime_batch_count = runtime_batch_active = 0; finish_after = 3;
     assert(ps5_agc_gate2_present(1) == 0 && !polls);
     assert(ps5_agc_gate2_present(1) == 0 && polls == 3 && cpu_flips == 1);
+    assert(runtime_gpu_present_is_cpu && runtime_gpu_present_deferred);
+    finish_after = waits + 3;
+    assert(ps5_agc_gate2_wait_present() == 0 && polls == 6);
+    assert(runtime_gpu_present_count == 1 && !runtime_gpu_present_is_cpu);
+    /* CPU-submitted flips after GL flush use the same deferred ownership. */
+    reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
+    runtime_batch_count = runtime_batch_active = 0; finish_after = 5;
+    assert(ps5_agc_gate2_present(1) == 0 && cpu_flips == 1 && !waits);
+    assert(runtime_gpu_present_deferred && runtime_gpu_present_is_cpu);
+    assert(ps5_agc_gate2_wait_present() == 0 && polls == 5);
+    assert(!runtime_gpu_present_count && !runtime_gpu_present_deferred);
+    reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
+    runtime_batch_count = runtime_batch_active = 0; flip_error = -8;
+    assert(ps5_agc_gate2_present(1) == -8 && !runtime_gpu_present_deferred && runtime_gpu_present_buffer == -1);
     /* A failed deferred wait retains ownership and cannot queue another flip. */
     reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
     assert(ps5_agc_gate2_batch_present(1) == 0);

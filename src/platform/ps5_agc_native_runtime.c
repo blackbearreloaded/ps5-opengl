@@ -881,6 +881,7 @@ static int runtime_agc_initialized;
 #ifdef PS5_GPU_PRESENT_BATCH
 static int runtime_gpu_present_buffer = -1;
 static int runtime_gpu_present_deferred;
+static int runtime_gpu_present_is_cpu;
 static uint64_t runtime_gpu_present_marker;
 static unsigned runtime_gpu_present_count;
 #endif
@@ -1526,6 +1527,7 @@ int ps5_agc_gate2_batch_present(unsigned buffer_index)
     flush_gpu_data(words, entry->submit.word_count * sizeof(*words));
     runtime_gpu_present_buffer = (int)buffer_index;
     runtime_gpu_present_marker = marker;
+    runtime_gpu_present_is_cpu = 0;
     return 0;
 }
 
@@ -1544,7 +1546,9 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
         if (!pending && status[3] == runtime_gpu_present_marker) {
             runtime_gpu_present_buffer = -1;
             runtime_gpu_present_deferred = 0;
-            ++runtime_gpu_present_count;
+            if (!runtime_gpu_present_is_cpu)
+                ++runtime_gpu_present_count;
+            runtime_gpu_present_is_cpu = 0;
             return 0;
         }
         if (waits == 2000)
@@ -1558,7 +1562,8 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
     return -1;
 }
 
-/* Only a swap whose GPU tail has retired may defer display completion. */
+/* Both GPU-tail and CPU-submitted swaps have retired their rendering before
+ * deferring display completion. They share the same scanout ownership gate. */
 int ps5_agc_gate2_wait_present(void)
 {
     return runtime_gpu_present_deferred
@@ -1914,8 +1919,20 @@ int ps5_agc_gate2_present(unsigned buffer_index)
         result = runtime_video_api.submit_flip(
             runtime_video_handle, (int)buffer_index, 1, marker);
         PS5_PROFILE_MARK(2);
-        if (result == 0)
-            result = runtime_video_api.wait_vblank(runtime_video_handle);
+        if (result == 0) {
+#ifdef PS5_GPU_PRESENT_BATCH
+            if (runtime_video_framebuffer_size >= FRAMEBUFFER_POOL_BYTES &&
+                runtime_video_api.get_flip_status) {
+                /* Explicit GL flush/readback can leave no GPU tail to append
+                 * a flip to. It must still overlap the next offscreen frame. */
+                runtime_gpu_present_buffer = (int)buffer_index;
+                runtime_gpu_present_marker = (uint64_t)marker;
+                runtime_gpu_present_is_cpu = 1;
+                runtime_gpu_present_deferred = 1;
+            } else
+#endif
+                result = runtime_video_api.wait_vblank(runtime_video_handle);
+        }
     }
     PS5_PROFILE_MARK(3);
 #ifdef PS5_DRAW_PROFILE
