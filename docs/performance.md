@@ -142,3 +142,13 @@ regression covers 64 combinations and rejects the prior equality condition.
 This follow-up is not part of frozen Eden19a8d10 / OpenGL36de9b3 and has not yet
 been tested on hardware. Existing direct-format profile recorded ~0.365ms
 scanout flush per prepared draw; potential savings are not a measured speedup.
+
+### Direct GPU clear qualification (FW6.02)
+
+Eden19a8d10 / OpenGL36de9b3, case
+`workspace/dev/ps5-eden-feasibility/results/headless-fw602-20260920-202219`:
+full/scissored/preserved-pixel checks pass for packed float and both sRGB states;
+native menu rendering, lifecycle and health pass. Frame20..30 was8.525188s
+versus8.375047s, with guest CPU clears127 unchanged (startup excluded) and
+post-warmup batches58 unchanged. No game performance gain established.
+The scanout-reuse candidate69c6b6f is a separate subsequent experiment.
