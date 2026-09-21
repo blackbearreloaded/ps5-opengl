@@ -24,6 +24,9 @@ assert 'context->sampler_views[1][unit]->texture);' in code
 assert code.count('#ifdef AGC_RUNTIME_DIAGNOSTICS') >= 3
 assert '#ifdef AGC_RUNTIME_DIAGNOSTICS\n      if (sampler->compare_mode)' in code
 assert '#ifdef AGC_RUNTIME_DIAGNOSTICS\n      if (info->index_size == 2' in code
+# Exercise the actual tiled dispatch, including array/MSAA allocation extents.
+start = code.index('         /* Batch eligibility excludes attachment aliases')
+tiled_dispatch = code[start:code.index('\n      } else {', start)]
 harness = r'''
 #include <assert.h>
 #include <stddef.h>
@@ -35,7 +38,39 @@ static void ps5_flush_gpu_data(const void *data, size_t bytes) {
     (void)data; (void)bytes; ++flushes;
 }
 ''' + helper + r'''
+enum { PIPE_TEXTURE_2D=2, PIPE_TEXTURE_2D_ARRAY=7 };
+struct resource { struct { unsigned target; } base; void *data; size_t allocation_size; };
+static void tiled(struct ps5_batch_flush_cache *flush_cache, unsigned slot,
+                  unsigned unit, int merged_geometry, int multisampled,
+                  int tiled_depth_target, struct resource *texture, size_t tiled_size) {
+''' + tiled_dispatch + r'''
+}
+static void tiled_checks(void) {
+    char backing[256];
+    struct resource texture={{PIPE_TEXTURE_2D},backing,sizeof(backing)};
+    for (unsigned array=0; array<2; ++array)
+        for (unsigned msaa=0; msaa<2; ++msaa)
+            for (unsigned depth=0; depth<2; ++depth) {
+                struct ps5_batch_flush_cache cache={0};
+                texture.base.target=array ? PIPE_TEXTURE_2D_ARRAY : PIPE_TEXTURE_2D;
+                unsigned before=flushes;
+                for (unsigned draw=0; draw<100; ++draw)
+                    tiled(&cache,1,0,0,msaa,depth,&texture,64);
+#ifdef PS5_GPU_PRESENT_BATCH
+                assert(flushes==before+1);
+                assert(cache.size[2]==(!msaa && !array ? 64u : depth || array ? 256u : 64u));
+#else
+                assert(flushes==before+100);
+#endif
+                before=flushes;
+                tiled(&cache,0,0,0,msaa,depth,&texture,64);
+                tiled(&cache,1,0,1,msaa,depth,&texture,64);
+                assert(flushes==before+2); /* Vertex/merged stages remain uncached. */
+            }
+    flushes=0;
+}
 int main(void) {
+    tiled_checks();
     char textures[PS5_MAX_TEXTURE_UNITS][64] = {{0}};
     struct ps5_batch_flush_cache cache = {0};
     for (unsigned draw = 0; draw < 200; ++draw)

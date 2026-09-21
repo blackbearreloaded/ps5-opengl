@@ -4012,16 +4012,14 @@ ps5_prepare_texture(struct ps5_context *context,
             : ps5_tiled_surface_size(texture->base.width0,
                                      texture->base.height0);
 
-         if ((tiled_render_target || tiled_depth_target) && !multisampled &&
-             texture->base.target == PIPE_TEXTURE_2D)
-            ps5_flush_batch_backing(
-               slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
-               texture->data, tiled_size);
-         else
-            ps5_flush_gpu_data(
-               texture->data,
-               tiled_depth_target ||
-               texture->base.target == PIPE_TEXTURE_2D_ARRAY
+         /* Batch eligibility excludes attachment aliases and per-draw staging.
+          * Array/MSAA backings obey the same retention and CPU-access drains. */
+         ps5_flush_batch_backing(
+            slot == 1 && !merged_geometry ? flush_cache : NULL, 2 + unit,
+            texture->data,
+            !multisampled && texture->base.target == PIPE_TEXTURE_2D
+               ? tiled_size
+               : tiled_depth_target || texture->base.target == PIPE_TEXTURE_2D_ARRAY
                   ? texture->allocation_size : tiled_size);
       } else {
          /* Eligible batches retain read-only linear fragment textures. Any CPU
@@ -11703,8 +11701,8 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
         surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
         surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB) ||
        target->base.format != surface->format ||
-       context->framebuffer.width > ps5_surface_width(surface) ||
-       context->framebuffer.height > ps5_surface_height(surface))
+       context->framebuffer.width != ps5_surface_width(surface) ||
+       context->framebuffer.height != ps5_surface_height(surface))
       return false;
 
    /* Slot zero may be an inline uniform copy, not a resource. Preserve its
@@ -11810,8 +11808,7 @@ ps5_clear_gpu_depth_stencil(struct ps5_context *context, unsigned buffers,
       return false;
    struct pipe_surface surface = context->framebuffer.zsbuf;
    const struct ps5_resource *target = (const struct ps5_resource *)surface.texture;
-   if (!target || (target->base.target != PIPE_TEXTURE_2D &&
-                   target->base.target != PIPE_TEXTURE_2D_ARRAY) ||
+   if (!target || target->base.target != PIPE_TEXTURE_2D ||
        target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
        target->base.last_level || target->base.array_size != 1 ||
        target->base.depth0 != 1 || !context->framebuffer.width || !context->framebuffer.height ||
@@ -12090,6 +12087,31 @@ reject:
    return true;
 }
 
+static bool
+ps5_clear_full_tiled_color(struct ps5_resource *target,
+                           const struct pipe_surface *surface, unsigned write_mask,
+                           unsigned min_x, unsigned min_y, unsigned max_x, unsigned max_y,
+                           const uint8_t packed[16])
+{
+   /* A uniform four-byte pixel is identical in every tiled address. Include
+    * padding only for an entire single-level, single-layer allocation. */
+   if (target->render_staging_size || target->base.last_level ||
+       target->base.array_size != 1 || target->base.depth0 != 1 ||
+       target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
+       surface->level || surface->first_layer || surface->last_layer ||
+       write_mask != PIPE_MASK_RGBA || min_x || min_y ||
+       max_x != target->base.width0 || max_y != target->base.height0 ||
+       util_format_get_blocksize(surface->format) != 4 ||
+       util_format_get_blocksize(target->base.format) != 4 ||
+       !target->data || !target->allocation_size || target->allocation_size % 4)
+      return false;
+   uint32_t pixel;
+   memcpy(&pixel, packed, sizeof(pixel));
+   util_memset32(target->data, pixel, target->allocation_size / sizeof(pixel));
+   ps5_flush_gpu_data(target->data, target->allocation_size);
+   return true;
+}
+
 static void
 ps5_clear(struct pipe_context *base, unsigned buffers,
           uint32_t color_clear_mask, uint8_t stencil_clear_mask,
@@ -12193,6 +12215,9 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
          ps5_clear_bounds(scissor_state, width, height,
                           &min_x, &min_y, &max_x, &max_y);
          util_format_pack_rgba(surface->format, packed, color->ui, 1);
+         if (ps5_clear_full_tiled_color(target, surface, write_mask,
+                                       min_x, min_y, max_x, max_y, packed))
+            continue;
          for (unsigned layer = surface->first_layer;
               layer <= surface->last_layer; ++layer) {
             layer_base = (size_t)layer * target->layer_stride +

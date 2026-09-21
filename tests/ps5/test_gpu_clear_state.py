@@ -149,13 +149,6 @@ int main(void) {
         good.framebuffer.cbufs[0].format=99;
         assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
     }
-    /* A framebuffer may clear a subrectangle of a larger attachment. */
-    good.framebuffer.cbufs[0].format=target.base.format;
-    target_width=target_height=256;
-    assert(ps5_clear_gpu_color(&good,4,15,NULL,&color));
-    target_width=target_height=64;
-    assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
-    target_width=target_height=128;
     target.base.target=3;
     good.framebuffer.cbufs[0].format=target.base.format;
     assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
@@ -383,7 +376,7 @@ int main(void) {
 #define CHECK(c,b,m,s,d) ps5_clear_gpu_depth_stencil(c,b,m,s,d,0x69)
     assert(CHECK(&good,3,255,NULL,.375));
     target.base.target=PIPE_TEXTURE_2D_ARRAY;
-    assert(CHECK(&good,3,255,NULL,.375));
+    assert(!CHECK(&good,3,255,NULL,.375));
     target.base.target=PIPE_TEXTURE_2D;
     assert(CHECK(&good,2,255,NULL,NAN)); /* Unused depth must not reject stencil. */
     assert(CHECK(&good,1,255,NULL,.375)); /* Large full clears use the GPU. */
@@ -460,3 +453,53 @@ with tempfile.TemporaryDirectory() as d:
  subprocess.run(['cc','-std=c11','-Wall','-Werror','-x','c','-o',executable,'-'],input=code,text=True,check=True)
  subprocess.run([executable],check=True)
 print('PASS: admitted depth clears use actual Mesa query suspension and driver scope restoration')
+
+# Actual whole-allocation fill: every rejected case must leave memory untouched.
+start = source.index('static bool\nps5_clear_full_tiled_color(')
+fill = source[start:source.index('static void\nps5_clear(', start)]
+code = r"""
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+#define PIPE_MASK_RGBA 15
+struct base { unsigned last_level,array_size,depth0,nr_samples,nr_storage_samples,width0,height0,format; };
+struct ps5_resource { struct base base; size_t render_staging_size,allocation_size; void *data; };
+struct pipe_surface { unsigned level,first_layer,last_layer,format; };
+static unsigned flushes;
+static unsigned util_format_get_blocksize(unsigned format) { return format; }
+static void util_memset32(void *p,uint32_t v,size_t n) { for(size_t i=0;i<n;++i) ((uint32_t*)p)[i]=v; }
+static void ps5_flush_gpu_data(const void *p,size_t n) { assert(p && n==256); ++flushes; }
+""" + fill + r"""
+int main(void) {
+ uint32_t data[66];
+ for(unsigned i=0;i<66;++i) data[i]=0xabcdef01;
+ struct ps5_resource good={.base={.array_size=1,.depth0=1,.width0=8,.height0=4,.format=4},.allocation_size=256,.data=data+1};
+ struct pipe_surface surface={.format=4}; uint8_t packed[16]={0x12,0x34,0x56,0x78};
+ for(unsigned test=0;test<17;++test) {
+  struct ps5_resource r=good;struct pipe_surface v=surface;unsigned mask=15,x=0,y=0,w=8,h=4;
+  switch(test) {
+   case 0:r.render_staging_size=1;break;case 1:r.base.last_level=1;break;
+   case 2:r.base.array_size=2;break;case 3:r.base.depth0=2;break;
+   case 4:r.base.nr_samples=4;break;case 5:r.base.nr_storage_samples=4;break;
+   case 6:v.level=1;break;case 7:v.first_layer=1;break;case 8:v.last_layer=1;break;
+   case 9:mask=7;break;case 10:x=1;break;case 11:y=1;break;
+   case 12:w=7;break;case 13:h=3;break;case 14:v.format=8;break;
+   case 15:r.base.format=8;break;case 16:r.allocation_size=255;break;
+  }
+  assert(!ps5_clear_full_tiled_color(&r,&v,mask,x,y,w,h,packed));
+  for(unsigned i=0;i<66;++i) assert(data[i]==0xabcdef01);
+ }
+ assert(!flushes);
+ assert(ps5_clear_full_tiled_color(&good,&surface,15,0,0,8,4,packed));
+ uint32_t pixel;memcpy(&pixel,packed,4);
+ for(unsigned i=1;i<65;++i) assert(data[i]==pixel);
+ assert(data[0]==0xabcdef01 && data[65]==0xabcdef01 && flushes==1);
+}
+"""
+with tempfile.TemporaryDirectory() as tmp:
+    exe = Path(tmp) / 'fill'
+    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-x','c','-','-o',str(exe)],input=code,text=True,check=True)
+    subprocess.run([str(exe)],check=True)
+print('PASS: uniform tiled clear, bounds, masks, layouts, padding and publication')
