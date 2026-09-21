@@ -11799,16 +11799,14 @@ ps5_clear_gpu_depth_stencil(struct ps5_context *context, unsigned buffers,
                             const struct pipe_scissor_state *scissor_state,
                             double depth, unsigned stencil)
 {
-   /* Full depth memset is already fast; pay a draw round trip only for large
-    * per-pixel clears. Partial stencil masks retain the checked CPU merge. */
+   /* Large clears avoid CPU attachment writes and cache flushing. The blitter
+    * suspends query counting; partial stencil masks retain the CPU merge. */
    if (!PS5_ENABLE_MRT_CANDIDATE || !context || !context->framebuffer_valid ||
        !(buffers & (PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
        (buffers & ~(PIPE_CLEAR_DEPTH | PIPE_CLEAR_STENCIL)) ||
-       (!scissor_state && !(buffers & PIPE_CLEAR_STENCIL)) ||
        ((buffers & PIPE_CLEAR_STENCIL) && stencil_clear_mask != 0xff) ||
        ((buffers & PIPE_CLEAR_DEPTH) && !(depth >= 0.0 && depth <= 1.0)) ||
-       context->render_condition_query || context->stream_output_target_count ||
-       context->active_occlusion_query || ps5_any_primitive_query(context))
+       context->render_condition_query || context->stream_output_target_count)
       return false;
    struct pipe_surface surface = context->framebuffer.zsbuf;
    const struct ps5_resource *target = (const struct ps5_resource *)surface.texture;

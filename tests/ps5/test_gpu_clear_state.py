@@ -375,7 +375,7 @@ int main(void) {
 #define CHECK(c,b,m,s,d) ps5_clear_gpu_depth_stencil(c,b,m,s,d,0x69)
     assert(CHECK(&good,3,255,NULL,.375));
     assert(CHECK(&good,2,255,NULL,NAN)); /* Unused depth must not reject stencil. */
-    assert(!CHECK(&good,1,255,NULL,.375)); /* Keep fast full-depth memset. */
+    assert(CHECK(&good,1,255,NULL,.375)); /* Large full clears use the GPU. */
     assert(CHECK(&good,1,0,&scissor,.375));
     assert(!CHECK(&good,3,15,&scissor,.375));
     assert(!CHECK(NULL,3,255,NULL,.375));
@@ -391,8 +391,10 @@ int main(void) {
     REJECT(framebuffer.zsbuf.level,1); REJECT(framebuffer.zsbuf.first_layer,1);
     REJECT(framebuffer.zsbuf.last_layer,1); REJECT(framebuffer.zsbuf.format,1);
     REJECT(render_condition_query,1); REJECT(stream_output_target_count,1);
-    REJECT(active_occlusion_query,1); REJECT(active_primitives_generated_query,1);
-    REJECT(active_primitives_emitted_query,1);
+    good.active_occlusion_query=good.active_primitives_generated_query=
+        good.active_primitives_emitted_query=1;
+    assert(CHECK(&good,3,255,NULL,.375));
+    assert(CHECK(&good,1,255,NULL,.375));
 #define REJECT_TARGET(field,value) do { struct ps5_resource t=target; t.field=value; \
     struct ps5_context c=good; c.framebuffer.zsbuf.texture=&t; \
     assert(!CHECK(&c,3,255,&scissor,.375)); } while (0)
@@ -417,3 +419,33 @@ with tempfile.TemporaryDirectory() as temporary:
                     "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], check=True)
 print("PASS: actual GPU depth/stencil clear bounds, masks, scissor, format and state exclusions")
+
+# Exercise Mesa's actual query suspension through the driver's query switch.
+blitter=(root/'third_party/mesa-26.2.0/src/gallium/auxiliary/util/u_blitter.c').read_text()
+a=blitter.index('void util_blitter_set_running_flag(')
+b=blitter.index('static void blitter_check_saved_vertex_states',a)
+state=blitter[a:b]
+a=blitter.index('void util_blitter_clear_depth_stencil(')
+b=blitter.index('\n}',a)
+body=blitter[a:b]
+assert body.index('util_blitter_set_running_flag') < body.index('blitter->draw_rectangle') < body.index('util_blitter_unset_running_flag')
+code=r'''
+#include <assert.h>
+#include <stdbool.h>
+#define _debug_printf(...) assert(0)
+struct pipe_context { void (*set_active_query_state)(struct pipe_context *,bool); };
+struct ps5_context { struct pipe_context base; bool queries_enabled; };
+struct blitter_context { struct pipe_context *pipe; bool running; };
+'''+query_state+state+r'''
+int main(void) {
+ struct ps5_context c={.base.set_active_query_state=ps5_set_active_query_state,.queries_enabled=true};
+ struct blitter_context b={.pipe=&c.base};
+ util_blitter_set_running_flag(&b);assert(b.running&&!c.queries_enabled);
+ util_blitter_unset_running_flag(&b);assert(!b.running&&c.queries_enabled);
+}
+'''
+with tempfile.TemporaryDirectory() as d:
+ executable=str(Path(d)/'query-suspension')
+ subprocess.run(['cc','-std=c11','-Wall','-Werror','-x','c','-o',executable,'-'],input=code,text=True,check=True)
+ subprocess.run([executable],check=True)
+print('PASS: admitted depth clears use actual Mesa query suspension and driver scope restoration')
