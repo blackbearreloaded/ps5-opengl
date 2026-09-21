@@ -11703,8 +11703,8 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
         surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
         surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB) ||
        target->base.format != surface->format ||
-       context->framebuffer.width != ps5_surface_width(surface) ||
-       context->framebuffer.height != ps5_surface_height(surface))
+       context->framebuffer.width > ps5_surface_width(surface) ||
+       context->framebuffer.height > ps5_surface_height(surface))
       return false;
 
    /* Slot zero may be an inline uniform copy, not a resource. Preserve its
@@ -11810,7 +11810,8 @@ ps5_clear_gpu_depth_stencil(struct ps5_context *context, unsigned buffers,
       return false;
    struct pipe_surface surface = context->framebuffer.zsbuf;
    const struct ps5_resource *target = (const struct ps5_resource *)surface.texture;
-   if (!target || target->base.target != PIPE_TEXTURE_2D ||
+   if (!target || (target->base.target != PIPE_TEXTURE_2D &&
+                   target->base.target != PIPE_TEXTURE_2D_ARRAY) ||
        target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
        target->base.last_level || target->base.array_size != 1 ||
        target->base.depth0 != 1 || !context->framebuffer.width || !context->framebuffer.height ||
@@ -11878,6 +11879,9 @@ ps5_clear_depth_stencil(struct ps5_context *context, unsigned buffers,
                          const struct pipe_scissor_state *scissor_state,
                          double depth, unsigned stencil)
 {
+#ifdef PS5_DRAW_PROFILE
+   const int64_t clear_start = os_time_get_nano();
+#endif
    struct ps5_resource *resource;
    uint32_t clear_bits;
    size_t index;
@@ -12075,6 +12079,14 @@ reject:
           resource->allocation_size, resource->stencil_allocation_size,
           depth, clear_bits, stencil & 0xffu, stencil_clear_mask,
           scissor_state != NULL);
+#ifdef PS5_DRAW_PROFILE
+   printf("[ps5-clear-cpu] depth_ns=%" PRIi64 " target=%u mip=%u levels=%u layers=%u depth0=%u fb=%ux%u condition=%u streamout=%u\n",
+          os_time_get_nano() - clear_start, resource->base.target,
+          context->framebuffer.zsbuf.level, resource->base.last_level,
+          resource->base.array_size, resource->base.depth0,
+          context->framebuffer.width, context->framebuffer.height,
+          context->render_condition_query != NULL, context->stream_output_target_count);
+#endif
    return true;
 }
 
@@ -12133,6 +12145,9 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
    if (PS5_ENABLE_MRT_CANDIDATE && context &&
        context->framebuffer_valid && (buffers & PIPE_CLEAR_COLOR) &&
        color) {
+#ifdef PS5_DRAW_PROFILE
+      const int64_t clear_start = os_time_get_nano();
+#endif
       unsigned color_buffers = buffers & PIPE_CLEAR_COLOR;
 
       for (unsigned target_index = 0;
@@ -12226,6 +12241,13 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
                 ? context->framebuffer.cbufs[0].texture->target : 0,
              context->framebuffer.width, context->framebuffer.height,
              context->active_occlusion_query != NULL);
+#ifdef PS5_DRAW_PROFILE
+      const struct pipe_surface *first = &context->framebuffer.cbufs[0];
+      printf("[ps5-clear-cpu] color_ns=%" PRIi64 " resource=%ux%u mip=%u layers=%u-%u condition=%u streamout=%u\n",
+             os_time_get_nano() - clear_start, ps5_surface_width(first), ps5_surface_height(first),
+             first->level, first->first_layer, first->last_layer,
+             context->render_condition_query != NULL, context->stream_output_target_count);
+#endif
       buffers &= ~PIPE_CLEAR_COLOR;
       if (!buffers)
          return;

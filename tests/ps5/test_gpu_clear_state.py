@@ -149,6 +149,13 @@ int main(void) {
         good.framebuffer.cbufs[0].format=99;
         assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
     }
+    /* A framebuffer may clear a subrectangle of a larger attachment. */
+    good.framebuffer.cbufs[0].format=target.base.format;
+    target_width=target_height=256;
+    assert(ps5_clear_gpu_color(&good,4,15,NULL,&color));
+    target_width=target_height=64;
+    assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
+    target_width=target_height=128;
     target.base.target=3;
     good.framebuffer.cbufs[0].format=target.base.format;
     assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
@@ -337,6 +344,7 @@ code = r'''
 #define PIPE_CLEAR_DEPTH 1u
 #define PIPE_CLEAR_STENCIL 2u
 #define PIPE_TEXTURE_2D 2
+#define PIPE_TEXTURE_2D_ARRAY 7
 #define PIPE_FORMAT_Z32_FLOAT 1
 #define PIPE_FORMAT_Z32_FLOAT_S8X24_UINT 2
 struct resource { unsigned target,format,nr_samples,nr_storage_samples,last_level,
@@ -374,6 +382,9 @@ int main(void) {
     struct pipe_scissor_state scissor={17,29,987,725};
 #define CHECK(c,b,m,s,d) ps5_clear_gpu_depth_stencil(c,b,m,s,d,0x69)
     assert(CHECK(&good,3,255,NULL,.375));
+    target.base.target=PIPE_TEXTURE_2D_ARRAY;
+    assert(CHECK(&good,3,255,NULL,.375));
+    target.base.target=PIPE_TEXTURE_2D;
     assert(CHECK(&good,2,255,NULL,NAN)); /* Unused depth must not reject stencil. */
     assert(CHECK(&good,1,255,NULL,.375)); /* Large full clears use the GPU. */
     assert(CHECK(&good,1,0,&scissor,.375));
