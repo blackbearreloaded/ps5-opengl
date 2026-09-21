@@ -5,7 +5,12 @@ import subprocess
 import tempfile
 s=(Path(__file__).resolve().parents[2]/'src/gallium/ps5/ps5_screen.c').read_text()
 a=s.index('static void\nps5_flush_gpu_data(');flush=s[a:s.index('static bool\nps5_texel_buffer_descriptor(',a)]
-flush=flush.replace('__asm__ volatile("clflush (%0)" : : "r"(at) : "memory");','lines[line_count++] = at;').replace('__asm__ volatile("mfence" ::: "memory");','++fences;')
+mesa=Path(__file__).resolve().parents[2]/'third_party/mesa-26.2.0/src/util'
+cache=(mesa/'cache_ops_x86.c').read_text()
+cache='\n'.join(line for line in cache.splitlines() if not line.startswith('#include'))
+opt=(mesa/'cache_ops_x86_clflushopt.c').read_text()
+opt=opt[opt.index('void\nutil_clflushopt_range('):]
+cache=(opt+cache).replace('__builtin_ia32_clflushopt(p);','optimized++; lines[line_count++] = (uintptr_t)p;').replace('__builtin_ia32_clflush(p);','lines[line_count++] = (uintptr_t)p;').replace('__builtin_ia32_clflush((char *)start + size - 1);','lines[line_count++] = ((uintptr_t)start+size-1)&~(uintptr_t)63;').replace('__builtin_ia32_mfence();','++fences;')
 a=s.index('      uint32_t binding_records[PIPE_MAX_ATTRIBS] = {0};')
 a=s.index('         if (element->instance_divisor) {',a)
 b=s.index('         binding_mask |=',a)
@@ -19,8 +24,12 @@ code=r'''
 #include <stdbool.h>
 #define MAX2(a,b) ((a)>(b)?(a):(b))
 #define PIPE_BUFFER 1
-static uintptr_t lines[32]; static unsigned line_count,fences;
-'''+flush+r'''
+#define HAVE___BUILTIN_IA32_CLFLUSHOPT 1
+struct util_cpu_caps_t { unsigned has_clflushopt, cacheline; };
+static struct util_cpu_caps_t caps={0,64};
+static const struct util_cpu_caps_t *util_get_cpu_caps(void) { return &caps; }
+static uintptr_t lines[32]; static unsigned line_count,fences,optimized;
+'''+cache+flush+r'''
 struct ps5_resource { struct { unsigned target; } base; size_t size; };
 struct vertex_buffer { unsigned buffer_offset; struct { struct ps5_resource *resource; } buffer; };
 struct element { unsigned instance_divisor,src_offset,src_stride,vertex_buffer_index; };
@@ -33,10 +42,13 @@ static void calculate(struct context *context, struct info *info, struct element
 '''+calc+r'''
 }
 int main(void) {
- for(unsigned off=0;off<64;++off) for(unsigned n=0;n<=256;++n) {
-  line_count=fences=0; ps5_flush_gpu_data((void*)(uintptr_t)(4096+off),n);
-  assert(fences==1); assert(line_count==(n?(off+n+63)/64:0));
-  for(unsigned i=0;i<line_count;++i) assert(lines[i]==4096+i*64);
+ for(unsigned fast=0;fast<2;++fast) for(unsigned off=0;off<64;++off) for(unsigned n=0;n<=256;++n) {
+  caps.has_clflushopt=fast;line_count=fences=optimized=0; ps5_flush_gpu_data((void*)(uintptr_t)(4096+off),n);
+  unsigned count=n?(off+n+63)/64:0;
+  assert(fences==(n?(fast?2:1):0)); assert(line_count==(n?count+1:0));
+  for(unsigned j=0;j<count;++j) assert(lines[j]==4096+j*64);
+  if(n) assert(lines[count]==4096+(count-1)*64);
+  assert(optimized==(fast?line_count:0));
  }
  struct context c={0}; struct info i={0,1}; struct element e={0,4,24,0};
  struct ps5_resource r={{PIPE_BUFFER},1<<24}; struct vertex_buffer v={100,{&r}};

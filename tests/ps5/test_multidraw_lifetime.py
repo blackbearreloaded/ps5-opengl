@@ -233,6 +233,9 @@ static int sceKernelUsleep(uint32_t us) {
         for (unsigned i = 0; i < submits; ++i) markers[i] = wrong_marker ? 100 : 101 + i;
     return 0;
 }
+static unsigned runtime_completion_pause(int64_t *deadline) {
+    (void)deadline; sceKernelUsleep(1000); return 1;
+}
 static int munmap(void *p, size_t n) {
     assert(p && n == 64);
     for (unsigned i = 0; i < submits; ++i) assert(markers[i] == 101 + i);
@@ -1203,6 +1206,9 @@ static uint64_t now_ns;
 static unsigned ready_batches;
 static uint64_t os_time_get_nano(void) { return now_ns; }
 static void os_time_sleep(int64_t us) { assert(!locked); now_ns += us ? (uint64_t)us*1000 : 1; }
+static void mock_pause(void) { assert(!locked); now_ns += 1000; }
+#define __builtin_ia32_pause() mock_pause()
+
 """)
 fence_code = fence_code.replace("if (!wait) { ++probes; return 0; }", "if (!wait) { ++probes; if (!ready_batches) return 0; }")
 fence_code = fence_code.replace("    ++blocking_waits;", "    if (wait) ++blocking_waits;\n    if (ready_batches) --ready_batches;")

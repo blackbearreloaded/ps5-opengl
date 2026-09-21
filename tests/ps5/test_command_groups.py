@@ -59,6 +59,9 @@ static int sceKernelUsleep(uint32_t n) {
         for (unsigned i=0;i<completion_count;++i) markers[completed[i]]=101+completed[i];
     return 0;
 }
+static unsigned runtime_completion_pause(int64_t *deadline) {
+    (void)deadline; sceKernelUsleep(1000); return 1;
+}
 static int munmap(void *p,size_t n) {
     assert(p && n==64 && consumed==allocations);
     for (unsigned i=0;i<completion_count;++i) assert(markers[completed[i]]==101+completed[i]);

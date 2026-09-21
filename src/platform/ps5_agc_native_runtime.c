@@ -895,6 +895,22 @@ static void runtime_require_retirement(int completed)
 }
 #endif
 
+#include "util/os_time.h"
+/* Completion publication is now prompt. Avoid yielding for a short GPU tail;
+ * long waits still sleep, and never restart their 200us spin budget. */
+static unsigned runtime_completion_pause(int64_t *spin_deadline)
+{
+    int64_t now = os_time_get_nano();
+    if (!*spin_deadline)
+        *spin_deadline = now + 200000;
+    if (now < *spin_deadline) {
+        __builtin_ia32_pause();
+        return 0;
+    }
+    sceKernelUsleep(UINT32_C(1000));
+    return 1;
+}
+
 /* Publish/read the full 64-bit value in the aligned marker slot. Native
  * publication follows the qualified platform cache policy below. */
 static uint32_t *runtime_release_completion(const agc_api_t *agc,
@@ -1137,6 +1153,7 @@ int ps5_agc_gate2_batch_retire(int wait)
 {
     struct runtime_pending_batch *pending = &runtime_pending[runtime_pending_head];
     unsigned waits = 0;
+    int64_t spin_deadline = 0;
     int complete = 0;
 #ifdef PS5_DRAW_PROFILE
     int64_t poll_start = 0, poll_end = 0, cleanup_end = 0;
@@ -1161,8 +1178,8 @@ int ps5_agc_gate2_batch_retire(int wait)
         }
         if (complete || !wait)
             break;
-        sceKernelUsleep(UINT32_C(1000));
-    } while (++waits < 2000);
+        waits += runtime_completion_pause(&spin_deadline);
+    } while (waits < 2000);
 #ifdef PS5_DRAW_PROFILE
     if (pending->profile)
         poll_end = os_time_get_nano();
@@ -4017,7 +4034,8 @@ int main(void)
 #ifdef AGC_RUNTIME_PACKAGES
         waits = 2000;
         if (submit_rc == 0) {
-            for (waits = 0; waits < 2000; ++waits) {
+            int64_t spin_deadline = 0;
+            for (waits = 0; waits < 2000;) {
 #ifdef PS5_DRAW_GPU_TIMESTAMPS
                 runtime_draw_gpu_observe(memory, work_bytes);
 #endif
@@ -4025,7 +4043,7 @@ int main(void)
                                sizeof(*completion_marker));
                 if (*completion_marker == (uint32_t)render_marker)
                     break;
-                sceKernelUsleep(UINT32_C(1000));
+                waits += runtime_completion_pause(&spin_deadline);
             }
         }
         status[3] = *completion_marker;

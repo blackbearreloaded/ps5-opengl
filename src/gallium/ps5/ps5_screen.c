@@ -38,6 +38,7 @@ ps5_runtime_printf(const char *format, ...)
 #include "psbc_compile.h"
 #include "ps5_agc_package.h"
 #include "util/ralloc.h"
+#include "util/cache_ops.h"
 #include "util/format/u_format.h"
 #include "util/format/u_formats.h"
 #include "util/os_time.h"
@@ -2340,12 +2341,8 @@ ps5_hash32(const void *data, size_t size)
 static void
 ps5_flush_gpu_data(const void *address, size_t bytes)
 {
-   const uintptr_t end = (uintptr_t)address + bytes;
-   uintptr_t at = (uintptr_t)address & ~(uintptr_t)63;
-
-   for (; bytes && at < end; at += 64)
-      __asm__ volatile("clflush (%0)" : : "r"(at) : "memory");
-   __asm__ volatile("mfence" ::: "memory");
+   if (bytes)
+      util_flush_inval_range((void *)address, bytes);
 }
 
 static bool
@@ -10975,8 +10972,12 @@ ps5_draw_batch_fence_finish(uint64_t sequence, uint64_t timeout)
       uint64_t elapsed = (uint64_t)os_time_get_nano() - start;
       if (elapsed >= timeout)
          return false;
-      /* No driver lock held while waiting; zero-timeout probes never sleep.
-       * ponytail: poll at 100us; use an event when a verified completion event exists. */
+      /* Zero-timeout probes return above; no driver lock is held here. */
+      if (elapsed < 200000) {
+         __builtin_ia32_pause();
+         continue;
+      }
+      /* ponytail: sleep-poll after the spin; use a verified event when available. */
       uint64_t remaining = timeout - elapsed;
       os_time_sleep(MIN2(100u, remaining / 1000u));
    }
@@ -15685,6 +15686,8 @@ ps5_screen_destroy(struct pipe_screen *base)
 struct pipe_screen *
 ps5_screen_create(void)
 {
+   printf("[ps5-cache] clflushopt=%u cacheline=%u\n",
+          util_get_cpu_caps()->has_clflushopt, util_get_cpu_caps()->cacheline);
    struct ps5_screen *screen = calloc(1, sizeof(*screen));
    struct nir_shader_compiler_options *vs_options;
    struct nir_shader_compiler_options *tcs_options;
