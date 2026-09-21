@@ -78,6 +78,7 @@ test-staging:
 	bash tools/test-gpu-transfer-regression-host.sh
 	bash tools/test-staging-host.sh
 test:
+	python3 tests/ps5/test_draw_gpu_timing.py
 	python3 -m unittest discover -s tools -p 'test_*.py'
 	python3 tests/ps5/test_egl_drawable.py
 	python3 tools/test_sdl_sdk.py

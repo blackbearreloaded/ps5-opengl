@@ -22,6 +22,9 @@
 #if defined(PS5_DRAW_PROFILE) && (!defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT))
 #error "Draw profiling requires the submitting runtime backend"
 #endif
+#if defined(PS5_DRAW_GPU_TIMESTAMPS) && (!defined(PS5_DRAW_PROFILE) || !defined(PS5_MULTIDRAW_BATCH))
+#error "GPU timestamp diagnostic requires profiling and native batching"
+#endif
 #ifndef PS5_DRAW_PROFILE
 #define PS5_PROFILE_MARK(i) ((void)0)
 #endif
@@ -932,6 +935,21 @@ static int runtime_end_submit_period(void)
 static void runtime_batch_profile_record(const int64_t ticks[5], unsigned sleeps,
                                          int result);
 #endif
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+/* Diagnostic page follows all shader/tessellation storage; never shares state. */
+static void runtime_draw_gpu_timing(void *memory, size_t bytes)
+{
+    static unsigned samples;
+    volatile uint64_t *timestamps = (volatile uint64_t *)((uint8_t *)memory + bytes - 0x4000);
+    flush_gpu_data((const void *)timestamps, 64);
+    uint64_t begin = timestamps[0], end = timestamps[1];
+    if (++samples <= 64 || samples % 128 == 0)
+        printf("[ps5-draw-gpu-time] sample=%u begin=%" PRIu64 " end=%" PRIu64
+               " ticks=%" PRIu64 " cpu_ns=%" PRId64 " valid=%u\n",
+               samples, begin, end, end - begin, os_time_get_nano(),
+               (unsigned)(begin != 0 && end >= begin));
+}
+#endif
 /* The caller holds the queue lock and retains descriptors/resources until
  * the matching FIFO retirement. Queue-full rejection never transfers ownership. */
 static struct runtime_batch_entry {
@@ -1126,6 +1144,9 @@ int ps5_agc_gate2_batch_retire(int wait)
            pending->count, pending->attempted, waits);
     for (unsigned i = 0; i < pending->count; ++i) {
         struct runtime_batch_entry *entry = &pending->entries[i];
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+        runtime_draw_gpu_timing(entry->memory, entry->bytes);
+#endif
         if (munmap(entry->memory, entry->bytes) != 0 ||
             sceKernelReleaseDirectMemory(entry->direct, entry->bytes) != 0) {
             runtime_batch_faulted = 1;
@@ -2954,6 +2975,9 @@ int main(void)
         goto cleanup;
     }
 #endif
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+    work_bytes += 0x4000;
+#endif
     work_alloc_rc = sceKernelAllocateDirectMemory(
         0, direct_limit, work_bytes, 0x4000, DIRECT_MEMORY_TYPE, &work_start);
     if (work_alloc_rc == 0)
@@ -3683,6 +3707,11 @@ int main(void)
     agc.set_index_count(&command, 3);
     agc.draw_index(&command, 3, memory + 0x4200, 0);
 #elif defined(AGC_RUNTIME_PACKAGES)
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+    if (!agc.release_mem(&command, 40, 0, 0, 0,
+                         memory + work_bytes - 0x4000, 3, 0, 0, 0, 3, 0))
+        goto receipt;
+#endif
 #ifdef PS5_DRAW_BATCH_PROBE
     for (unsigned repetition = 0; repetition < batch_repeats; ++repetition)
 #endif
@@ -3702,6 +3731,11 @@ int main(void)
     }
 #else
     agc.draw_auto(&command, 3, 2);
+#endif
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+    if (!agc.release_mem(&command, 40, 0, 0, 0,
+                         memory + work_bytes - 0x4000 + 8, 3, 0, 0, 0, 3, 0))
+        goto receipt;
 #endif
     draw_words = (uint32_t)(command.up - words);
 #if !defined(AGC_RUNTIME_PACKAGES) || defined(AGC_RUNTIME_DIAGNOSTICS)
@@ -3957,6 +3991,9 @@ int main(void)
 #endif
 #ifdef PS5_DRAW_BATCH_PROBE
         batch_wait_ns = os_time_get_nano() - batch_start;
+#endif
+#ifdef PS5_DRAW_GPU_TIMESTAMPS
+        runtime_draw_gpu_timing(memory, work_bytes);
 #endif
         PS5_PROFILE_MARK(8);
 #ifdef PS5_DRAW_PROFILE
