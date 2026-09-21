@@ -123,10 +123,12 @@ static uint64_t ps5_draw_batch_fence_submit(void);
 static bool ps5_draw_batch_fence_finish(uint64_t sequence, uint64_t timeout);
 struct ps5_query;
 static void ps5_draw_batch_drain_query(struct ps5_query *query);
+static bool ps5_draw_batch_query_ready(const struct ps5_query *query, bool wait);
 static void ps5_draw_batch_drain_buffer(struct pipe_resource *resource);
 #else
 #define ps5_draw_batch_drain_buffer(resource) ((void)(resource))
 #define ps5_draw_batch_drain_query(query) ((void)(query))
+#define ps5_draw_batch_query_ready(query, wait) true
 #endif
 static int ps5_storage_image_view_descriptor(const struct pipe_image_view *view,
                                              uint32_t descriptor[8]);
@@ -188,6 +190,10 @@ static uint64_t ps5_texture_publication_epoch = 1;
 static void
 ps5_draw_batch_drain(void)
 {
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
+      {3, ps5_prepare_clock()};
+#endif
 #ifdef PS5_DEFERRED_DRAW_BATCH
    ps5_screen_submit_lock(NULL);
    ++ps5_texture_publication_epoch;
@@ -8425,10 +8431,10 @@ ps5_get_query_result(struct pipe_context *base,
 {
    const struct ps5_query *query = (const struct ps5_query *)pipe_query;
 
-   ps5_draw_batch_drain();
    (void)base;
    (void)wait;
-   if (!query || !query->ready || !result)
+   if (!query || !query->ready || !result ||
+       !ps5_draw_batch_query_ready(query, wait))
       return false;
    if (query->type == PIPE_QUERY_TIMESTAMP_DISJOINT) {
       result->timestamp_disjoint.frequency = UINT64_C(1000000000);
@@ -8463,10 +8469,9 @@ ps5_get_query_result_resource(struct pipe_context *base,
    union pipe_query_result result = {0};
    uint64_t value;
 
-   ps5_draw_batch_drain();
    if (index < 0) {
       const struct ps5_query *query = (const struct ps5_query *)pipe_query;
-      value = query && query->ready;
+      value = query && query->ready && ps5_draw_batch_query_ready(query, false);
    } else {
       if (!ps5_get_query_result(base, pipe_query,
                                 flags & PIPE_QUERY_WAIT, &result))
@@ -11235,6 +11240,37 @@ ps5_draw_batch_drain_query(struct ps5_query *query)
       ps5_draw_batch_retire_locked(true);
    }
    simple_mtx_unlock(&ps5_deferred_mutex);
+}
+
+/* Complete only the batches contributing to this query. Availability probes
+ * neither wait for retirement nor force submission when the FIFO is full. */
+static bool
+ps5_draw_batch_query_ready(const struct ps5_query *query, bool wait)
+{
+   simple_mtx_lock(&ps5_deferred_mutex);
+   bool queued = false;
+   for (unsigned slot = 0; slot < ps5_deferred.count; ++slot)
+      queued |= ps5_deferred.slots[slot].occlusion_query == query;
+   if (queued) {
+      ps5_draw_batch_retire_locked(false);
+      if (!wait && ps5_inflight_count == PS5_INFLIGHT_BATCH_CAPACITY) {
+         simple_mtx_unlock(&ps5_deferred_mutex);
+         return false;
+      }
+      ps5_draw_batch_flush_locked();
+   }
+   uint64_t sequence = 0;
+   for (unsigned i = 0; i < ps5_inflight_count; ++i) {
+      const struct ps5_deferred_batch *batch =
+         &ps5_inflight[(ps5_inflight_head + i) % PS5_INFLIGHT_BATCH_CAPACITY];
+      for (unsigned slot = 0; slot < batch->count; ++slot)
+         if (batch->slots[slot].occlusion_query == query)
+            sequence = batch->sequence;
+   }
+   while (ps5_completed_sequence < sequence && ps5_draw_batch_retire_one_locked(wait)) {}
+   bool ready = ps5_completed_sequence >= sequence;
+   simple_mtx_unlock(&ps5_deferred_mutex);
+   return ready;
 }
 
 static bool

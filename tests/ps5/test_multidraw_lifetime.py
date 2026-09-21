@@ -1312,8 +1312,7 @@ print("PASS: eight in-flight resource snapshots, FIFO wraparound, oldest-only ba
 # The queue test alone cannot prove that CPU access / lifecycle entry points drain.
 for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_blit",
              "ps5_generate_mipmap", "ps5_get_timestamp", "ps5_destroy_query",
-             "ps5_begin_query", "ps5_end_query", "ps5_get_query_result",
-             "ps5_get_query_result_resource",
+             "ps5_begin_query", "ps5_end_query",
              "ps5_render_condition",
              "ps5_flush", "ps5_clear", "ps5_context_last_draw_status",
              "ps5_context_destroy", "ps5_screen_destroy"):
