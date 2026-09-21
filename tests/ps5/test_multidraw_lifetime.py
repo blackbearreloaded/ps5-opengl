@@ -254,12 +254,12 @@ static _Noreturn void check_exit(int status) {
 static void reset(void) {
     /* Only resets the host mock. Production intentionally has no reset API. */
     memset(runtime_batch_entries, 0, sizeof(runtime_batch_entries));
-    memset(runtime_pending_entries, 0, sizeof(runtime_pending_entries));
+    memset(runtime_pending, 0, sizeof(runtime_pending));
     memset(markers, 0, sizeof(markers));
     runtime_batch_count = runtime_batch_active = runtime_batch_faulted = 0;
-    runtime_pending_count = runtime_pending_attempted = 0;
+    runtime_pending_head = runtime_pending_batches = 0;
 #ifdef PS5_DRAW_PROFILE
-    runtime_pending_profile = 0;
+
 #endif
     submits = suspends = sleeps = unmaps = releases = delay = 0;
     fail_submit = -1; fail_suspend = fail_unmap = wrong_marker = 0;
@@ -289,7 +289,7 @@ int main(void) {
     assert(runtime_batch_queue(&api, &d, memory[0], 0, 64, &markers[0], 101) != 0);
     assert(ps5_agc_gate2_batch_end() == 0);
     reset(); delay=5; queue(3);
-    assert(ps5_agc_gate2_batch_submit() == 0 && runtime_pending_count == 3);
+    assert(ps5_agc_gate2_batch_submit() == 0 && runtime_pending[runtime_pending_head].count == 3);
     assert(ps5_agc_gate2_batch_begin() == 0); /* CPU may stage the next batch. */
     assert(ps5_agc_gate2_batch_retire(0) == 0 && !sleeps && !unmaps);
     assert(ps5_agc_gate2_batch_retire(1) == 1 && sleeps == 5 && unmaps == 3 && releases == 3);
@@ -327,6 +327,51 @@ with tempfile.TemporaryDirectory() as tmp:
                         "-I" + str(root / "src/gallium/ps5"), str(c), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
 print(f"PASS: staged ownership, 1..{capacity} draws, all-marker retirement, shared timeout, fail-stop before cleanup")
+
+# Native FIFO: later completion cannot release older memory; full submission
+# preserves the staged batch until the caller retires an entry and retries.
+native_fifo = code[:code.index("int main(void) {")]
+native_fifo = native_fifo.replace(" && !unmaps && !releases", "")
+native_fifo = native_fifo.replace("for (unsigned i = 0; i < submits; ++i) assert(markers[i] == 101 + i);",
+    "unsigned i=((uint8_t *)p-&memory[0][0])/64; assert(i<submits && markers[i]==101+i);")
+native_fifo += r'''
+static void queue_one(unsigned i) {
+    const agc_api_t api={submit,suspend_point};
+    assert(ps5_agc_gate2_batch_begin()==0);
+    agc_submit_description_t d={memory[i],1,0,{0}};
+    assert(runtime_batch_queue(&api,&d,memory[i],i*64,64,&markers[i],101+i)==0);
+}
+int main(void) {
+    reset(); delay=100000;
+    for (unsigned round=0;round<3;++round) {
+        unsigned first=submits;
+        for (unsigned i=0;i<PS5_INFLIGHT_BATCH_CAPACITY;++i) {
+            queue_one(submits);
+            assert(ps5_agc_gate2_batch_submit()==0);
+        }
+        assert(runtime_pending_batches==PS5_INFLIGHT_BATCH_CAPACITY && !sleeps);
+        queue_one(submits);
+        assert(ps5_agc_gate2_batch_submit()==-1);
+        assert(runtime_batch_active && runtime_batch_count==1); // Still caller-owned.
+        unsigned freed=unmaps;
+        markers[submits-1]=101+submits-1;
+        assert(ps5_agc_gate2_batch_retire(0)==0 && unmaps==freed);
+        markers[first]=101+first;
+        assert(ps5_agc_gate2_batch_retire(0)==1 && unmaps==freed+1);
+        assert(ps5_agc_gate2_batch_submit()==0 && runtime_pending_batches==PS5_INFLIGHT_BATCH_CAPACITY);
+        for (unsigned i=first;i<submits;++i) markers[i]=101+i;
+        while (runtime_pending_batches) assert(ps5_agc_gate2_batch_retire(0)==1);
+        assert(unmaps==submits && releases==submits && !sleeps);
+    }
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    exe=Path(tmp)/"native-fifo"
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+                    "-I"+str(root/"src/gallium/ps5"), "-x", "c", "-o", str(exe), "-"],
+                   input=native_fifo, text=True, check=True)
+    subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
+print("PASS: native FIFO capacity, full-queue ownership/retry, out-of-order markers and wraparound")
 
 # Exercise the real Gallium wrapper too: ownership must survive command staging.
 source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
@@ -463,6 +508,7 @@ static void pipe_resource_reference(struct pipe_resource **dst, struct pipe_reso
 void ps5_screen_submit_lock(struct pipe_screen *s) { assert(s == &screen.base && !locked); locked=1; }
 void ps5_screen_submit_unlock(struct pipe_screen *s) { assert(s == &screen.base && locked); locked=0; }
 static int begin(void) { assert(locked && !staged); ++begun; return fail_begin; }
+static unsigned async_retained_draws;
 static int end(void) {
     assert(locked && context.vertex_descriptor_table == &original[0].base &&
         context.descriptor_storage[0] == &original[1].base && context.descriptor_storage[1] == &original[2].base);
@@ -478,7 +524,7 @@ static int end(void) {
                 assert(pending[i][stage]->data[byte] == expected_uniform[i][stage]);
         }
     }
-    unsigned factor = deferred_mode ? retained_draws : 1;
+    unsigned factor = deferred_mode ? retained_draws + async_retained_draws : 1;
     assert(borrowed.base.refs == 1+factor*(4+PIPE_MAX_ATTRIBS+2*PS5_MAX_CONSTANT_BUFFERS+
         (context.framebuffer.zsbuf.texture == &borrowed.base))-unindexed_draws);
     if (context.framebuffer.zsbuf.texture == &depth_buffer.base)
@@ -743,6 +789,8 @@ print("PASS: descriptors/uniforms, chunk retirement, draw IDs, rollback, all 16 
 start = source.index("struct ps5_deferred_slot {")
 deferred = source[start:source.index(
     "\n#endif\n\nstatic bool\nps5_lower_default_tess_levels(", start)]
+fence_helpers = source[source.index("static uint64_t\nps5_draw_batch_fence_submit("):source.index("static bool\nps5_memory_overlaps(")]
+deferred = deferred.replace(fence_helpers, "")
 deferred_code = code[:code.index("int main(void) {")] + r'''
 static unsigned ps5_deferred_mutex;
 static void simple_mtx_lock(unsigned *m) { assert(m == &ps5_deferred_mutex && !locked); locked=1; }
@@ -1023,19 +1071,21 @@ static uint64_t os_time_get_nano(void) { return 1; }
     "ps5_active_primitive_query", "ps5_active_streamout_overflow_query",
     "ps5_begin_query", "ps5_end_query", "ps5_set_active_query_state"))
 async_code = deferred_code[:deferred_code.index("int main(void) {")] + submit_helper + query_code + r'''
-static bool in_flight;
+static unsigned in_flight;
 static unsigned blocking_waits, probes;
 static int async_submit(void) {
-    assert(!in_flight);
+    unsigned submitted=retained_draws;
     int result=end();
-    in_flight=true;
+    async_retained_draws+=submitted;
+    ++in_flight;
     return result;
 }
 static int async_retire(int wait) {
     assert(in_flight);
     if (!wait) { ++probes; return 0; }
     ++blocking_waits;
-    in_flight=false;
+    --in_flight;
+    --async_retained_draws;
     return 1;
 }
 int main(void) {
@@ -1053,7 +1103,7 @@ int main(void) {
     assert(!ended && !freed && ps5_deferred.owner);
     ps5_draw_batch_submit();
     assert(in_flight && probes==1 && !blocking_waits && !freed);
-    assert(ps5_inflight.owner && !ps5_deferred.owner && !occlusion.value);
+    assert(ps5_inflight[ps5_inflight_head].owner && !ps5_deferred.owner && !occlusion.value);
     ps5_draw_batch_submit(); /* An empty flush must not retire the prior batch. */
     assert(in_flight && !blocking_waits && !freed);
     struct ps5_resource independent={.base={.target=PIPE_BUFFER},.data=(void *)1,.allocation_size=1};
@@ -1067,12 +1117,12 @@ int main(void) {
     assert(in_flight && !blocking_waits);
     /* CPU can build a second batch while the first still owns its resources. */
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
-    assert(ps5_deferred.owner && ps5_inflight.owner && !freed);
+    assert(ps5_deferred.owner && ps5_inflight[ps5_inflight_head].owner && !freed);
     assert(ps5_end_query(&context.base,(struct pipe_query *)&successor));
     assert(!blocking_waits && !freed);
     /* Reusing the first query must collect both batches before resetting it. */
     assert(ps5_begin_query(&context.base,(struct pipe_query *)&occlusion));
-    assert(!in_flight && blocking_waits==2 && probes==2);
+    assert(!in_flight && blocking_waits==2 && probes>=2);
     assert(occlusion.value==0 && successor.value==1);
     assert(ps5_end_query(&context.base,(struct pipe_query *)&occlusion));
     idle();
@@ -1086,7 +1136,7 @@ int main(void) {
     reset();
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     ps5_draw_batch_submit();
-    struct pipe_resource *first_storage=ps5_inflight.slots[0].storage[0];
+    struct pipe_resource *first_storage=ps5_inflight[ps5_inflight_head].slots[0].storage[0];
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     ps5_draw_batch_drain_buffer(first_storage);
     assert(!in_flight && blocking_waits==4 && ps5_deferred.owner && staged==1);
@@ -1111,6 +1161,84 @@ with tempfile.TemporaryDirectory() as tmp:
         assert (run.returncode == 0) == (before is None), run.stderr
 print("PASS: asynchronous flush, query scope changes, queued/in-flight query reuse, and delayed collection; both unsafe reuse and global-wait mutations rejected")
 
+# Exercise real fence helpers against a delayed FIFO, including ring wraparound.
+fence_code = async_code[:async_code.index("int main(void) {")]
+fence_code = fence_code.replace("static uint64_t os_time_get_nano(void) { return 1; }", """
+static uint64_t now_ns;
+static unsigned ready_batches;
+static uint64_t os_time_get_nano(void) { return now_ns; }
+static void os_time_sleep(int64_t us) { assert(!locked); now_ns += us ? (uint64_t)us*1000 : 1; }
+""")
+fence_code = fence_code.replace("if (!wait) { ++probes; return 0; }", "if (!wait) { ++probes; if (!ready_batches) return 0; }")
+fence_code = fence_code.replace("    ++blocking_waits;", "    if (wait) ++blocking_waits;\n    if (ready_batches) --ready_batches;")
+fence_code += fence_helpers + r'''
+int main(void) {
+    struct pipe_draw_info info={.mode=4,.instance_count=1,.index_size=2,.index={&borrowed.base}};
+    struct pipe_draw_start_count_bias draw={0,6,0};
+    deferred_mode=true;
+    reset();
+    ps5_agc_gate2_batch_submit=async_submit;
+    ps5_agc_gate2_batch_retire=async_retire;
+    assert(ps5_draw_batch_fence_submit()==0);
+    assert(ps5_draw_batch_fence_finish(0,0));
+    for (unsigned round=0;round<3;++round) {
+        uint64_t first=0, last=0;
+        unsigned waits_before=blocking_waits;
+        for (unsigned i=0;i<PS5_INFLIGHT_BATCH_CAPACITY;++i) {
+            assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+            last=ps5_draw_batch_fence_submit();
+            if (!i) first=last;
+            assert(ps5_inflight_count==i+1 && in_flight==i+1);
+            assert(blocking_waits==waits_before);
+        }
+        unsigned freed_before=freed;
+        uint64_t time_before=now_ns;
+        assert(!ps5_draw_batch_fence_finish(last,0));
+        assert(now_ns==time_before && freed==freed_before);
+        assert(!ps5_draw_batch_fence_finish(last,250000));
+        assert(now_ns-time_before==250000 && freed==freed_before);
+        ready_batches=1;
+        assert(ps5_draw_batch_fence_finish(first,0));
+        assert(ps5_completed_sequence==first && ps5_inflight_count==PS5_INFLIGHT_BATCH_CAPACITY-1);
+        assert(!ps5_draw_batch_fence_finish(last,0));
+        // Fill again, then only the oldest batch blocks to make room.
+        for (unsigned i=0;i<2;++i) {
+            assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+            last=ps5_draw_batch_fence_submit();
+        }
+        assert(blocking_waits==waits_before+1 && ps5_inflight_count==PS5_INFLIGHT_BATCH_CAPACITY);
+        ready_batches=PS5_INFLIGHT_BATCH_CAPACITY;
+        assert(ps5_draw_batch_fence_finish(last,UINT64_MAX));
+        assert(!ps5_inflight_count && !in_flight && ps5_completed_sequence==last);
+        assert(ps5_draw_batch_fence_finish(first,0)); // Old fence survives slot reuse.
+        idle();
+    }
+    // CPU writes must find retained resources even in a non-head FIFO slot.
+    for (unsigned i=0;i<3;++i) {
+        assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+        ps5_draw_batch_fence_submit();
+    }
+    struct pipe_resource *late=ps5_inflight[(ps5_inflight_head+2)%PS5_INFLIGHT_BATCH_CAPACITY].slots[0].storage[0];
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    unsigned waits_before=blocking_waits;
+    ps5_draw_batch_drain_buffer(late);
+    assert(blocking_waits==waits_before+3 && !ps5_inflight_count && ps5_deferred.owner);
+    drain(); idle();
+    // Unsubmitted successor work must not be executed by an old fence wait.
+    uint64_t old=ps5_draw_batch_fence_submit();
+    assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+    assert(ps5_draw_batch_fence_finish(old,0) && ps5_deferred.owner && staged==1);
+    drain(); idle();
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    exe=Path(tmp)/"fences"
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+                    "-DPS5_DEFERRED_DRAW_BATCH=1", "-I"+str(root/"src/gallium/ps5"),
+                    "-x", "c", "-o", str(exe), "-"], input=fence_code, text=True, check=True)
+    subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
+print("PASS: eight in-flight resource snapshots, FIFO wraparound, oldest-only backpressure, zero/finite/infinite fence waits and old-fence isolation")
+
 # The queue test alone cannot prove that CPU access / lifecycle entry points drain.
 for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_blit",
              "ps5_generate_mipmap", "ps5_get_timestamp", "ps5_destroy_query",
@@ -1132,7 +1260,7 @@ for name, argument in (("ps5_transfer_map", "base"),
     assert "ps5_draw_batch_drain();" not in function, name
 start = source.index("\nps5_flush(")
 function = source[start:source.index("\n}\n", start)]
-assert function.index("if (!out_fence)") < function.index("ps5_draw_batch_submit();") < function.index("ps5_draw_batch_drain();")
+assert "fence->sequence = ps5_draw_batch_fence_submit();" in function
 start = source.index("\nps5_screen_submit_lock(")
 assert "ps5_draw_batch_flush_locked();" in source[start:source.index("\n}\n", start)]
 print(f"PASS: deferred 1..{capacity} snapshots and {2 * capacity + 3} cross-boundary draws, resource pins, owner/fallback drains, OOM/no replay and fail-stop")

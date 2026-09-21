@@ -69,10 +69,10 @@ static int sceKernelReleaseDirectMemory(int64_t p,size_t n) {
 ''' + body + r'''
 static void reset(unsigned count) {
     memset(runtime_batch_entries,0,sizeof(runtime_batch_entries));
-    memset(runtime_pending_entries,0,sizeof(runtime_pending_entries));
+    memset(runtime_pending,0,sizeof(runtime_pending));
     memset(markers,0,sizeof(markers));
     memset(memory,0xa5,sizeof(memory));
-    runtime_batch_count=runtime_pending_count=runtime_pending_attempted=0;
+    runtime_batch_count=runtime_pending_head=runtime_pending_batches=0;
     runtime_batch_active=runtime_batch_faulted=0;
     allocations=count; submits=sleeps=unmaps=releases=consumed=flushes=completion_count=0;
     fail_submit=fail_suspend=never_complete=0;

@@ -32,6 +32,9 @@
 #error AGC_4K conflicts with the selected PS5 scanout resolution
 #endif
 
+/* Bounded GPU work retained across asynchronous flushes. */
+#define PS5_INFLIGHT_BATCH_CAPACITY 8u
+
 #define PS5_SCANOUT_ALIGNMENT 0x200000u
 #define PS5_SCANOUT_POOL_BYTES (2u * PS5_SCANOUT_BYTES)
 #ifndef PS5_SCANOUT_FPS

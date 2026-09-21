@@ -16,7 +16,7 @@ present_start = source.index("int ps5_agc_gate2_present(unsigned buffer_index)")
 present = source[present_start:source.index("\n#endif", source.index("    return result;", present_start))]
 mock = r'''
 static unsigned runtime_present_count, runtime_batch_active, runtime_batch_count,
-                runtime_batch_faulted, runtime_pending_count;
+                runtime_batch_faulted, runtime_pending_batches;
 static int runtime_video_registered = 1, runtime_video_handle = 7;
 static int idle_result, flip_result, vblank_result, step, flips, vblanks;
 static int64_t clock_ns = 1;

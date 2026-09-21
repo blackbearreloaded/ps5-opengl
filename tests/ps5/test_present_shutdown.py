@@ -37,7 +37,7 @@ code = r'''
 #define PS5_MULTIDRAW_BATCH 1
 #define RENDER_MARKER 100
 static int runtime_batch_faulted, runtime_batch_active;
-static unsigned runtime_batch_count, runtime_pending_count;
+static unsigned runtime_batch_count, runtime_pending_batches;
 #ifdef PS5_GPU_PRESENT_BATCH
 static int runtime_gpu_present_buffer = -1;
 static unsigned runtime_gpu_present_count;
@@ -160,7 +160,7 @@ static void setup(void) {
     runtime_video_framebuffer = scanout; runtime_video_framebuffer_size = sizeof(scanout);
     runtime_present_count = 6; runtime_render_marker = 200;
     runtime_batch_faulted = runtime_batch_active = runtime_batch_count = 0;
-    runtime_pending_count = 0;
+    runtime_pending_batches = 0;
 #ifdef PS5_GPU_PRESENT_BATCH
     runtime_gpu_present_buffer = -1; runtime_gpu_present_count = 6;
 #endif
@@ -183,9 +183,9 @@ static void inject(int failure) {
     pending_until = failure == 7 ? 121 : failure == 6 ? waits + 1 : 0;
 #ifdef PS5_GPU_PRESENT_BATCH
     runtime_gpu_present_buffer = failure == 8 ? 0 : -1;
-    runtime_pending_count = failure == 9;
+    runtime_pending_batches = failure == 9;
 #else
-    runtime_pending_count = failure == 8;
+    runtime_pending_batches = failure == 8;
 #endif
 }
 int main(void) {

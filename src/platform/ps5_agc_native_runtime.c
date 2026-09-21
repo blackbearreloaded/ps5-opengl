@@ -898,8 +898,8 @@ static void runtime_require_retirement(int completed)
 static void runtime_batch_profile_record(const int64_t ticks[5], unsigned sleeps,
                                          int result);
 #endif
-/* A batch is synchronous at the Gallium multi-draw boundary. The caller holds
- * the queue lock and retains all descriptors and referenced resources. */
+/* The caller holds the queue lock and retains descriptors/resources until
+ * the matching FIFO retirement. Queue-full rejection never transfers ownership. */
 static struct runtime_batch_entry {
     agc_submit_description_t submit;
     void *memory;
@@ -909,16 +909,18 @@ static struct runtime_batch_entry {
     uint32_t expected;
     uint32_t completion_offset, command_capacity;
 } runtime_batch_entries[PS5_MULTIDRAW_BATCH_CAPACITY];
-static struct runtime_batch_entry
-    runtime_pending_entries[PS5_MULTIDRAW_BATCH_CAPACITY];
+static struct runtime_pending_batch {
+    struct runtime_batch_entry entries[PS5_MULTIDRAW_BATCH_CAPACITY];
+    unsigned count, attempted;
+#ifdef PS5_DRAW_PROFILE
+    int profile;
+    int64_t start_ns, submit_ns, suspend_ns;
+#endif
+} runtime_pending[PS5_INFLIGHT_BATCH_CAPACITY];
+static unsigned runtime_pending_head, runtime_pending_batches, runtime_pending_peak;
 static agc_api_t runtime_batch_api;
 static unsigned runtime_batch_count;
-static unsigned runtime_pending_count, runtime_pending_attempted;
 static int runtime_batch_active, runtime_batch_faulted;
-#ifdef PS5_DRAW_PROFILE
-static int runtime_pending_profile;
-static int64_t runtime_pending_start_ns, runtime_pending_submit_ns, runtime_pending_suspend_ns;
-#endif
 
 int ps5_agc_gate2_batch_begin(void)
 {
@@ -999,7 +1001,8 @@ int ps5_agc_gate2_batch_submit(void)
 #else
 #define BATCH_SUBMIT_MARK(i) ((void)0)
 #endif
-    if (!runtime_batch_active || runtime_batch_faulted || runtime_pending_count)
+    if (!runtime_batch_active || runtime_batch_faulted ||
+        runtime_pending_batches == PS5_INFLIGHT_BATCH_CAPACITY)
         return -1;
     runtime_batch_active = 0;
     if (!runtime_batch_count)
@@ -1021,18 +1024,25 @@ int ps5_agc_gate2_batch_submit(void)
     BATCH_SUBMIT_MARK(2);
     runtime_require_retirement(result == 0);
     printf("[ps5-command-groups] draws=%u submissions=%u\n", runtime_batch_count, groups);
-    memcpy(runtime_pending_entries, runtime_batch_entries,
+    struct runtime_pending_batch *pending = &runtime_pending[
+        (runtime_pending_head + runtime_pending_batches) % PS5_INFLIGHT_BATCH_CAPACITY];
+    memcpy(pending->entries, runtime_batch_entries,
            runtime_batch_count * sizeof(runtime_batch_entries[0]));
     memset(runtime_batch_entries, 0,
            runtime_batch_count * sizeof(runtime_batch_entries[0]));
-    runtime_pending_count = runtime_batch_count;
-    runtime_pending_attempted = attempted;
+    pending->count = runtime_batch_count;
+    pending->attempted = attempted;
+    ++runtime_pending_batches;
+    if (runtime_pending_batches > runtime_pending_peak) {
+        runtime_pending_peak = runtime_pending_batches;
+        printf("[ps5-inflight] peak=%u capacity=%u\n", runtime_pending_peak, PS5_INFLIGHT_BATCH_CAPACITY);
+    }
     runtime_batch_count = 0;
 #ifdef PS5_DRAW_PROFILE
-    runtime_pending_profile = profile;
-    runtime_pending_start_ns = ticks[0];
-    runtime_pending_submit_ns = ticks[1] - ticks[0];
-    runtime_pending_suspend_ns = ticks[2] - ticks[1];
+    pending->profile = profile;
+    pending->start_ns = ticks[0];
+    pending->submit_ns = ticks[1] - ticks[0];
+    pending->suspend_ns = ticks[2] - ticks[1];
 #endif
 #undef BATCH_SUBMIT_MARK
     return 0;
@@ -1040,21 +1050,22 @@ int ps5_agc_gate2_batch_submit(void)
 
 int ps5_agc_gate2_batch_retire(int wait)
 {
+    struct runtime_pending_batch *pending = &runtime_pending[runtime_pending_head];
     unsigned waits = 0;
     int complete = 0;
 #ifdef PS5_DRAW_PROFILE
     int64_t poll_start = 0, poll_end = 0, cleanup_end = 0;
-    if (runtime_pending_profile)
+    if (pending->profile)
         poll_start = os_time_get_nano();
 #endif
     if (runtime_batch_faulted)
         return -1;
-    if (!runtime_pending_count)
+    if (!pending->count)
         return 1;
     do {
         complete = 1;
-        for (unsigned i = 0; i < runtime_pending_attempted; ++i) {
-            struct runtime_batch_entry *entry = &runtime_pending_entries[i];
+        for (unsigned i = 0; i < pending->attempted; ++i) {
+            struct runtime_batch_entry *entry = &pending->entries[i];
             if (!entry->submit.word_count)
                 continue;
             flush_gpu_data((const void *)entry->marker, sizeof(*entry->marker));
@@ -1065,7 +1076,7 @@ int ps5_agc_gate2_batch_retire(int wait)
         sceKernelUsleep(UINT32_C(1000));
     } while (++waits < 2000);
 #ifdef PS5_DRAW_PROFILE
-    if (runtime_pending_profile)
+    if (pending->profile)
         poll_end = os_time_get_nano();
 #endif
     if (!complete) {
@@ -1074,9 +1085,9 @@ int ps5_agc_gate2_batch_retire(int wait)
         return 0;
     }
     printf("[ps5-multidraw-batch] draws=%u attempted=%u waits=%u result=0\n",
-           runtime_pending_count, runtime_pending_attempted, waits);
-    for (unsigned i = 0; i < runtime_pending_count; ++i) {
-        struct runtime_batch_entry *entry = &runtime_pending_entries[i];
+           pending->count, pending->attempted, waits);
+    for (unsigned i = 0; i < pending->count; ++i) {
+        struct runtime_batch_entry *entry = &pending->entries[i];
         if (munmap(entry->memory, entry->bytes) != 0 ||
             sceKernelReleaseDirectMemory(entry->direct, entry->bytes) != 0) {
             runtime_batch_faulted = 1;
@@ -1085,19 +1096,21 @@ int ps5_agc_gate2_batch_retire(int wait)
         memset(entry, 0, sizeof(*entry));
     }
 #ifdef PS5_DRAW_PROFILE
-    if (runtime_pending_profile) {
+    if (pending->profile) {
         int64_t ticks[5] = {0};
         cleanup_end = os_time_get_nano();
-        ticks[0] = runtime_pending_start_ns;
-        ticks[1] = ticks[0] + runtime_pending_submit_ns;
-        ticks[2] = ticks[1] + runtime_pending_suspend_ns;
+        ticks[0] = pending->start_ns;
+        ticks[1] = ticks[0] + pending->submit_ns;
+        ticks[2] = ticks[1] + pending->suspend_ns;
         ticks[3] = ticks[2] + poll_end - poll_start;
         ticks[4] = ticks[3] + cleanup_end - poll_end;
         runtime_batch_profile_record(ticks, waits, 0);
     }
-    runtime_pending_profile = 0;
+    pending->profile = 0;
 #endif
-    runtime_pending_count = runtime_pending_attempted = 0;
+    memset(pending, 0, sizeof(*pending));
+    runtime_pending_head = (runtime_pending_head + 1) % PS5_INFLIGHT_BATCH_CAPACITY;
+    --runtime_pending_batches;
     return 1;
 }
 
@@ -1105,7 +1118,10 @@ int ps5_agc_gate2_batch_end(void)
 {
     if (ps5_agc_gate2_batch_submit() != 0)
         return -1;
-    return ps5_agc_gate2_batch_retire(1) == 1 ? 0 : -1;
+    while (runtime_pending_batches)
+        if (ps5_agc_gate2_batch_retire(1) != 1)
+            return -1;
+    return 0;
 }
 #endif
 
@@ -1438,7 +1454,7 @@ int ps5_agc_gate2_shutdown_present(void)
 #endif
 #ifdef PS5_MULTIDRAW_BATCH
     if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count ||
-        runtime_pending_count)
+        runtime_pending_batches)
         return -1;
 #endif
 
@@ -1625,7 +1641,7 @@ int ps5_agc_gate2_present(unsigned buffer_index)
 #endif
 #ifdef PS5_MULTIDRAW_BATCH
     if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count ||
-        runtime_pending_count)
+        runtime_pending_batches)
         return -1;
 #endif
 
