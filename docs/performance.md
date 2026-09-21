@@ -117,3 +117,16 @@ Host sanitizer/register/guard tests, full make test and PS5 cross-build pass.
 Hardware color correctness and speedup for this format change remain unqualified;
 the diagnostic capture predates the direct-layout change. Do not treat API
 coverage or the original menu capture as native validation of this candidate.
+
+## Eden direct-format qualification (FW6.02)
+
+Runtime d34501e, Eden candidate 0334009, case
+`workspace/dev/ps5-eden-feasibility/results/headless-fw602-20260920-200621`.
+Three native startup draw/readback oracles matched exact expected pixels:
+R11G11B10_FLOAT, sRGB encoding enabled, and encoding disabled. Guest menu,
+lifecycle, heap and console service checks passed. Guest framebuffer fallbacks
+fell from 831 to 0; the separate sRGB-disabled oracle retained one safe fallback
+for its linear view of an sRGB resource. Frame20..30 elapsed fell from 10.844165s
+to 8.375047s (22.77% reduction in one historical comparison). Startup unchanged;
+performance still inadequate. Remaining synchronous batch completion is the
+next investigation, not a reason to claim full performance qualification.
