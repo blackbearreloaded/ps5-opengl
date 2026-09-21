@@ -36,7 +36,7 @@ static int submit(void *p) {
     assert(d->word_count && !unmaps && !releases);
     ++submits;
     if (fail_submit) return -1;
-    unsigned i=0;
+    unsigned i=words[0]==999 ? 1 : 0;
     while (i+1<d->word_count && words[i]<3000) {
         assert(words[i++]==1000+consumed);
         assert(words[i++]==2000+consumed); /* Preserve every dependency barrier. */
@@ -114,6 +114,17 @@ int main(void) {
     memory[2][3]=4000; memory[2][4]=5000;
     runtime_batch_entries[2].submit.word_count=5;
     assert(!ps5_agc_gate2_batch_submit() && submits==1);
+    assert(ps5_agc_gate2_batch_retire(1)==1 && releases==3);
+    /* One acquire per group; preserve every draw and dependency barrier. */
+    reset(3);
+    for (unsigned i=0;i<3;++i) {
+        memmove(memory[i]+1,memory[i],3*sizeof(uint32_t));
+        memory[i][0]=999;
+        runtime_batch_entries[i].submit.word_count=4;
+        runtime_batch_entries[i].completion_offset=3;
+        runtime_batch_entries[i].upload_prefix_words=1;
+    }
+    assert(!ps5_agc_gate2_batch_submit() && submits==1 && consumed==3);
     assert(ps5_agc_gate2_batch_retire(1)==1 && releases==3);
     for (unsigned mode=0;mode<3;++mode) {
         reset(9);

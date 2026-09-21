@@ -10254,9 +10254,11 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       context->last_draw_status = -19;
       return;
    }
+#if !defined(PS5_NATIVE_TITLE_RUNTIME) || defined(AGC_RUNTIME_DIAGNOSTICS)
    if (info->instance_count > 1)
       printf("[ps5-gallium] instanced count=%u vertices=%u\n",
              info->instance_count, draws[0].count);
+#endif
    if (info->index_size) {
       int rc;
 
@@ -10918,7 +10920,9 @@ ps5_deferred_batch_release(struct ps5_deferred_batch *batch)
 {
    if (!batch->owner)
       return;
+#if !defined(PS5_NATIVE_TITLE_RUNTIME) || defined(AGC_RUNTIME_DIAGNOSTICS)
    printf("[ps5-deferred-batch] draws=%u result=0\n", batch->count);
+#endif
    for (unsigned slot = 0; slot < batch->count; ++slot) {
       if (batch->slots[slot].occlusion_query &&
           !ps5_collect_occlusion_query_resource(
@@ -12122,6 +12126,7 @@ reject:
          ps5_flush_gpu_data(layer_data, stencil_layer_size);
       }
    }
+#if !defined(PS5_NATIVE_TITLE_RUNTIME) || defined(AGC_RUNTIME_DIAGNOSTICS)
    printf("[ps5-gallium] clear-depth-stencil buffers=%08x format=%u size=%ux%u layers=%u-%u samples=%u allocation=%zu/%zu depth=%.9g/%08x stencil=%02x/%02x scissor=%u\n",
           buffers, resource->base.format, resource->base.width0,
           resource->base.height0, first_depth_layer, last_depth_layer,
@@ -12129,6 +12134,7 @@ reject:
           resource->allocation_size, resource->stencil_allocation_size,
           depth, clear_bits, stencil & 0xffu, stencil_clear_mask,
           scissor_state != NULL);
+#endif
 #ifdef PS5_DRAW_PROFILE
    printf("[ps5-clear-cpu] depth_ns=%" PRIi64 " target=%u mip=%u levels=%u layers=%u depth0=%u fb=%ux%u condition=%u streamout=%u\n",
           os_time_get_nano() - clear_start, resource->base.target,
@@ -14693,8 +14699,10 @@ static void
 ps5_bind_gs_state(struct pipe_context *base, void *state)
 {
    ((struct ps5_context *)base)->gs = state;
+#if !defined(PS5_NATIVE_TITLE_RUNTIME) || defined(AGC_RUNTIME_DIAGNOSTICS)
    printf("[ps5-gallium] bind-geometry state=%s\n",
           state ? "ready" : "null");
+#endif
 }
 
 static void
