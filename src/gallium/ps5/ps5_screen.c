@@ -2340,10 +2340,10 @@ ps5_hash32(const void *data, size_t size)
 static void
 ps5_flush_gpu_data(const void *address, size_t bytes)
 {
-   const uint8_t *at = address;
-   const uint8_t *end = at + bytes;
+   const uintptr_t end = (uintptr_t)address + bytes;
+   uintptr_t at = (uintptr_t)address & ~(uintptr_t)63;
 
-   for (; at < end; at += 64)
+   for (; bytes && at < end; at += 64)
       __asm__ volatile("clflush (%0)" : : "r"(at) : "memory");
    __asm__ volatile("mfence" ::: "memory");
 }
@@ -9557,6 +9557,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
    if (input_metadata->vertex_buffer_table_valid) {
       uint32_t binding_mask = 0;
       uint32_t binding_records[PIPE_MAX_ATTRIBS] = {0};
+      size_t binding_bytes[PIPE_MAX_ATTRIBS] = {0};
       unsigned descriptor_index = 0;
       unsigned element_index;
       unsigned binding;
@@ -9622,6 +9623,9 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          binding_records[element->vertex_buffer_index] =
             MAX2(binding_records[element->vertex_buffer_index],
                  (uint32_t)descriptor_records);
+         binding_bytes[element->vertex_buffer_index] =
+            MAX2(binding_bytes[element->vertex_buffer_index],
+                 (size_t)(required - vertex_buffer->buffer_offset));
          binding_mask |= BITFIELD_BIT(element->vertex_buffer_index);
       }
       descriptor_address = (uintptr_t)descriptor_resource->data;
@@ -9673,7 +9677,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          }
          ps5_flush_batch_backing(
             flush_cache, 2 + PS5_MAX_TEXTURE_UNITS + binding,
-            vertex_resource->data, vertex_resource->size);
+            (const void *)vertex_address, binding_bytes[binding]);
          descriptor_index++;
       }
       input_user_data[input_metadata->vertex_buffer_table_user_data_dword] =
@@ -10216,7 +10220,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
 
       ps5_flush_batch_backing(
          flush_cache, 2 + PS5_MAX_TEXTURE_UNITS + PIPE_MAX_ATTRIBS,
-         index_resource->data, index_resource->size);
+         index_resource->data + index_offset,
+         (size_t)draws[0].count * info->index_size);
       if (ps5_agc_gate2_set_index_buffer_typed)
          rc = ps5_agc_gate2_set_index_buffer_typed(
             (uint8_t *)index_resource->data + index_offset,
