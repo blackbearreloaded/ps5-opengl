@@ -5,12 +5,23 @@ import subprocess,tempfile
 root=Path(__file__).resolve().parents[2];s=(root/'src/gallium/ps5/ps5_screen.c').read_text()
 a=s.index('static bool\nps5_copy_identical_image(');b=s.index('static void\nps5_resource_copy_region(',a)
 assert 'context->base.resource_copy_region = ps5_resource_copy_region;' in s
+def function(name):
+ i=s.index('static size_t\n'+name+'(')
+ return s[i:s.index('\n}\n',i)+3]
+layout=''.join(function(n) for n in ['ps5_tiled_depth_layer_xor','ps5_tiled_surface_size','ps5_tiled_stencil_surface_size','ps5_tiled_rgba8_msaa4_surface_size','ps5_tiled_depth_surface_size','ps5_tiled_affine_offset','ps5_tiled_depth_offset','ps5_tiled_stencil_offset'])
 code=r"""
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdlib.h>
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
+#define BITFIELD_BIT(i) (1u<<(i))
+#define PIPE_TEXTURE_2D_ARRAY 7
+#define PIPE_BIND_DEPTH_STENCIL 2
+#define PIPE_FORMAT_Z32_FLOAT 77
+#define PIPE_FORMAT_Z32_FLOAT_S8X24_UINT 78
 #define PIPE_TEXTURE_2D 2
 #define PIPE_BIND_DISPLAY_TARGET 1
 struct pipe_resource { unsigned target,last_level,array_size,depth0,nr_samples,nr_storage_samples,format,bind,width0,height0; };
@@ -19,7 +30,7 @@ struct ps5_resource { struct pipe_resource base; uint8_t *data,*stencil_data;siz
 static unsigned drains,flushes;static size_t bytes;
 static void ps5_draw_batch_drain_buffer(struct pipe_resource *r){assert(r);drains++;}
 static void ps5_flush_gpu_data(const void *p,size_t n){assert(p&&n);flushes++;bytes+=n;}
-"""+s[a:b]+r"""
+"""+layout+s[a:b]+r"""
 int main(void){
  uint8_t a[1024],b[1024],sa[256],sb[256];
  for(unsigned i=0;i<1024;i++)a[i]=(i*37+5)&255;
@@ -37,7 +48,22 @@ int main(void){
  dst=good;box.width=15;assert(!ps5_copy_identical_image(&dst.base,0,0,0,0,&src.base,0,&box));box.width=16;
  assert(!ps5_copy_identical_image(&dst.base,0,1,0,0,&src.base,0,&box));assert(!ps5_copy_identical_image(&dst.base,1,0,0,0,&src.base,0,&box));
  assert(!ps5_copy_identical_image(&dst.base,0,0,0,0,&src.base,1,&box));assert(drains==old);
- assert(ps5_copy_identical_image(&src.base,0,0,0,0,&src.base,0,&box));return 0;
+ assert(ps5_copy_identical_image(&src.base,0,0,0,0,&src.base,0,&box));
+ const size_t allocation=2u*1024u*1024u;
+ uint8_t *sd=malloc(allocation),*dd=malloc(allocation),*ss=malloc(allocation),*ds=malloc(allocation);
+ assert(sd&&dd&&ss&&ds);
+ for(size_t i=0;i<allocation;i++){sd[i]=(i*37+i/251)&255;ss[i]=(i*13+i/127)&255;}memset(dd,0xa5,allocation);memset(ds,0xa5,allocation);
+ src=(struct ps5_resource){.base={.target=7,.array_size=1,.depth0=1,.format=78,.bind=2,.width0=448,.height0=252},.data=sd,.stencil_data=ss,.allocation_size=allocation,.stencil_allocation_size=allocation};
+ dst=src;dst.base.width0=446;dst.data=dd;dst.stencil_data=ds;box=(struct pipe_box){.width=446,.height=252,.depth=1};
+ assert(ps5_copy_identical_image(&dst.base,0,0,0,0,&src.base,0,&box));
+ for(unsigned y=0;y<252;y++)for(unsigned x=0;x<446;x++){
+  size_t so=ps5_tiled_depth_offset(x,y,448,0),d=ps5_tiled_depth_offset(x,y,446,0);assert(so==d&&!memcmp(sd+so,dd+d,4));
+  so=ps5_tiled_stencil_offset(x,y,448,0);d=ps5_tiled_stencil_offset(x,y,446,0);assert(so==d&&ss[so]==ds[d]);
+ }
+ assert(dd[ps5_tiled_depth_surface_size(446,252,1)]==0xa5&&ds[ps5_tiled_stencil_surface_size(446,252)]==0xa5);
+ dst.base.width0=384;box.width=384;assert(!ps5_copy_identical_image(&dst.base,0,0,0,0,&src.base,0,&box));
+ dst.base.width0=446;box.width=446;dst.level_offset[0]=64;assert(!ps5_copy_identical_image(&dst.base,0,0,0,0,&src.base,0,&box));
+ free(sd);free(dd);free(ss);free(ds);return 0;
 }
 """
 with tempfile.TemporaryDirectory() as d:

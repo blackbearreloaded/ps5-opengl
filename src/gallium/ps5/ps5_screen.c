@@ -15740,7 +15740,8 @@ ps5_copy_identical_image(struct pipe_resource *dst_base, unsigned dst_level,
    struct ps5_resource *src = (struct ps5_resource *)src_base;
    if (!src || !dst || !box || src_level || dst_level || dst_x || dst_y || dst_z ||
        box->x || box->y || box->z || box->depth != 1 ||
-       src_base->target != PIPE_TEXTURE_2D || dst_base->target != PIPE_TEXTURE_2D ||
+       (src_base->target != PIPE_TEXTURE_2D && src_base->target != PIPE_TEXTURE_2D_ARRAY) ||
+       dst_base->target != src_base->target ||
        src_base->last_level || dst_base->last_level ||
        src_base->array_size != 1 || dst_base->array_size != 1 ||
        src_base->depth0 != 1 || dst_base->depth0 != 1 ||
@@ -15749,33 +15750,56 @@ ps5_copy_identical_image(struct pipe_resource *dst_base, unsigned dst_level,
        src_base->format != dst_base->format || src_base->bind != dst_base->bind ||
        (src_base->bind & PIPE_BIND_DISPLAY_TARGET) ||
        box->width <= 0 || box->height <= 0 ||
-       (unsigned)box->width != src_base->width0 || (unsigned)box->height != src_base->height0 ||
-       src_base->width0 != dst_base->width0 || src_base->height0 != dst_base->height0 ||
+       (unsigned)box->width != dst_base->width0 || (unsigned)box->height != dst_base->height0 ||
+       src_base->width0 < dst_base->width0 || src_base->height0 < dst_base->height0 ||
        src->render_staging_size || dst->render_staging_size ||
        src->depth_staging_size || dst->depth_staging_size ||
        src->external_cpu_access || dst->external_cpu_access ||
        !src->data || !dst->data || !src->allocation_size ||
-       src->allocation_size != dst->allocation_size || src->size != dst->size ||
-       src->stride != dst->stride || src->layer_stride != dst->layer_stride ||
-       src->level_offset[0] != dst->level_offset[0] ||
-       src->level_stride[0] != dst->level_stride[0] ||
+       src->allocation_size != dst->allocation_size ||
        src->stencil_allocation_size != dst->stencil_allocation_size ||
        (!!src->stencil_data != !!dst->stencil_data) ||
        (src->stencil_allocation_size && !src->stencil_data))
       return false;
+   size_t bytes = src->allocation_size, stencil_bytes = src->stencil_allocation_size;
+   const bool depth = (src_base->bind & PIPE_BIND_DEPTH_STENCIL) &&
+      (src_base->format == PIPE_FORMAT_Z32_FLOAT ||
+       src_base->format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT);
+   if (depth) {
+      if (src->level_offset[0] || dst->level_offset[0])
+         return false;
+      /* The destination is fully overwritten. Extra source columns/rows can
+       * occupy only destination padding when both physical tile grids match. */
+      bytes = ps5_tiled_depth_surface_size(src_base->width0, src_base->height0, 1);
+      if (!bytes || bytes != ps5_tiled_depth_surface_size(dst_base->width0, dst_base->height0, 1) ||
+          bytes > src->allocation_size)
+         return false;
+      stencil_bytes = src_base->format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT
+         ? ps5_tiled_stencil_surface_size(src_base->width0, src_base->height0) : 0;
+      if (stencil_bytes && (!src->stencil_data ||
+          stencil_bytes != ps5_tiled_stencil_surface_size(dst_base->width0, dst_base->height0) ||
+          stencil_bytes > src->stencil_allocation_size))
+         return false;
+   } else if (src_base->target != PIPE_TEXTURE_2D ||
+              src_base->width0 != dst_base->width0 || src_base->height0 != dst_base->height0 ||
+              src->size != dst->size || src->stride != dst->stride ||
+              src->layer_stride != dst->layer_stride ||
+              src->level_offset[0] != dst->level_offset[0] || src->level_stride[0] != dst->level_stride[0]) {
+      return false;
+   }
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
    struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
       {8, ps5_prepare_clock()};
 #endif
    ps5_draw_batch_drain_buffer(src_base);
    ps5_draw_batch_drain_buffer(dst_base);
-   ps5_flush_gpu_data(src->data, src->allocation_size);
-   memmove(dst->data, src->data, src->allocation_size);
-   ps5_flush_gpu_data(dst->data, dst->allocation_size);
-   if (src->stencil_allocation_size) {
-      ps5_flush_gpu_data(src->stencil_data, src->stencil_allocation_size);
-      memmove(dst->stencil_data, src->stencil_data, src->stencil_allocation_size);
-      ps5_flush_gpu_data(dst->stencil_data, dst->stencil_allocation_size);
+   ps5_flush_gpu_data(src->data, bytes);
+   memmove(dst->data, src->data, bytes);
+   ps5_flush_gpu_data(dst->data, bytes);
+   if (stencil_bytes) {
+      ps5_flush_gpu_data(src->stencil_data, stencil_bytes);
+      memmove(dst->stencil_data, src->stencil_data, stencil_bytes);
+      ps5_flush_gpu_data(dst->stencil_data, stencil_bytes);
    }
    return true;
 }
