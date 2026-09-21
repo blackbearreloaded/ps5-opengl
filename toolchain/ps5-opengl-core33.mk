@@ -109,6 +109,8 @@ PS5_OPENGL_MESA_LIBS := \
 	$(PS5_OPENGL_MESA_BUILD)/src/compiler/libcompiler.a \
 	$(PS5_OPENGL_MESA_BUILD)/src/util/libmesa_util.a \
 	$(PS5_OPENGL_MESA_BUILD)/src/util/libmesa_util_simd.a \
+	$(PS5_OPENGL_MESA_BUILD)/src/util/libmesa_util_clflush.a \
+	$(PS5_OPENGL_MESA_BUILD)/src/util/libmesa_util_clflushopt.a \
 	$(PS5_OPENGL_MESA_BUILD)/src/util/blake3/libblake3.a \
 	$(PS5_OPENGL_MESA_BUILD)/src/c11/impl/libmesa_util_c11.a
 PS5_OPENGL_GLAPI_BRIDGE := \

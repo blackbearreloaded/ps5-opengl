@@ -40,6 +40,8 @@ libraries=(
     "$mesa/src/compiler/libcompiler.a"
     "$mesa/src/util/libmesa_util.a"
     "$mesa/src/util/libmesa_util_simd.a"
+    "$mesa/src/util/libmesa_util_clflush.a"
+    "$mesa/src/util/libmesa_util_clflushopt.a"
     "$mesa/src/util/blake3/libblake3.a"
     "$mesa/src/c11/impl/libmesa_util_c11.a"
 )
