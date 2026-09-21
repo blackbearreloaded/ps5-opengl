@@ -553,16 +553,16 @@ static void fragment_contract(void) {
     fragment_mode=true;
     assert(!ps5_prepare_fragment_storage(&c,userdata,16)); /* Missing bank. */
     ps5_set_shader_buffers(&c.base,MESA_SHADER_FRAGMENT,0,16,bindings,65535);
-    assert(fragment_drains==1 && data.base.reference.count==17 && !c.compute_buffers[0].buffer);
+    assert(fragment_drains==0 && data.base.reference.count==17 && !c.compute_buffers[0].buffer);
     ps5_set_shader_buffers(&c.base,MESA_SHADER_FRAGMENT,0,16,bindings,65535);
     ps5_set_shader_buffers(&c.base,MESA_SHADER_FRAGMENT,16,0,NULL,0);
-    assert(fragment_drains==1 && !c.fragment_bindings_invalid && data.base.reference.count==17);
+    assert(fragment_drains==0 && !c.fragment_bindings_invalid && data.base.reference.count==17);
     bindings[15].buffer_offset=UINT32_MAX;
     ps5_set_shader_buffers(&c.base,MESA_SHADER_FRAGMENT,0,16,bindings,65535);
-    assert(c.fragment_bindings_invalid && fragment_drains==1);
+    assert(c.fragment_bindings_invalid && fragment_drains==0);
     bindings[15].buffer_offset=16;
     ps5_set_shader_buffers(&c.base,MESA_SHADER_FRAGMENT,0,16,bindings,65535);
-    assert(!c.fragment_bindings_invalid && fragment_drains==1);
+    assert(!c.fragment_bindings_invalid && fragment_drains==0);
     assert(ps5_prepare_fragment_storage(&c,userdata,16));
     for(unsigned i=0;i<16;++i) {
         assert(descriptors[i*4]==(uint32_t)(uintptr_t)((uint8_t *)words+16));
@@ -598,7 +598,7 @@ static void fragment_contract(void) {
     m->address32_hi=(uintptr_t)descriptors>>32;
     bindings[15].buffer_size=UINT32_MAX;
     ps5_set_shader_buffers(&c.base,MESA_SHADER_FRAGMENT,0,16,bindings,65535);
-    assert(c.fragment_bindings_invalid && data.base.reference.count==17 && fragment_drains==1);
+    assert(c.fragment_bindings_invalid && data.base.reference.count==17 && fragment_drains==0);
     assert(!ps5_prepare_fragment_storage(&c,userdata,16));
     bindings[15].buffer_size=64;
     ps5_set_shader_buffers(&c.base,MESA_SHADER_FRAGMENT,0,16,bindings,65535);
@@ -968,19 +968,19 @@ static void test_tessellation_buffers(void) {
     unsigned image_drains=fragment_drains;
     nir[1].info.num_images=1;
     ps5_set_shader_images(&ctx.base,MESA_SHADER_TESS_CTRL,0,1,0,&view);
-    assert(fragment_drains==image_drains+1 && image.base.reference.count==2);
+    assert(fragment_drains==image_drains && image.base.reference.count==2);
     ps5_set_shader_images(&ctx.base,MESA_SHADER_TESS_CTRL,0,1,0,&view);
     ps5_set_shader_images(&ctx.base,MESA_SHADER_TESS_CTRL,0,0,0,NULL);
-    assert(fragment_drains==image_drains+1 && !ctx.preraster_images_invalid[MESA_SHADER_TESS_CTRL]);
+    assert(fragment_drains==image_drains && !ctx.preraster_images_invalid[MESA_SHADER_TESS_CTRL]);
     view.access=0;
     ps5_set_shader_images(&ctx.base,MESA_SHADER_TESS_CTRL,0,1,0,&view);
-    assert(ctx.preraster_images_invalid[MESA_SHADER_TESS_CTRL] && fragment_drains==image_drains+1);
+    assert(ctx.preraster_images_invalid[MESA_SHADER_TESS_CTRL] && fragment_drains==image_drains);
     view.access=PIPE_IMAGE_ACCESS_READ_WRITE;
     ps5_set_shader_images(&ctx.base,MESA_SHADER_TESS_CTRL,0,1,0,&view);
-    assert(!ctx.preraster_images_invalid[MESA_SHADER_TESS_CTRL] && fragment_drains==image_drains+1);
+    assert(!ctx.preraster_images_invalid[MESA_SHADER_TESS_CTRL] && fragment_drains==image_drains);
     view.shader_access=PIPE_IMAGE_ACCESS_READ;
     ps5_set_shader_images(&ctx.base,MESA_SHADER_TESS_CTRL,0,1,0,&view);
-    assert(fragment_drains==image_drains+2 && image.base.reference.count==2);
+    assert(fragment_drains==image_drains && image.base.reference.count==2);
     assert(ps5_tessellation_buffer_layout(&ctx,&options));
     assert(options.descriptor_binding_count==9);
     metadata.descriptor_binding_count=options.descriptor_binding_count;
@@ -989,9 +989,9 @@ static void test_tessellation_buffers(void) {
     assert(*(uint32_t *)(data+options.descriptor_bindings[4].offset)==
            (uint32_t)((uintptr_t)pixels>>8));
     ps5_set_shader_images(&ctx.base,MESA_SHADER_TESS_CTRL,0,0,1,NULL);
-    assert(fragment_drains==image_drains+3 && image.base.reference.count==1);
+    assert(fragment_drains==image_drains && image.base.reference.count==1);
     ps5_set_shader_images(&ctx.base,MESA_SHADER_TESS_CTRL,0,0,1,NULL);
-    assert(fragment_drains==image_drains+3);
+    assert(fragment_drains==image_drains);
     fragment_drains=image_drains;
     nir[1].info.num_images=0;
     nir[1].info.num_ssbos=17;

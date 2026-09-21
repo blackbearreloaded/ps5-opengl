@@ -28,9 +28,12 @@ scissor = source[source.index("static void\nps5_blit_scissor_bounds("):
                  source.index("static bool\nps5_color_view_format_compatible(")]
 view_policy = source[source.index("static bool\nps5_color_view_format_compatible("):
                      source.index("static void\nps5_resolve_color_msaa4(")]
+subdata = source[source.index("static void\nps5_buffer_subdata("):
+                 source.index("static void\nps5_sampler_view_release(")]
 code = r'''
 #define _GNU_SOURCE
 #include <assert.h>
+#define PIPE_MAP_UNSYNCHRONIZED (1u<<8)
 #include <stdbool.h>
 #include <stdint.h>
 #include <limits.h>
@@ -156,7 +159,7 @@ static int cpu_unmap(void *p, size_t n) {
 #define free small_free
 #define mmap cpu_map
 #define munmap cpu_unmap
-''' + bounds + transfers + scissor + view_policy + color_blit + r'''
+''' + bounds + transfers + subdata + scissor + view_policy + color_blit + r'''
 #undef malloc
 #undef calloc
 #undef free
@@ -347,7 +350,45 @@ static void check(unsigned format, unsigned width, unsigned height, unsigned lay
     }
     free(r.data); free(r.stencil_data);
 }
+static void check_streaming_waits(void) {
+    uint8_t bytes[64] = {0};
+    struct ps5_resource r={.base={.target=PIPE_BUFFER,.format=COLOR,.width0=64,
+        .height0=1,.depth0=1,.array_size=1},.data=bytes,.size=64,.allocation_size=64,
+        .level_stride={64},.layer_stride=64};
+    struct pipe_box box={16,0,0,16,1,1};
+    const unsigned usages[]={PIPE_MAP_WRITE, PIPE_MAP_WRITE|PIPE_MAP_UNSYNCHRONIZED,
+        PIPE_MAP_READ|PIPE_MAP_UNSYNCHRONIZED,
+        PIPE_MAP_READ|PIPE_MAP_WRITE|PIPE_MAP_UNSYNCHRONIZED};
+    for (unsigned i=0;i<4;++i) {
+        unsigned before=drains;
+        struct pipe_transfer *t=NULL;
+        assert(ps5_transfer_map(NULL,&r.base,0,usages[i],&box,&t)==bytes+16);
+        ps5_transfer_flush_region(NULL,t,&box);
+        ps5_transfer_unmap(NULL,t); idle();
+        assert(drains==before+(i==1 ? 0 : 3));
+    }
+    unsigned before=drains;
+    const uint8_t data[4]={1,2,3,4};
+    ps5_buffer_subdata(NULL,&r.base,PIPE_MAP_UNSYNCHRONIZED,24,4,data);
+    assert(drains==before && !memcmp(bytes+24,data,4));
+    ps5_buffer_subdata(NULL,&r.base,PIPE_MAP_WRITE,28,4,data);
+    assert(drains==before+1 && !memcmp(bytes+28,data,4));
+    uint8_t saved[64]; memcpy(saved,bytes,64); before=drains;
+    ps5_buffer_subdata(NULL,&r.base,PIPE_MAP_WRITE,63,4,data);
+    assert(drains==before && !memcmp(bytes,saved,64));
+    box.x=63;
+    struct pipe_transfer *t=NULL;
+    assert(!ps5_transfer_map(NULL,&r.base,0,PIPE_MAP_WRITE,&box,&t) && !t);
+    assert(drains==before);
+    r.base.target=PIPE_TEXTURE_2D; r.base.width0=16; box.x=0; box.width=16;
+    assert(ps5_transfer_map(NULL,&r.base,0,PIPE_MAP_WRITE|PIPE_MAP_UNSYNCHRONIZED,&box,&t)==bytes);
+    ps5_transfer_flush_region(NULL,t,&box);
+    ps5_transfer_unmap(NULL,t); idle();
+    assert(drains==before+3);
+    puts("streaming-waits: PASS unsynchronized buffer writes, synchronized reads/textures and rejected bounds");
+}
 int main(void) {
+    check_streaming_waits();
     {
         uint32_t pixels[2*4*4*4];
         memset(pixels,0xa5,sizeof(pixels));

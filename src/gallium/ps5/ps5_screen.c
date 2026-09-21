@@ -6417,7 +6417,6 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
    unsigned format_size;
 
    (void)context;
-   ps5_draw_batch_drain_buffer(base);
    if (!out_transfer)
       return NULL;
    *out_transfer = NULL;
@@ -6439,6 +6438,11 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
    }
    if (!ps5_map_bounds(bounds_resource, level, box, &offset))
       return NULL;
+   /* Mesa's streaming uploader uses disjoint ranges in an existing buffer.
+    * Honor its explicit no-wait contract; reads and texture staging still wait. */
+   if (base->target != PIPE_BUFFER || (usage & PIPE_MAP_READ) ||
+       !(usage & PIPE_MAP_UNSYNCHRONIZED))
+      ps5_draw_batch_drain_buffer(base);
 
    transfer = calloc(1, sizeof(*transfer));
    if (!transfer)
@@ -6621,7 +6625,10 @@ ps5_transfer_flush_region(struct pipe_context *context,
                           struct pipe_transfer *transfer,
                           const struct pipe_box *box)
 {
-   ps5_draw_batch_drain_buffer(transfer ? transfer->resource : NULL);
+   if (!transfer || transfer->resource->target != PIPE_BUFFER ||
+       (transfer->usage & PIPE_MAP_READ) ||
+       !(transfer->usage & PIPE_MAP_UNSYNCHRONIZED))
+      ps5_draw_batch_drain_buffer(transfer ? transfer->resource : NULL);
    (void)context;
    (void)transfer;
    (void)box;
@@ -6636,7 +6643,9 @@ ps5_transfer_unmap(struct pipe_context *context,
       (struct ps5_resource *)transfer->resource;
 
    (void)context;
-   ps5_draw_batch_drain_buffer(transfer->resource);
+   if (resource->base.target != PIPE_BUFFER || (transfer->usage & PIPE_MAP_READ) ||
+       !(transfer->usage & PIPE_MAP_UNSYNCHRONIZED))
+      ps5_draw_batch_drain_buffer(transfer->resource);
    if (ps5->staging && (transfer->usage & PIPE_MAP_WRITE) &&
        (transfer->resource->bind & PIPE_BIND_DEPTH_STENCIL) &&
        !resource->depth_staging_size &&
@@ -13968,16 +13977,9 @@ ps5_set_shader_buffers(struct pipe_context *base, mesa_shader_stage stage,
          return;
    }
    /* Validate the entire update before releasing any previously owned buffer. */
-   bool changed = false;
-   for (unsigned i = 0; i < count; ++i) {
-      const struct pipe_shader_buffer *old = &bound_buffers[start + i];
-      const struct pipe_shader_buffer *next = buffers ? &buffers[i] : NULL;
-      struct pipe_resource *resource = next ? next->buffer : NULL;
-      changed |= old->buffer != resource || (resource &&
-         (old->buffer_offset != next->buffer_offset || old->buffer_size != next->buffer_size));
-   }
-   if (changed && stage != MESA_SHADER_COMPUTE)
-      ps5_draw_batch_drain();
+   /* Storage-consuming draws/dispatches finish synchronously. Deferred
+    * draws exclude storage shaders and retain their other resource bindings;
+    * changing a storage binding cannot invalidate a queued descriptor. */
    for (unsigned i = 0; i < count; ++i) {
       struct pipe_shader_buffer *bound = &bound_buffers[start + i];
       const struct pipe_shader_buffer *b = buffers ? &buffers[i] : NULL;
@@ -14073,18 +14075,9 @@ ps5_set_shader_images(struct pipe_context *base, mesa_shader_stage stage,
       } else if (ps5_storage_image_view_descriptor(v, descriptor))
          return;
    }
-   bool changed = false;
-   for (unsigned i = 0; i < count + unbind; ++i) {
-      const struct pipe_image_view *old = &bound_images[start + i];
-      const struct pipe_image_view *next = images && i < count ? &images[i] : NULL;
-      struct pipe_resource *resource = next ? next->resource : NULL;
-      /* Comparing padding may conservatively retain a wait, never omit one.
-       * Empty bindings have no image metadata that can affect GPU work. */
-      changed |= old->resource != resource ||
-         (resource && memcmp(old, next, sizeof(*old)) != 0);
-   }
-   if (changed && stage != MESA_SHADER_COMPUTE)
-      ps5_draw_batch_drain();
+   /* Storage-consuming draws/dispatches finish synchronously. Deferred
+    * draws exclude storage shaders and retain their other resource bindings;
+    * changing a storage binding cannot invalidate a queued descriptor. */
    for (unsigned i = 0; i < count + unbind; ++i) {
       struct pipe_image_view next = images && i < count ? images[i] : (struct pipe_image_view){0};
       struct pipe_image_view *bound = &bound_images[start + i];
@@ -15273,11 +15266,11 @@ ps5_buffer_subdata(struct pipe_context *base, struct pipe_resource *resource,
    struct ps5_resource *buffer = (struct ps5_resource *)resource;
 
    (void)base;
-   (void)usage;
-   ps5_draw_batch_drain_buffer(resource);
    if (!buffer || buffer->base.target != PIPE_BUFFER || !data ||
        offset > buffer->size || size > buffer->size - offset)
       return;
+   if (!(usage & PIPE_MAP_UNSYNCHRONIZED))
+      ps5_draw_batch_drain_buffer(resource);
    memcpy(buffer->data + offset, data, size);
 }
 

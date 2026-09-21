@@ -29,6 +29,7 @@ def function(name):
 code = r'''
 #define _GNU_SOURCE
 #include <assert.h>
+#define PIPE_MAP_UNSYNCHRONIZED (1u<<8)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
