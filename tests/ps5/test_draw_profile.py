@@ -12,7 +12,7 @@ root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
 start = source.index("static uint64_t runtime_profile_ns")
 body = source[start:source.index("#define PS5_PROFILE_MARK", start)]
-present_start = source.index("int ps5_agc_gate2_present(unsigned buffer_index)")
+present_start = source.index("int ps5_agc_gate2_present(unsigned buffer_index, unsigned swap_interval)")
 present = source[present_start:source.index("\n#endif", source.index("    return result;", present_start))]
 mock = r'''
 static unsigned runtime_present_count, runtime_batch_active, runtime_batch_count,
@@ -66,28 +66,28 @@ int main(void) {
     /* Instrument the actual presentation path: no change in call order or errors. */
     for (unsigned i = 0; i < 32; ++i) {
         step = 0;
-        assert(ps5_agc_gate2_present(1) == 0 && step == 3);
+        assert(ps5_agc_gate2_present(1, 1) == 0 && step == 3);
     }
     assert(runtime_present_count == 32 && runtime_present_profile_calls == 2);
     assert(runtime_present_profile_ns[0] == 2000000);
     assert(runtime_present_profile_ns[1] == 4000000);
     assert(runtime_present_profile_ns[2] == 6000000);
     step = 0; idle_result = -7;
-    assert(ps5_agc_gate2_present(1) == -1 && step == 1);
+    assert(ps5_agc_gate2_present(1, 1) == -1 && step == 1);
     step = 0; idle_result = 0; flip_result = -8;
-    assert(ps5_agc_gate2_present(1) == -8 && step == 2);
+    assert(ps5_agc_gate2_present(1, 1) == -8 && step == 2);
     step = 0; flip_result = 0; vblank_result = -9;
-    assert(ps5_agc_gate2_present(1) == -9 && step == 3);
+    assert(ps5_agc_gate2_present(1, 1) == -9 && step == 3);
     assert(runtime_present_count == 32 && runtime_present_profile_calls == 2);
     assert(runtime_present_profile_failures == 3 && flips == 34 && vblanks == 33);
     step = 0;
-    assert(ps5_agc_gate2_present(2) == -1 && step == 0);
+    assert(ps5_agc_gate2_present(2, 1) == -1 && step == 0);
     runtime_batch_active = 1;
-    assert(ps5_agc_gate2_present(1) == -1 && step == 0);
+    assert(ps5_agc_gate2_present(1, 1) == -1 && step == 0);
     runtime_batch_active = 0; runtime_batch_count = 1;
-    assert(ps5_agc_gate2_present(1) == -1 && step == 0);
+    assert(ps5_agc_gate2_present(1, 1) == -1 && step == 0);
     runtime_batch_count = 0; runtime_batch_faulted = 1;
-    assert(ps5_agc_gate2_present(1) == -1 && step == 0);
+    assert(ps5_agc_gate2_present(1, 1) == -1 && step == 0);
     int64_t bad[4] = {1, 2, 3, 0};
     runtime_present_profile_record(bad, 0);
     bad[3] = 2;
@@ -152,7 +152,7 @@ print("PASS: draw/present timing, warmup, call order, failures, invalid clocks, 
 
 # Package validation needs the configuration receipt even in profile-off builds.
 screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()
-a = screen.index('   printf("[ps5-batch-summary] config gpu-present=')
+a = screen.index('   fprintf(stderr, "[ps5-batch-summary] config gpu-present=')
 receipt = screen[a:screen.index('\n#ifdef PS5_DRAW_PROFILE\n   for (unsigned i = 0; i < 32', a)]
 with tempfile.TemporaryDirectory() as tmp:
     exe = Path(tmp) / "receipt"
@@ -168,7 +168,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 prefix += 'struct { uint64_t batch_eligible, batch_reject[7]; } value = {0}, *context = &value;\n'
             subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-x', 'c', '-', '-o', str(exe)],
                            input=prefix + receipt + '\nreturn 0; }\n', text=True, check=True)
-            output = subprocess.check_output([str(exe)], text=True)
+            output = subprocess.run([str(exe)], text=True, capture_output=True, check=True).stderr
             n = int(batched)
             assert output.startswith(f'[ps5-batch-summary] config gpu-present={n} multidraw={n} deferred={n} ')
             assert ('eligible=' in output) == profile

@@ -1859,7 +1859,7 @@ static int runtime_video_prepare_draw(void)
     return runtime_video_registered ? 0 : -1;
 }
 
-int ps5_agc_gate2_present(unsigned buffer_index)
+int ps5_agc_gate2_present(unsigned buffer_index, unsigned swap_interval)
 {
     int result;
     int64_t marker;
@@ -1869,7 +1869,7 @@ int ps5_agc_gate2_present(unsigned buffer_index)
 #endif
 #ifdef PS5_MULTIDRAW_BATCH
     if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count ||
-        runtime_pending_batches)
+        (runtime_pending_batches && swap_interval != 0))
         return -1;
 #endif
 
@@ -1878,7 +1878,7 @@ int ps5_agc_gate2_present(unsigned buffer_index)
     if (ps5_agc_gate2_wait_present() != 0)
         return -1;
 #endif
-    if (buffer_index > 1 || !runtime_video_registered ||
+    if (buffer_index > 1 || swap_interval > 1 || !runtime_video_registered ||
         runtime_video_handle < 0 ||
         !runtime_video_api.submit_flip ||
         !runtime_video_api.is_flip_pending ||
@@ -1906,7 +1906,8 @@ int ps5_agc_gate2_present(unsigned buffer_index)
         PS5_PROFILE_MARK(2);
         if (runtime_gpu_present_buffer != (int)buffer_index)
             return -1;
-        if (runtime_video_framebuffer_size >= FRAMEBUFFER_POOL_BYTES) {
+        if (swap_interval == 0 ||
+            runtime_video_framebuffer_size >= FRAMEBUFFER_POOL_BYTES) {
             runtime_gpu_present_deferred = 1;
             result = 0;
         } else {
@@ -1921,7 +1922,8 @@ int ps5_agc_gate2_present(unsigned buffer_index)
         PS5_PROFILE_MARK(2);
         if (result == 0) {
 #ifdef PS5_GPU_PRESENT_BATCH
-            if (runtime_video_framebuffer_size >= FRAMEBUFFER_POOL_BYTES &&
+            if ((swap_interval == 0 ||
+                 runtime_video_framebuffer_size >= FRAMEBUFFER_POOL_BYTES) &&
                 runtime_video_api.get_flip_status) {
                 /* Explicit GL flush/readback can leave no GPU tail to append
                  * a flip to. It must still overlap the next offscreen frame. */

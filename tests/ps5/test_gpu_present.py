@@ -13,7 +13,7 @@ source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
 assert source.count("runtime_video_framebuffer_size >= framebuffer_size") == 2
 start = source.index("int ps5_agc_gate2_batch_present(")
 body = source[start:source.index("\n#endif", start)]
-start = source.index("int ps5_agc_gate2_present(unsigned buffer_index)")
+start = source.index("int ps5_agc_gate2_present(unsigned buffer_index, unsigned swap_interval)")
 present = source[start:source.index("\n#endif", source.index("    return result;", start))]
 code = r'''
 #include <assert.h>
@@ -101,6 +101,7 @@ static int runtime_video_wait_idle(void) { ++idle_calls; return idle_error; }
 ''' + body + present + r'''
 static void reset(void) {
     runtime_video_registered = 1; runtime_video_handle = 7;
+    runtime_pending_batches = 0;
     runtime_gpu_present_buffer = -1; runtime_gpu_present_marker = 0;
     runtime_batch_active = runtime_batch_count = 1; runtime_batch_faulted = 0;
     runtime_batch_entries[0].submit.words = memory;
@@ -116,14 +117,20 @@ static void reset(void) {
     runtime_video_framebuffer_size = runtime_gpu_present_deferred = runtime_gpu_present_is_cpu = 0;
 }
 int main(void) {
+    reset(); assert(ps5_agc_gate2_batch_present(1) == 0);
+    runtime_batch_count = runtime_batch_active = 0; runtime_pending_batches = 1;
+    assert(ps5_agc_gate2_present(1, 0) == 0 && !polls && !cpu_flips);
+    assert(runtime_gpu_present_deferred && runtime_gpu_present_buffer == 1);
+    reset(); runtime_batch_count = runtime_batch_active = 0; runtime_pending_batches = 1;
+    assert(ps5_agc_gate2_present(1, 0) == 0 && cpu_flips == 1 && !waits);
     for (unsigned n = 0; n <= 2001; ++n) {
         reset(); assert(ps5_agc_gate2_batch_present(1) == 0);
         assert(tails == 1 && releases == 1 && flushes == 1);
         assert(runtime_batch_entries[0].expected == 101 && completion == 17);
-        assert(ps5_agc_gate2_present(1) != 0); /* Unretired command tail. */
+        assert(ps5_agc_gate2_present(1, 1) != 0); /* Unretired command tail. */
         completion = 101; runtime_batch_count = runtime_batch_active = 0;
         finish_after = n;
-        assert((ps5_agc_gate2_present(1) == 0) == (n <= 2000));
+        assert((ps5_agc_gate2_present(1, 1) == 0) == (n <= 2000));
         assert(!cpu_flips && waits == (n <= 2000 ? n : 2000));
         assert(polls == waits && idle_calls == 1);
         assert(runtime_present_count == (n <= 2000) && runtime_gpu_present_count == (n <= 2000));
@@ -133,12 +140,12 @@ int main(void) {
     reset(); assert(ps5_agc_gate2_batch_present(1) == 0);
     runtime_batch_count = runtime_batch_active = 0;
     finish_after = 2; pending_after = 7;
-    assert(ps5_agc_gate2_present(1) == 0 && polls == 7 && waits == 7);
+    assert(ps5_agc_gate2_present(1, 1) == 0 && polls == 7 && waits == 7);
     assert(idle_calls == 1 && runtime_gpu_present_buffer == -1);
     reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
     assert(ps5_agc_gate2_batch_present(1) == 0);
     runtime_batch_count = runtime_batch_active = 0; finish_after = 7;
-    assert(ps5_agc_gate2_present(1) == 0 && !polls);
+    assert(ps5_agc_gate2_present(1, 1) == 0 && !polls);
     assert(runtime_gpu_present_deferred && runtime_gpu_present_buffer == 1);
     assert(!runtime_gpu_present_count && runtime_present_count == 1);
     assert(ps5_agc_gate2_wait_present() == 0 && polls == 7);
@@ -148,8 +155,8 @@ int main(void) {
     reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
     assert(ps5_agc_gate2_batch_present(1) == 0);
     runtime_batch_count = runtime_batch_active = 0; finish_after = 3;
-    assert(ps5_agc_gate2_present(1) == 0 && !polls);
-    assert(ps5_agc_gate2_present(1) == 0 && polls == 3 && cpu_flips == 1);
+    assert(ps5_agc_gate2_present(1, 1) == 0 && !polls);
+    assert(ps5_agc_gate2_present(1, 1) == 0 && polls == 3 && cpu_flips == 1);
     assert(runtime_gpu_present_is_cpu && runtime_gpu_present_deferred);
     finish_after = waits + 3;
     assert(ps5_agc_gate2_wait_present() == 0 && polls == 6);
@@ -157,20 +164,20 @@ int main(void) {
     /* CPU-submitted flips after GL flush use the same deferred ownership. */
     reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
     runtime_batch_count = runtime_batch_active = 0; finish_after = 5;
-    assert(ps5_agc_gate2_present(1) == 0 && cpu_flips == 1 && !waits);
+    assert(ps5_agc_gate2_present(1, 1) == 0 && cpu_flips == 1 && !waits);
     assert(runtime_gpu_present_deferred && runtime_gpu_present_is_cpu);
     assert(ps5_agc_gate2_wait_present() == 0 && polls == 5);
     assert(!runtime_gpu_present_count && !runtime_gpu_present_deferred);
     reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
     runtime_batch_count = runtime_batch_active = 0; flip_error = -8;
-    assert(ps5_agc_gate2_present(1) == -8 && !runtime_gpu_present_deferred && runtime_gpu_present_buffer == -1);
+    assert(ps5_agc_gate2_present(1, 1) == -8 && !runtime_gpu_present_deferred && runtime_gpu_present_buffer == -1);
     /* A failed deferred wait retains ownership and cannot queue another flip. */
     reset(); runtime_video_framebuffer_size = FRAMEBUFFER_POOL_BYTES;
     assert(ps5_agc_gate2_batch_present(1) == 0);
     runtime_batch_count = runtime_batch_active = 0;
-    assert(ps5_agc_gate2_present(1) == 0); status_error = -21;
+    assert(ps5_agc_gate2_present(1, 1) == 0); status_error = -21;
     assert(ps5_agc_gate2_wait_present() == -21 && runtime_gpu_present_deferred);
-    assert(ps5_agc_gate2_present(1) != 0 && !cpu_flips && runtime_gpu_present_buffer == 1);
+    assert(ps5_agc_gate2_present(1, 1) != 0 && !cpu_flips && runtime_gpu_present_buffer == 1);
     for (int error = 0; error < 10; ++error) {
         reset();
         if (error == 0) runtime_batch_entries[0].submit.word_count = COMMAND_BYTES / 4;
@@ -190,11 +197,17 @@ int main(void) {
         if (error == 0) status_error = -21;
         if (error == 1) pending_error = -22;
         if (error == 2) { wait_error = -23; finish_after = 1; }
-        assert(ps5_agc_gate2_present(error == 3 ? 0 : 1) != 0);
+        assert(ps5_agc_gate2_present(error == 3 ? 0 : 1, 1) != 0);
         assert(runtime_gpu_present_buffer == 1 && !cpu_flips && !runtime_present_count);
     }
+    reset(); runtime_batch_count = runtime_batch_active = 0; finish_after = 3;
+    assert(ps5_agc_gate2_present(1, 0) == 0 && cpu_flips == 1 && !waits);
+    assert(runtime_gpu_present_deferred && runtime_gpu_present_buffer == 1);
+    assert(ps5_agc_gate2_wait_present() == 0 && polls == 3);
     reset(); runtime_batch_count = runtime_batch_active = 0;
-    assert(ps5_agc_gate2_present(1) == 0 && cpu_flips == 1 && waits == 1);
+    assert(ps5_agc_gate2_present(1, 2) == -1 && !cpu_flips && !waits);
+    reset(); runtime_batch_count = runtime_batch_active = 0;
+    assert(ps5_agc_gate2_present(1, 1) == 0 && cpu_flips == 1 && waits == 1);
     assert(!runtime_gpu_present_count); /* Empty/readback-drained batch uses original path. */
 }
 '''
@@ -207,7 +220,7 @@ egl = (root / "src/egl/ps5_egl.c").read_text()
 assert "&fence, surface->window ? ps5_before_swap_flush : NULL, surface)" in egl
 assert "ps5_context_queue_present(ps5_current_context->st->pipe, surface->buffer_index)" in egl
 assert egl.index("ps5_screen_prepare_present(ps5_display.screen)") < \
-       egl.index("ps5_agc_gate2_present(surface->buffer_index)")
+       egl.index("ps5_agc_gate2_present(surface->buffer_index,")
 make = (root / "toolchain/ps5-opengl-core33.mk").read_text()
 egl_rule = make[make.index("$(PS5_OPENGL_BUILD)/ps5_egl.o:"):make.index("$(PS5_OPENGL_BUILD)/ps5_screen.o:")]
 assert "$(PS5_OPENGL_RUNTIME_DEFINES)" in egl_rule

@@ -105,7 +105,8 @@ ps5_egl_unlock(struct ps5_egl_lock_guard *guard)
    struct ps5_egl_lock_guard ps5_egl_guard \
       __attribute__((cleanup(ps5_egl_unlock))) = { &ps5_egl_mutex }
 
-int ps5_agc_gate2_present(unsigned buffer_index) __attribute__((weak));
+int ps5_agc_gate2_present(unsigned buffer_index, unsigned swap_interval)
+   __attribute__((weak));
 int ps5_agc_gate2_shutdown_present(void) __attribute__((weak));
 int sceSystemServiceHideSplashScreen(void);
 
@@ -913,19 +914,27 @@ eglSwapBuffers(EGLDisplay display, EGLSurface surface_handle)
       return EGL_FALSE;
    }
    st_context_flush(ps5_current_context->st,
-                    ST_FLUSH_FRONT | ST_FLUSH_END_OF_FRAME | ST_FLUSH_WAIT,
+                    ST_FLUSH_FRONT | ST_FLUSH_END_OF_FRAME |
+                       ((!surface->window || surface->swap_interval) ?
+                           ST_FLUSH_WAIT : 0),
                     &fence, surface->window ? ps5_before_swap_flush : NULL, surface);
    if (!surface->window)
       return EGL_TRUE;
    if (ps5_agc_gate2_present) {
       int present_status;
 
-      ps5_screen_submit_lock(ps5_display.screen);
+      if (surface->swap_interval)
+         ps5_screen_submit_lock(ps5_display.screen);
+      else
+         ps5_screen_present_lock(ps5_display.screen);
       present_status = ps5_screen_prepare_present(ps5_display.screen);
       if (present_status == 0)
-         present_status = ps5_agc_gate2_present(surface->buffer_index);
+         present_status = ps5_agc_gate2_present(surface->buffer_index,
+                                                surface->swap_interval);
       ps5_screen_submit_unlock(ps5_display.screen);
       if (present_status != 0) {
+         fprintf(stderr, "[ps5-egl] present failed status=%d interval=%d\n",
+                 present_status, surface->swap_interval);
          ps5_set_error(EGL_BAD_SURFACE);
          return EGL_FALSE;
       }

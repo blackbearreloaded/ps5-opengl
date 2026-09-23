@@ -151,6 +151,18 @@ ps5_screen_submit_lock(struct pipe_screen *base)
 }
 
 void
+ps5_screen_present_lock(struct pipe_screen *base)
+{
+#ifdef PS5_DEFERRED_DRAW_BATCH
+   (void)base;
+   simple_mtx_lock(&ps5_deferred_mutex);
+   ps5_draw_batch_retire_locked(false);
+#else
+   simple_mtx_lock(&((struct ps5_screen *)base)->submit_mutex);
+#endif
+}
+
+void
 ps5_screen_submit_unlock(struct pipe_screen *base)
 {
 #ifdef PS5_DEFERRED_DRAW_BATCH
@@ -15990,7 +16002,7 @@ ps5_context_destroy(struct pipe_context *base)
           __atomic_load_n(&ps5_cpu_flush_bytes, __ATOMIC_RELAXED));
 #endif
    /* Build/lifecycle receipt remains available without hot-path profiling. */
-   printf("[ps5-batch-summary] config gpu-present="
+   fprintf(stderr, "[ps5-batch-summary] config gpu-present="
 #ifdef PS5_GPU_PRESENT_BATCH
           "1"
 #else

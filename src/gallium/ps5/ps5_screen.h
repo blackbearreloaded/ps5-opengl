@@ -21,6 +21,7 @@ struct pipe_resource;
 
 struct pipe_screen *ps5_screen_create(void);
 void ps5_screen_submit_lock(struct pipe_screen *screen);
+void ps5_screen_present_lock(struct pipe_screen *screen);
 void ps5_screen_submit_unlock(struct pipe_screen *screen);
 int ps5_screen_prepare_present(struct pipe_screen *screen);
 void ps5_context_queue_present(struct pipe_context *context, unsigned buffer_index);

@@ -2304,7 +2304,7 @@ require("PS5_AGC_BIND_NATIVE_API(agc, sceAgcDcbSetNumInstances)" in
         "sceSystemServiceHideSplashScreen" in EGL and
         "ps5_display_target_alias" in SCREEN and
         "surface->targets[surface->buffer_index]" in EGL and
-        "ps5_agc_gate2_present(surface->buffer_index)" in EGL and
+        "ps5_agc_gate2_present(surface->buffer_index," in EGL and
         "surface->buffer_index ^= 1u" in EGL and
         "p_atomic_inc(&surface->drawable.stamp)" in EGL and
         "runtime_video_handle, (int)buffer_index" in NATIVE_RUNTIME and
