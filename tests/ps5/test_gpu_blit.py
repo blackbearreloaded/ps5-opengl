@@ -56,6 +56,7 @@ enum { PIPE_TEXTURE_2D=2, PIPE_TEXTURE_3D=3, PIPE_TEXTURE_2D_ARRAY=4,
        PIPE_FORMAT_R11G11B10_FLOAT=5, PIPE_FORMAT_R8G8B8A8_SRGB=6,
        PIPE_FORMAT_R10G10B10A2_UNORM=7, PIPE_FORMAT_R16_FLOAT=8,
        PIPE_FORMAT_R32_FLOAT=9, PIPE_FORMAT_R32G32B32A32_UINT=10,
+       PIPE_FORMAT_R8G8B8A8_SNORM=11,
        PIPE_MASK_RGBA=15, PIPE_TEX_FILTER_NEAREST=0, PIPE_TEX_FILTER_LINEAR=1,
        PIPE_BIND_RENDER_TARGET=1, PIPE_BIND_DISPLAY_TARGET=2 };
 struct pipe_resource { unsigned target, last_level, depth0, array_size,
@@ -89,7 +90,10 @@ static bool ps5_agc_gate2_set_color_target_layouts = true;
 static bool ps5_linear_sampled_layout(const struct pipe_resource *r)
 { return linear || ((const struct ps5_resource *)r)->linear; }
 static unsigned ps5_texture_format_size(unsigned f)
-{ const unsigned bytes[]={0,4,1,2,8,4,4,4,2,4,16}; return f < ARRAY_SIZE(bytes) ? bytes[f] : 0; }
+{ const unsigned bytes[]={0,4,1,2,8,4,4,4,2,4,16,4}; return f < ARRAY_SIZE(bytes) ? bytes[f] : 0; }
+static unsigned util_format_get_blockwidth(unsigned f) { (void)f; return 1; }
+static unsigned util_format_get_blockheight(unsigned f) { (void)f; return 1; }
+static unsigned util_format_get_blocksize(unsigned f) { return ps5_texture_format_size(f); }
 static size_t ps5_tiled_color_surface_size(unsigned f, unsigned w, unsigned h)
 { return (size_t)w*h*ps5_texture_format_size(f); }
 static size_t ps5_tiled_color_msaa4_surface_size(unsigned f, unsigned w, unsigned h)
@@ -333,7 +337,7 @@ for flag in ("viewport_valid", "scissor_valid", "framebuffer_valid", "queries_en
 attempt = body[body.index("   util_blitter_blit_generic("):]
 assert "return false" not in attempt and "return true;" in attempt
 assert "context->draw_calls == draws_before" in attempt
-assert "deferred_color_clear =" not in body
+assert "deferred_attachment_clear =" not in body
 assert 'target_pitches[i] = ps5_linear_color_pitch(surface);' in source
 assert '!ps5_linear_color_pitch(surface) &&\n             !ps5_stage_color_surface(surface, false)' in source
 assert 'context->framebuffer.nr_cbufs != 1 || !ps5_linear_color_pitch(surface)' not in source

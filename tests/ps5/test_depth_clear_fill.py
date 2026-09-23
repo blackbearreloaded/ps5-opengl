@@ -16,6 +16,8 @@ source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
 start = source.index("static bool\nps5_clear_depth_stencil(")
 start = source.index("         if (!scissor_state) {", start)
 fill = source[start:source.index("         } else {", start)] + "         }\n"
+start = source.index("   /* A full-surface scissor is the same uniform fill")
+normalize = source[start:source.index("   clear_bits =", start)]
 helper_start = source.index("static void\nps5_clear_words(")
 helper = source[helper_start:source.index("static bool\nps5_clear_depth_stencil(", helper_start)]
 code = r'''
@@ -27,10 +29,12 @@ code = r'''
 #include <emmintrin.h>
 #define PS5_NATIVE_TITLE_RUNTIME 1
 ''' + helper + r'''
-static void fill_layer(uint8_t *layer_data, size_t depth_layer_size, uint32_t clear_bits)
+struct scissor { unsigned minx,miny,maxx,maxy; };
+static void fill_layer(uint8_t *layer_data, size_t depth_layer_size, uint32_t clear_bits,
+                       const struct scissor *scissor_state)
 {
-    const void *scissor_state = NULL;
-''' + fill + r'''
+    const struct { struct { unsigned width0,height0; } base; } target = {{8,8}}, *resource = &target;
+''' + normalize + fill + r'''
 }
 int main(void)
 {
@@ -43,12 +47,20 @@ int main(void)
         for (size_t v = 0; v < sizeof(values) / sizeof(values[0]); ++v) {
             for (unsigned offset = 16; offset <= 17; ++offset) {
                 memset(p, 0xa5, total * sizeof(*p));
-                fill_layer((uint8_t *)(p + offset), count * sizeof(*p), values[v]);
+                fill_layer((uint8_t *)(p + offset), count * sizeof(*p), values[v], NULL);
                 for (size_t i = 0; i < total; ++i)
                     assert(p[i] == (i >= offset && i < count + offset ? values[v] : 0xa5a5a5a5));
             }
         }
         free(p);
+    }
+    const struct scissor rectangles[] = {{0,0,8,8},{0,0,32,32},{1,0,8,8},{0,1,8,8},{0,0,7,8},{0,0,8,7}};
+    uint32_t words[66];
+    for (unsigned r=0;r<6;++r) {
+        memset(words,0xa5,sizeof(words));
+        fill_layer((uint8_t *)(words+1),64*4,0x3f800000,&rectangles[r]);
+        for(unsigned i=0;i<66;++i)
+            assert(words[i]==(r<2 && i>0 && i<65 ? 0x3f800000 : 0xa5a5a5a5));
     }
 }
 '''
@@ -58,4 +70,4 @@ with tempfile.TemporaryDirectory() as temporary:
                     "-DHAVE_ENDIAN_H=1", "-I" + str(root / "third_party/mesa-26.2.0/src"),
                     "-x", "c", "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], check=True)
-print("PASS: exact depth words, short/padded 32 MiB layer fills, adjacent-memory canaries")
+print("PASS: exact depth words, padded 32 MiB layers, full/oversized scissors, partial rejection and canaries")

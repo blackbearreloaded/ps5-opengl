@@ -455,7 +455,7 @@ struct test_elements { unsigned count; struct { unsigned vertex_buffer_index; } 
 struct ps5_context {
     struct pipe_context base;
     struct { bool running; } *blitter;
-    bool deferred_color_clear;
+    bool deferred_attachment_clear;
     struct { struct pipe_surface cbufs[PS5_MAX_RENDER_TARGETS], zsbuf; unsigned nr_cbufs; } framebuffer;
     bool framebuffer_valid; struct ps5_shader *vs, *fs, *gs, *tcs, *tes;
     struct test_elements *vertex_elements;
@@ -885,14 +885,14 @@ int main(void) {
     struct pipe_draw_info fan={.mode=MESA_PRIM_TRIANGLE_FAN,.instance_count=1};
     struct pipe_draw_start_count_bias quad={0,4,0};
     assert(!ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
-    context.deferred_color_clear=true;
+    context.deferred_attachment_clear=true;
     assert(!ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
     __typeof__(*context.blitter) blitter={.running=true};
     context.blitter=&blitter;
     for (unsigned invalid=0;invalid<7;++invalid) {
         struct pipe_draw_info f=fan;
         struct pipe_draw_start_count_bias q=quad;
-        if (invalid==0) context.deferred_color_clear=false;
+        if (invalid==0) context.deferred_attachment_clear=false;
         if (invalid==1) f.index_size=2;
         if (invalid==2) f.instance_count=2;
         if (invalid==3) f.start_instance=1;
@@ -900,10 +900,10 @@ int main(void) {
         if (invalid==5) q.start=1;
         if (invalid==6) blitter.running=false;
         assert(!ps5_try_deferred_draw(&context.base,&f,20,NULL,&q,1));
-        context.deferred_color_clear=true; blitter.running=true;
+        context.deferred_attachment_clear=true; blitter.running=true;
     }
     assert(ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
-    context.deferred_color_clear=false; blitter.running=false;
+    context.deferred_attachment_clear=false; blitter.running=false;
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     assert(staged==2 && !ended); /* Internal clear and ordinary draw share one retirement. */
 #ifdef PS5_GPU_PRESENT_BATCH
@@ -1323,23 +1323,31 @@ with tempfile.TemporaryDirectory() as tmp:
 print("PASS: eight in-flight resource snapshots, FIFO wraparound, oldest-only backpressure, zero/finite/infinite fence waits and old-fence isolation")
 
 # The queue test alone cannot prove that CPU access / lifecycle entry points drain.
-for name in ("ps5_resource_info", "ps5_resource_stencil_info", "ps5_blit",
-             "ps5_generate_mipmap", "ps5_get_timestamp", "ps5_destroy_query",
-             "ps5_begin_query", "ps5_end_query",
-             "ps5_render_condition",
-             "ps5_flush", "ps5_clear", "ps5_context_last_draw_status",
-             "ps5_context_destroy", "ps5_screen_destroy"):
+for name in ("ps5_resource_info", "ps5_resource_stencil_info",
+             "ps5_flush", "ps5_context_last_draw_status", "ps5_context_destroy", "ps5_screen_destroy"):
     start = source.index("\n" + name + "(")
     function = source[start:source.index("\n}\n", start)]
     assert function.count("ps5_draw_batch_drain();") == 1, name
-for name, argument in (("ps5_transfer_map", "base"),
-                       ("ps5_transfer_flush_region", "transfer ? transfer->resource : NULL"),
-                       ("ps5_transfer_unmap", "transfer->resource"),
-                       ("ps5_buffer_subdata", "resource")):
+for name, calls in {
+    "ps5_get_timestamp": ["ps5_screen_submit_lock(NULL);", "ps5_screen_submit_unlock(NULL);"],
+    "ps5_blit": ["ps5_draw_batch_drain_buffer(info ? info->src.resource : NULL);", "ps5_draw_batch_drain_buffer(info ? info->dst.resource : NULL);"],
+    "ps5_generate_mipmap": ["ps5_draw_batch_drain_buffer(base);"],
+    "ps5_destroy_query": ["ps5_draw_batch_drain_query(query);"],
+    "ps5_begin_query": ["ps5_draw_batch_drain_query(query);"],
+    "ps5_render_condition": ["ps5_draw_batch_drain_query(query);"],
+    "ps5_clear": ["ps5_draw_batch_drain_query(context->render_condition_query);", "ps5_draw_batch_drain_buffer(resource ? &resource->base : NULL);", "ps5_draw_batch_drain_buffer(context->framebuffer.cbufs[i].texture);"],
+    "ps5_transfer_map": ["ps5_draw_batch_drain_buffer(base);"],
+    "ps5_transfer_flush_region": ["ps5_draw_batch_drain_buffer(transfer ? transfer->resource : NULL);"],
+    "ps5_transfer_unmap": ["ps5_draw_batch_drain_buffer(transfer->resource);"],
+    "ps5_buffer_subdata": ["ps5_draw_batch_drain_buffer(resource);"],
+}.items():
     start = source.index("\n" + name + "(")
     function = source[start:source.index("\n}\n", start)]
-    assert function.count("ps5_draw_batch_drain_buffer(" + argument + ");") == 1, name
+    for call in calls: assert function.count(call) == 1, (name, call)
     assert "ps5_draw_batch_drain();" not in function, name
+# End-query does not wait; the queued-query lifetime cases above verify collection.
+start = source.index("\nps5_end_query(")
+assert "ps5_draw_batch_drain" not in source[start:source.index("\n}\n", start)]
 start = source.index("\nps5_flush(")
 function = source[start:source.index("\n}\n", start)]
 assert "fence->sequence = ps5_draw_batch_fence_submit();" in function

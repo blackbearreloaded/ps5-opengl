@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <EGL/egl.h>
@@ -12,7 +13,7 @@
 #include <GL/gl.h>
 #include <GL/glext.h>
 
-#define SIZE 32
+#define SIZE 128
 #define LAYERS 4
 #define PIXELS (SIZE * SIZE)
 #define ALL_BITS (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)
@@ -138,6 +139,13 @@ verify_layers(GLuint source, GLuint resolve, const GLuint textures[2],
                   stencil = 0xba;
                }
             }
+            if (phase == 3) {
+               int rectangle = x >= 8 && x < 24 && y >= 8 && y < 24;
+               rgba[0] = 0; rgba[1] = rectangle ? 255 : 0;
+               rgba[2] = rectangle ? 0 : 255; rgba[3] = 255;
+               depth = rectangle ? .25f : .5f;
+               stencil = rectangle ? 0x96 : 0x69;
+            }
             int ok = memcmp(colors + i * 4, rgba, 4) == 0 &&
                      depths[i] == depth && stencils[i] == stencil;
             if (!ok && layer_matches == i)
@@ -160,9 +168,9 @@ verify_layers(GLuint source, GLuint resolve, const GLuint textures[2],
 }
 
 static int
-test_samples(unsigned samples)
+test_samples(unsigned samples, GLenum color_format)
 {
-   static const GLenum formats[2] = {GL_RGBA8, GL_DEPTH32F_STENCIL8};
+   const GLenum formats[2] = {color_format, GL_DEPTH32F_STENCIL8};
    GLenum target = samples == 4 ? GL_TEXTURE_2D_MULTISAMPLE_ARRAY : GL_TEXTURE_2D_ARRAY;
    GLuint textures[2] = {0}, buffers[2] = {0}, framebuffers[2] = {0};
    unsigned explicit_draws = 0;
@@ -210,10 +218,26 @@ test_samples(unsigned samples)
    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
    glDepthMask(GL_TRUE);
    glStencilMask(0xff);
+   /* Clear all array layers together, then a rectangle on every layer. */
+   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textures[0], 0);
+   glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, textures[1], 0);
+   if (!check_framebuffer(samples == 4 ? 4 : 0)) goto cleanup;
+   glClearColor(0, 0, 1, 1); glClearDepth(.5); glClearStencil(0x69);
+   glClear(ALL_BITS);
+   glEnable(GL_SCISSOR_TEST); glScissor(8, 8, 16, 16);
+   glClearColor(0, 1, 0, 1); glClearDepth(.25); glClearStencil(0x96);
+   glClear(ALL_BITS);
+   if (!verify_layers(framebuffers[0], framebuffers[1], textures, samples, 3)) goto cleanup;
    /* NULL allocations are undefined: clear every layer and every sample. */
    for (unsigned layer = 0; layer < LAYERS; ++layer) {
       if (!attach_layer(framebuffers[0], textures, layer, samples))
          goto cleanup;
+      if (layer & 1) {
+         glEnable(GL_SCISSOR_TEST);
+         glScissor(0, 0, SIZE + 8, SIZE + 8);
+      } else {
+         glDisable(GL_SCISSOR_TEST);
+      }
       glClearColor((layer & 1) != 0, (layer & 2) != 0, 0, 1);
       glClearDepth(1.0 - (double)layer * 0.125);
       glClearStencil(((layer + 1) << 4) | 1);
@@ -340,6 +364,9 @@ main(void)
    int current = 0, passed = 0, status = -1;
    EGLBoolean cleanup_ok = EGL_TRUE;
 
+#ifdef PS5_GLTHREAD_TEST
+   if (setenv("PS5_GLTHREAD", "1", 1) != 0) return 1;
+#endif
    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
    if (display == EGL_NO_DISPLAY || !eglInitialize(display, NULL, NULL) ||
        !eglBindAPI(EGL_OPENGL_API) ||
@@ -385,8 +412,9 @@ main(void)
    glDisable(GL_DITHER);
    glEnable(GL_MULTISAMPLE);
    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-   passed = test_samples(1);
-   passed = passed && test_samples(4);
+   passed = test_samples(1, GL_RGBA8);
+   passed = passed && test_samples(1, GL_R11F_G11F_B10F);
+   passed = passed && test_samples(4, GL_RGBA8);
    status = ps5_egl_current_draw_status(&calls);
    passed &= status == 0 && check_errors("final");
    printf(TAG " final_draw=%d/%u result=%d\n", status, calls, passed ? 0 : 1);

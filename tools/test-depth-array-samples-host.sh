@@ -40,7 +40,7 @@ if [[ "$broken_samples" == 1 ]]; then
     grep -qxF '[host-egl-core33-depth-array-samples] final_draw=0/2 result=1' "$out/wrong.log"
 else
     grep -qxF '[host-egl-core33-depth-array-samples] samples=1 explicit_draws=2 cleanup=1 result=0' "$out/wrong.log"
-    grep -qxF '[host-egl-core33-depth-array-samples] final_draw=0/4 result=1' "$out/wrong.log"
+    grep -qxF '[host-egl-core33-depth-array-samples] final_draw=0/6 result=1' "$out/wrong.log"
 fi
 grep -qxF '[host-egl-core33-depth-array-samples] cleanup=1 result=1' "$out/wrong.log"
 done

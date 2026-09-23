@@ -3867,11 +3867,13 @@ int main(void)
     if (runtime_pixel_user_data_count)
         agc.set_sh_direct(&command, 0x0c, runtime_pixel_user_data,
                           runtime_pixel_user_data_count);
-    if (runtime_depth_buffer) {
+    /* A color-only pass must disable the preceding pass's depth/stencil
+     * writes, including when both passes share a deferred command stream. */
+    {
         agc_register_t *depth_state =
             (agc_register_t *)(memory + 0x4700);
         depth_state[0] = (agc_register_t){
-            0x0200, 0, runtime_depth_control
+            0x0200, 0, runtime_depth_buffer ? runtime_depth_control : 0
         };
         if (runtime_stencil_buffer) {
             depth_state[1] = (agc_register_t){

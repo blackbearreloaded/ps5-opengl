@@ -5,6 +5,9 @@ import subprocess
 import tempfile
 root = Path(__file__).resolve().parents[2]
 s = (root / 'src/gallium/ps5/ps5_screen.c').read_text()
+a = s.index('static bool\nps5_prepare_constant(')
+publish = s[a:s.index('\n}\n', a)]
+assert 'ps5_flush_gpu_data(storage->data, ps5_descriptor_snapshot_size(context, slot));' in publish
 a = s.index('static size_t\nps5_descriptor_snapshot_size(')
 helper = s[a:s.index('static unsigned\nps5_shader_storage_count(', a)]
 a = s.index('static bool\nps5_batch_copy_descriptors(')

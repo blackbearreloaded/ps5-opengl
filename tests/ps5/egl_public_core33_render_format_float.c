@@ -435,6 +435,62 @@ cleanup:
    return passed;
 }
 
+static int
+run_rgba8_view_clears(void)
+{
+   int passed = 1;
+   const float colors[2][4] = {{0.2f, 0.4f, 0.6f, 0.8f}, {0.7f, 0.5f, 0.3f, 1.0f}};
+   for (unsigned srgb_view = 0; srgb_view < 2 && passed; ++srgb_view) {
+      GLuint textures[2] = {0}, fbo = 0;
+      glGenTextures(2, textures);
+      glBindTexture(GL_TEXTURE_2D, textures[0]);
+      glTexStorage2D(GL_TEXTURE_2D, 1, srgb_view ? GL_RGBA8 : GL_SRGB8_ALPHA8,
+                    SRGB_WIDTH, SRGB_HEIGHT);
+      glTextureView(textures[1], GL_TEXTURE_2D, textures[0],
+                    srgb_view ? GL_SRGB8_ALPHA8 : GL_RGBA8, 0, 1, 0, 1);
+      glGenFramebuffers(1, &fbo);
+      glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[1], 0);
+      passed = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+      glViewport(0, 0, SRGB_WIDTH, SRGB_HEIGHT);
+      glEnable(GL_FRAMEBUFFER_SRGB);
+      glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+      for (unsigned phase = 0; phase < 3 && passed; ++phase) {
+         if (phase) { glEnable(GL_SCISSOR_TEST); glScissor(3, 5, 129, 129); }
+         else glDisable(GL_SCISSOR_TEST);
+         if (phase == 2) glScissor(4, 6, 1, 1);
+         unsigned value = phase == 1;
+         glClearColor(colors[value][0], colors[value][1], colors[value][2], colors[value][3]);
+         glClear(GL_COLOR_BUFFER_BIT);
+         if (phase < 2) continue; /* Check consecutive queued clears together. */
+         glBindTexture(GL_TEXTURE_2D, textures[0]);
+         glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, srgb_pixels);
+         for (unsigned y = 0; y < SRGB_HEIGHT && passed; ++y)
+            for (unsigned x = 0; x < SRGB_WIDTH && passed; ++x)
+               for (unsigned c = 0; c < 4; ++c) {
+                  unsigned selected = phase && x >= 3 && x < 132 && y >= 5 && y < 134;
+                  if (phase == 2 && x == 4 && y == 6) selected = 0;
+                  uint8_t expected = srgb_encode(colors[selected][c], srgb_view && c < 3);
+                  uint8_t got = srgb_pixels[(y * SRGB_WIDTH + x) * 4 + c];
+                  if (!close_enough(got, expected, 1.0f)) {
+                     printf("[ps5-egl-render-float] view-clear-mismatch srgb=%u phase=%u xy=%u/%u c=%u got=%u expected=%u\n",
+                            srgb_view, phase, x, y, c, got, expected);
+                     passed = 0;
+                  }
+               }
+         passed &= glGetError() == GL_NO_ERROR;
+      }
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      glDeleteFramebuffers(1, &fbo);
+      glBindTexture(GL_TEXTURE_2D, 0);
+      glDeleteTextures(2, textures);
+      printf("[ps5-egl-render-float] view-clear srgb=%u full=1 scissor=1 result=%d\n", srgb_view, passed ? 0 : 1);
+   }
+   glDisable(GL_SCISSOR_TEST);
+   glDisable(GL_FRAMEBUFFER_SRGB);
+   return passed && glGetError() == GL_NO_ERROR;
+}
+
 int
 main(void)
 {
@@ -563,7 +619,8 @@ main(void)
    int mrt_passed = run_mrt_clears(framebuffer);
    int srgb_passed = run_srgb_texture(shaders[0], program, color_location,
                                      framebuffer, renderbuffer);
-   passed = major == 1 && minor >= 4 && mrt_passed && srgb_passed &&
+   int view_passed = run_rgba8_view_clears();
+   passed = major == 1 && minor >= 4 && mrt_passed && srgb_passed && view_passed &&
             matching == 1 + 2 * sizeof(cases) / sizeof(cases[0]) &&
             glGetError() == GL_NO_ERROR;
    printf("[ps5-egl-render-float] matching=%u result=%d\n",

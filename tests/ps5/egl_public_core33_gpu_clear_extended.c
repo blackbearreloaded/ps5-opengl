@@ -54,6 +54,8 @@ static const struct clear_case cases[] = {
    {"scissor-color-mask", COLOR, 1, 17, 29, WIDTH-54, HEIGHT-72, 10, 1, 255, .375f, 0x69},
    {"empty-scissor", ALL, 1, 17, 29, 0, HEIGHT, 15, 1, 255, .375f, 0x69},
    {"clipped-scissor", ALL, 1, -17, HEIGHT-43, 127, 95, 15, 1, 255, .375f, 0x69},
+   {"single-pixel-mixed", ALL, 1, 3, 5, 1, 1, 15, 1, 255, .625f, 0x69},
+   {"single-pixel-color", COLOR, 1, WIDTH-1, HEIGHT-1, 1, 1, 15, 1, 255, .375f, 0x69},
 };
 
 static int healthy(const char *where, unsigned *calls)
@@ -146,8 +148,8 @@ static int seed(GLint z, GLint tint, int stencil, int floating)
       glDrawArrays(GL_TRIANGLES, 0, 3);
       if (!healthy("seed-draw", NULL)) return 0;
    }
-   glFinish();
-   return healthy("seed-finish", NULL);
+   /* Keep the seed draws queued to exercise draw-to-clear ordering. */
+   return healthy("seed-queued", NULL);
 }
 
 static void clear_state(const struct clear_case *test, int floating)
