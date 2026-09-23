@@ -482,19 +482,18 @@ main(void)
             shadow_matching == CROP_SIZE * CROP_SIZE &&
             shadow_hash == GREEN_HASH && shadow_error == GL_NO_ERROR;
 #ifdef PS5_CORE_33_TEST
-   passed &= context_version ==
-#ifdef PS5_GL43_STENCIL_TEXTURE_TEST
-             4 &&
-#else
-             3 &&
-#endif
+   int gl_major = 0, gl_minor = 0, glsl_major = 0, glsl_minor = 0;
+   /* EGL may return a newer compatible core context than the requested one. */
+   passed &= sscanf(version_text, "%d.%d", &gl_major, &gl_minor) == 2 &&
+             sscanf(glsl_text, "%d.%d", &glsl_major, &glsl_minor) == 2 &&
+             context_version == gl_major &&
              profile_mask == EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR &&
 #ifdef PS5_GL43_STENCIL_TEXTURE_TEST
-             strncmp(version_text, "4.3 ", 4) == 0 &&
-             strncmp(glsl_text, "4.30", 4) == 0;
+             (gl_major > 4 || (gl_major == 4 && gl_minor >= 3)) &&
+             (glsl_major > 4 || (glsl_major == 4 && glsl_minor >= 30));
 #else
-             strncmp(version_text, "3.3 ", 4) == 0 &&
-             strncmp(glsl_text, "3.30", 4) == 0;
+             (gl_major > 3 || (gl_major == 3 && gl_minor >= 3)) &&
+             (glsl_major > 3 || (glsl_major == 3 && glsl_minor >= 30));
 #endif
 #endif
    if (!eglSwapBuffers(display, surface))

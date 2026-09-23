@@ -2548,7 +2548,25 @@ ps5_flush_batch_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
    (void)batch;
    (void)slot;
 #endif
+#ifdef PS5_DRAW_PROFILE
+   /* Keep distinct call sites in the cache report: an uncached persistent
+    * vertex upload needs a different fix from a retained texture publication. */
+   if (slot < 2) {
+      if (batch) ps5_flush_gpu_data(data, bytes); /* retained depth */
+      else ps5_flush_gpu_data(data, bytes); /* uncached depth */
+   } else if (slot < 2 + PS5_MAX_TEXTURE_UNITS) {
+      if (batch) ps5_flush_gpu_data(data, bytes); /* retained texture */
+      else ps5_flush_gpu_data(data, bytes); /* uncached texture */
+   } else if (slot < 2 + PS5_MAX_TEXTURE_UNITS + PIPE_MAX_ATTRIBS) {
+      if (batch) ps5_flush_gpu_data(data, bytes); /* retained vertex */
+      else ps5_flush_gpu_data(data, bytes); /* uncached vertex */
+   } else {
+      if (batch) ps5_flush_gpu_data(data, bytes); /* retained index */
+      else ps5_flush_gpu_data(data, bytes); /* uncached index */
+   }
+#else
    ps5_flush_gpu_data(data, bytes);
+#endif
 #ifdef PS5_GPU_PRESENT_BATCH
    if (batch) {
       batch->data[slot] = data;
