@@ -74,7 +74,7 @@ check_pixel(const float actual[4], const float source[4],
 
 static int
 run_case(const struct format_case *test, GLuint program, GLint color_location,
-         GLuint framebuffer, GLuint renderbuffer)
+         GLuint framebuffer, GLuint renderbuffer, int array)
 {
    static const float clear_color[4] = {0.25f, 0.5f, 0.75f, 1.0f};
    static const float masked_color[4] = {0.75f, 0.25f, 0.5f, 0.0f};
@@ -100,10 +100,18 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                              GL_RENDERBUFFER, renderbuffer);
+   GLuint texture = 0;
+   if (array) {
+      glGenTextures(1, &texture);
+      glBindTexture(GL_TEXTURE_2D_ARRAY, texture);
+      glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, test->internal_format, WIDTH, HEIGHT, 2);
+      glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, 0, 1);
+   }
    status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
    if (status != GL_FRAMEBUFFER_COMPLETE) {
       printf("[ps5-egl-render-float] case=%s fbo=0x%x result=1\n",
              test->name, status);
+      glDeleteTextures(1, &texture);
       return 0;
    }
 
@@ -120,7 +128,10 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
 
    glUseProgram(program);
    glUniform4fv(color_location, 1, draw);
+   glEnable(GL_BLEND);
+   glBlendFunc(GL_DST_ALPHA, GL_ZERO);
    glDrawArrays(GL_TRIANGLES, 0, 3);
+   glDisable(GL_BLEND);
    glFinish();
    glReadPixels(WIDTH / 2, HEIGHT / 2, 1, 1, GL_RGBA, GL_FLOAT,
                 draw_pixel);
@@ -129,11 +140,12 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
             check_pixel(clear_pixel, masked_expected, test->channels,
                         test->tolerance) &&
             check_pixel(draw_pixel, draw, test->channels, test->tolerance);
-   printf("[ps5-egl-render-float] case=%s clear=%.4f/%.4f/%.4f/%.4f "
+   printf("[ps5-egl-render-float] array=%d case=%s clear=%.4f/%.4f/%.4f/%.4f "
           "draw=%.4f/%.4f/%.4f/%.4f error=0x%x result=%d\n",
-          test->name, clear_pixel[0], clear_pixel[1], clear_pixel[2],
+          array, test->name, clear_pixel[0], clear_pixel[1], clear_pixel[2],
           clear_pixel[3], draw_pixel[0], draw_pixel[1], draw_pixel[2],
           draw_pixel[3], error, passed ? 0 : 1);
+   glDeleteTextures(1, &texture);
    return passed;
 }
 
@@ -507,9 +519,10 @@ main(void)
    glDisable(GL_BLEND);
    /* The default FIXED_ONLY read clamp would hide negative SNORM values. */
    glClampColor(GL_CLAMP_READ_COLOR, GL_FALSE);
+   for (unsigned array = 0; array < 2; ++array)
    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i)
       matching += run_case(&cases[i], program, color_location,
-                           framebuffer, renderbuffer);
+                           framebuffer, renderbuffer, array);
 
    /* Masked clears may legitimately add internal draws. Pixel oracles above
     * validate the public API without assuming a driver-internal draw count. */
@@ -517,7 +530,7 @@ main(void)
    int srgb_passed = run_srgb_texture(shaders[0], program, color_location,
                                      framebuffer, renderbuffer);
    passed = major == 1 && minor >= 4 && mrt_passed && srgb_passed &&
-            matching == sizeof(cases) / sizeof(cases[0]) &&
+            matching == 2 * sizeof(cases) / sizeof(cases[0]) &&
             glGetError() == GL_NO_ERROR;
    printf("[ps5-egl-render-float] matching=%u result=%d\n",
           matching, passed ? 0 : 1);

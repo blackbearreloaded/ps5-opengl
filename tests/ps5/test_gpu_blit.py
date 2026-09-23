@@ -54,6 +54,8 @@ enum { PIPE_TEXTURE_2D=2, PIPE_TEXTURE_3D=3, PIPE_TEXTURE_2D_ARRAY=4,
        PIPE_FORMAT_R8G8B8A8_UNORM=1, PIPE_FORMAT_R8_UNORM=2,
        PIPE_FORMAT_R8G8_UNORM=3, PIPE_FORMAT_R16G16B16A16_FLOAT=4,
        PIPE_FORMAT_R11G11B10_FLOAT=5, PIPE_FORMAT_R8G8B8A8_SRGB=6,
+       PIPE_FORMAT_R10G10B10A2_UNORM=7, PIPE_FORMAT_R16_FLOAT=8,
+       PIPE_FORMAT_R32_FLOAT=9, PIPE_FORMAT_R32G32B32A32_UINT=10,
        PIPE_MASK_RGBA=15, PIPE_TEX_FILTER_NEAREST=0, PIPE_TEX_FILTER_LINEAR=1,
        PIPE_BIND_RENDER_TARGET=1, PIPE_BIND_DISPLAY_TARGET=2 };
 struct pipe_resource { unsigned target, last_level, depth0, array_size,
@@ -87,7 +89,7 @@ static bool ps5_agc_gate2_set_color_target_layouts = true;
 static bool ps5_linear_sampled_layout(const struct pipe_resource *r)
 { return linear || ((const struct ps5_resource *)r)->linear; }
 static unsigned ps5_texture_format_size(unsigned f)
-{ const unsigned bytes[]={0,4,1,2,8,4,4}; return f < ARRAY_SIZE(bytes) ? bytes[f] : 0; }
+{ const unsigned bytes[]={0,4,1,2,8,4,4,4,2,4,16}; return f < ARRAY_SIZE(bytes) ? bytes[f] : 0; }
 static size_t ps5_tiled_color_surface_size(unsigned f, unsigned w, unsigned h)
 { return (size_t)w*h*ps5_texture_format_size(f); }
 static size_t ps5_tiled_color_msaa4_surface_size(unsigned f, unsigned w, unsigned h)
@@ -250,13 +252,14 @@ int main(void) {
     BAD_CONTEXT(render_condition_query); BAD_CONTEXT(stream_output_target_count);
     BAD_CONTEXT(active_occlusion_query); BAD_CONTEXT(active_primitives_generated_query);
     BAD_CONTEXT(active_primitives_emitted_query);
-    for (unsigned format=5;format<=6;++format) {
+    for (unsigned format=5;format<=10;++format) {
         struct ps5_resource t=linear_resource(format);
         struct pipe_surface s={.texture=&t.base,.format=format,.level=1,
             .first_layer=1,.last_layer=1};
-        assert(ps5_linear_color_pitch(&s)==2048);
-        t.level_stride[1]=2047; assert(!ps5_linear_color_pitch(&s));
-        t.level_stride[1]=2048;
+        unsigned pitch=512*ps5_texture_format_size(format);
+        assert(ps5_linear_color_pitch(&s)==pitch);
+        t.level_stride[1]=pitch-1; assert(!ps5_linear_color_pitch(&s));
+        t.level_stride[1]=pitch;
         s.last_layer=2; assert(!ps5_linear_color_pitch(&s));
         s.last_layer=1;
         t.base.nr_samples=4; assert(!ps5_linear_color_pitch(&s));

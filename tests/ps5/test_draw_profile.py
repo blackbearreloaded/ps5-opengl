@@ -164,13 +164,12 @@ with tempfile.TemporaryDirectory() as tmp:
             if batched:
                 prefix += '#define PS5_GPU_PRESENT_BATCH 1\n#define PS5_MULTIDRAW_BATCH 1\n#define PS5_DEFERRED_DRAW_BATCH 1\n'
             prefix += 'int main(void) {\n'
-            if profile:
-                prefix += 'struct { uint64_t batch_eligible, batch_reject[7]; } value = {0}, *context = &value;\n'
+            prefix += 'struct { uint64_t batch_eligible, batch_reject[7]; } value = {0}, *context = &value;\n'
             subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-x', 'c', '-', '-o', str(exe)],
                            input=prefix + receipt + '\nreturn 0; }\n', text=True, check=True)
             output = subprocess.run([str(exe)], text=True, capture_output=True, check=True).stderr
             n = int(batched)
             assert output.startswith(f'[ps5-batch-summary] config gpu-present={n} multidraw={n} deferred={n} ')
-            assert ('eligible=' in output) == profile
-            assert ('profile=0' in output) != profile
+            assert 'eligible=0' in output
+            assert (('profile=1' in output) == profile)
 print('PASS: batching configuration remains verifiable with profiling on/off')

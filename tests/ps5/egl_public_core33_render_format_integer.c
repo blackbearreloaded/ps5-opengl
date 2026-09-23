@@ -148,10 +148,18 @@ run_case(const struct format_case *test, const GLuint programs[2],
    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                              GL_RENDERBUFFER, renderbuffer);
+   GLuint texture = 0;
+   if (test->internal_format == GL_RGBA32UI) {
+      glGenTextures(1, &texture);
+      glBindTexture(GL_TEXTURE_2D_ARRAY, texture);
+      glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA32UI, WIDTH, HEIGHT, 2);
+      glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, 0, 1);
+   }
    status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
    if (status != GL_FRAMEBUFFER_COMPLETE) {
       printf("[ps5-egl-render-integer] case=%s fbo=0x%x result=1\n",
              test->name, status);
+      glDeleteTextures(1, &texture);
       return 0;
    }
 
@@ -200,6 +208,7 @@ run_case(const struct format_case *test, const GLuint programs[2],
              clear_pixel[3], draw_pixel[0], draw_pixel[1], draw_pixel[2],
              draw_pixel[3], error, passed ? 0 : 1);
    }
+   glDeleteTextures(1, &texture);
    return passed;
 }
 

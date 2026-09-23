@@ -497,7 +497,6 @@ static unsigned retained_draws;
 static unsigned unindexed_draws;
 static uint8_t expected_uniform[PS5_MULTIDRAW_BATCH_CAPACITY][3];
 static unsigned ps5_constant_state_binding(const struct ps5_shader *s, unsigned i) { (void)s;return i; }
-static unsigned ps5_shader_texture_count(const struct ps5_shader *s) { return *s->textures; }
 static unsigned shader_storage;
 static unsigned ps5_shader_uses_storage(const struct ps5_shader *s) { (void)s; return shader_storage; }
 static bool ps5_texture_used(const struct ps5_context *c, const struct ps5_shader *s, const void *metadata, unsigned unit) {
@@ -576,8 +575,10 @@ static int end(void) {
         (context.framebuffer.zsbuf.texture == &borrowed.base))-unindexed_draws);
     if (context.framebuffer.zsbuf.texture == &depth_buffer.base)
         assert(depth_buffer.base.refs == 1+factor);
-    for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit)
-        if (fragment_textures & (1u << unit)) assert(textures[unit].base.refs == 1+factor);
+    for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) {
+        unsigned bindings = !!(shader_textures & (1u << unit)) + !!(fragment_textures & (1u << unit));
+        if (bindings) assert(textures[unit].base.refs == 1+factor*bindings);
+    }
     if (fail_end) return -1;
     staged=retained_draws=unindexed_draws=0;
     return 0;
@@ -716,7 +717,10 @@ int main(void) {
     context.framebuffer.cbufs[0].last_layer=3;
     assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
     reset();
-    shader_textures=1; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
+    shader_textures=1; context.fs=&fragment_shader; context.sampler_views[0][0]=&views[0];
+    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
+    assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,TEST_DRAWS));
+    assert(textures[0].base.refs==1 && !context.last_draw_status);
     reset();
     shader_storage=16; assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
     shader_storage=0;
@@ -817,10 +821,8 @@ with tempfile.TemporaryDirectory() as tmp:
     mutations = (
         ("   for (unsigned first = 0; first < num_draws;) {\n      struct ps5_batch_flush_cache flush_cache = {0};",
          "   struct ps5_batch_flush_cache flush_cache = {0};\n   for (unsigned first = 0; first < num_draws;) {"),
-        ("(context->vs && ps5_shader_texture_count(context->vs)))",
-         "((context->vs && ps5_shader_texture_count(context->vs)) ||\n"
-         "        (context->fs && ps5_shader_texture_count(context->fs))))"),
-        ("pipe_resource_reference(&retained[retained_count++], context->sampler_views[1][unit]->texture);",
+        ("pipe_resource_reference(&retained[retained_count++],\n"
+         "                                    context->sampler_views[stage][unit]->texture);",
          "(void)0;"),
         ("pipe_resource_reference(&retained[retained_count++], context->framebuffer.zsbuf.texture);",
          "(void)0;"),
@@ -832,7 +834,7 @@ with tempfile.TemporaryDirectory() as tmp:
                        input=code.replace(before, after), text=True, check=True)
         failed = subprocess.run([str(exe)], cwd=tmp, text=True, capture_output=True)
         assert failed.returncode != 0 and "Assertion" in failed.stderr
-print("PASS: descriptors/uniforms, chunk retirement, draw IDs, rollback, all 16 fragment texture refs and native batching eligibility")
+print("PASS: descriptors/uniforms, chunk retirement, draw IDs, rollback, vertex/fragment texture refs and native batching eligibility")
 
 # Reuse the same Gallium mocks, but exercise the actual cross-call queue too.
 start = source.index("struct ps5_deferred_slot {")

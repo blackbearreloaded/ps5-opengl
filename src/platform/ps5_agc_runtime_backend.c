@@ -384,8 +384,8 @@ ps5_agc_set_cx_mrt(void *command, const void *table, uint32_t count)
          int attrib = ps5_agc_find_register(records, count, 0x031du + 15u * target);
 
          if (ps5_agc_mrt_pitches[target] && attrib >= 0) {
-            bool no_alpha = ps5_agc_mrt_color_info[target] == UINT32_C(0x8004) ||
-                            ps5_agc_mrt_color_info[target] == UINT32_C(0x800c);
+            unsigned format = (ps5_agc_mrt_color_info[target] >> 2) & 0x1fu;
+            bool no_alpha = format >= 1 && format <= 6;
             /* ac_init_cb_surface: absent destination alpha is one. */
             records[attrib].value = (records[attrib].value & ~UINT32_C(0x20000)) |
                                     (no_alpha ? UINT32_C(0x20000) : 0);
@@ -1139,6 +1139,10 @@ ps5_agc_linear_color_bytes(uint32_t info)
    case UINT32_C(0x00008004): return 1; /* R8_UNORM */
    case UINT32_C(0x0000800c): return 2; /* RG8_UNORM */
    case UINT32_C(0x00060730): return 8; /* RGBA16F */
+   case UINT32_C(0x00008024): return 4; /* RGB10_A2_UNORM */
+   case UINT32_C(0x00060708): return 2; /* R16F */
+   case UINT32_C(0x00060710): return 4; /* R32F */
+   case UINT32_C(0x00070438): return 16; /* RGBA32UI */
    default: return 0;
    }
 }

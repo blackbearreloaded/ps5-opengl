@@ -408,9 +408,9 @@ struct ps5_context {
    uint32_t compute_constants_invalid;
    int last_compute_status;
    unsigned dispatches;
-#ifdef PS5_DRAW_PROFILE
    uint64_t batch_eligible;
    uint64_t batch_reject[7];
+#ifdef PS5_DRAW_PROFILE
    struct {
       unsigned key[16];
       uint64_t count;
@@ -6281,7 +6281,9 @@ ps5_linear_color_pitch(const struct pipe_surface *surface)
        surface->last_layer >= r->size / r->layer_stride ||
        (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
         surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
-        surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB))
+        surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB &&
+        surface->format != PIPE_FORMAT_R10G10B10A2_UNORM && surface->format != PIPE_FORMAT_R16_FLOAT &&
+        surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R32G32B32A32_UINT))
       return 0;
    unsigned width = ps5_surface_width(surface), height = ps5_surface_height(surface);
    unsigned stride = r->level_stride[surface->level];
@@ -10832,16 +10834,12 @@ ps5_record_framebuffer_fallback(struct ps5_context *context, const unsigned key[
 static bool
 ps5_batch_eligibility(struct ps5_context *context, unsigned rejects)
 {
-#ifdef PS5_DRAW_PROFILE
    if (!rejects)
       context->batch_eligible++;
    else
       for (unsigned i = 0; i < PS5_BATCH_REJECT_TEXTURE; ++i)
          if (rejects & BITFIELD_BIT(i))
             context->batch_reject[i]++;
-#else
-   (void)context;
-#endif
    return rejects == 0;
 }
 
@@ -10869,8 +10867,7 @@ ps5_multidraw_eligible(struct ps5_context *context,
       rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_INPUT - 1);
    if (!context->vs || !context->fs || context->gs ||
        (context->fs && ps5_shader_uses_storage(context->fs)) ||
-       (context->vs && ps5_shader_uses_storage(context->vs)) ||
-       (context->vs && ps5_shader_texture_count(context->vs)))
+       (context->vs && ps5_shader_uses_storage(context->vs)))
       rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_SHADER - 1);
    if (context->stream_output_target_count || context->render_condition_query)
       rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_QUERY - 1);
@@ -10925,30 +10922,35 @@ ps5_multidraw_eligible(struct ps5_context *context,
                                   PIPE_MAX_ATTRIBS); ++i)
       if (context->vertex_buffers[i].is_user_buffer)
          rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_VERTEX - 1);
-   for (unsigned unit = 0; context->fs && unit < PS5_MAX_TEXTURE_UNITS; ++unit) {
-      if (!ps5_texture_used(context, context->fs, NULL, unit))
+   const struct ps5_shader *texture_stages[] = {context->vs, context->fs};
+   for (unsigned stage = 0; stage < ARRAY_SIZE(texture_stages); ++stage) {
+      if (!texture_stages[stage])
          continue;
-      const struct pipe_sampler_view *view = context->sampler_views[1][unit];
-      const struct ps5_resource *texture = view
-         ? (const struct ps5_resource *)view->texture : NULL;
-      const bool staged_stencil = texture &&
-         texture->base.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT &&
-         view->format == PIPE_FORMAT_X32_S8X24_UINT;
+      for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit) {
+         if (!ps5_texture_used(context, texture_stages[stage], NULL, unit))
+            continue;
+         const struct pipe_sampler_view *view = context->sampler_views[stage][unit];
+         const struct ps5_resource *texture = view
+            ? (const struct ps5_resource *)view->texture : NULL;
+         const bool staged_stencil = texture &&
+            texture->base.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT &&
+            view->format == PIPE_FORMAT_X32_S8X24_UINT;
 
-      /* Descriptor preparation handles all valid targets, formats, levels,
-       * layers and sample counts. Only per-draw staging and attachment alias
-       * hazards prevent deferred execution. */
-      if (!texture || !texture->data || !texture->size ||
-          texture == depth || texture->depth_staging_size || staged_stencil) {
-         rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_TEXTURE - 1);
-         continue;
-      }
-      for (unsigned i = 0; i < context->framebuffer.nr_cbufs; ++i)
-         if (texture == (const struct ps5_resource *)
-                           context->framebuffer.cbufs[i].texture) {
+         /* Descriptor preparation handles all valid targets, formats, levels,
+          * layers and sample counts. Only per-draw staging and attachment alias
+          * hazards prevent deferred execution. */
+         if (!texture || !texture->data || !texture->size ||
+             texture == depth || texture->depth_staging_size || staged_stencil) {
             rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_TEXTURE - 1);
-            break;
+            continue;
          }
+         for (unsigned i = 0; i < context->framebuffer.nr_cbufs; ++i)
+            if (texture == (const struct ps5_resource *)
+                              context->framebuffer.cbufs[i].texture) {
+               rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_TEXTURE - 1);
+               break;
+            }
+      }
    }
    return ps5_batch_eligibility(context, rejects);
 }
@@ -11034,7 +11036,7 @@ ps5_batch_copy_descriptors(struct pipe_context *base,
 }
 
 #define PS5_BATCH_RESOURCE_COUNT (PIPE_MAX_ATTRIBS + \
-   2 * PS5_MAX_CONSTANT_BUFFERS + PS5_MAX_TEXTURE_UNITS + \
+   2 * PS5_MAX_CONSTANT_BUFFERS + 2 * PS5_MAX_TEXTURE_UNITS + \
    PS5_MAX_RENDER_TARGETS + 4)
 
 static unsigned
@@ -11076,9 +11078,15 @@ ps5_batch_retain_resources(const struct ps5_context *context,
             pipe_resource_reference(&retained[retained_count++], context->constants[stage][binding].buffer);
       }
    }
-   for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit)
-      if (ps5_texture_used(context, context->fs, NULL, unit))
-         pipe_resource_reference(&retained[retained_count++], context->sampler_views[1][unit]->texture);
+   const struct ps5_shader *texture_stages[] = {context->vs, context->fs};
+   for (unsigned stage = 0; stage < ARRAY_SIZE(texture_stages); ++stage) {
+      if (!texture_stages[stage])
+         continue;
+      for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit)
+         if (ps5_texture_used(context, texture_stages[stage], NULL, unit))
+            pipe_resource_reference(&retained[retained_count++],
+                                    context->sampler_views[stage][unit]->texture);
+   }
    return retained_count;
 }
 
@@ -16020,18 +16028,19 @@ ps5_context_destroy(struct pipe_context *base)
 #else
           "0"
 #endif
-#ifdef PS5_DRAW_PROFILE
           " eligible=%" PRIu64 " reject-input=%" PRIu64
           " reject-shader=%" PRIu64 " reject-query=%" PRIu64
           " reject-framebuffer=%" PRIu64 " reject-depth=%" PRIu64
-          " reject-vertex=%" PRIu64 " reject-texture=%" PRIu64 "\n",
+          " reject-vertex=%" PRIu64 " reject-texture=%" PRIu64 " profile="
+#ifdef PS5_DRAW_PROFILE
+          "1\n",
+#else
+          "0\n",
+#endif
           context->batch_eligible, context->batch_reject[0],
           context->batch_reject[1], context->batch_reject[2],
           context->batch_reject[3], context->batch_reject[4],
           context->batch_reject[5], context->batch_reject[6]);
-#else
-          " profile=0\n");
-#endif
 #ifdef PS5_DRAW_PROFILE
    for (unsigned i = 0; i < 32 && context->framebuffer_fallbacks[i].count; ++i) {
       const unsigned *k = context->framebuffer_fallbacks[i].key;
