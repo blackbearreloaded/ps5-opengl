@@ -60,6 +60,7 @@ ps5_runtime_printf(const char *format, ...)
 #include "util/u_upload_mgr.h"
 #include "mesa/main/sse_minmax.h"
 #include "util/u_cpu_detect.h"
+#include "ps5_shader_cache.h"
 
 /* This driver passes Mesa-owned NIR directly into the standalone backend. */
 _Static_assert(sizeof(nir_instr_type) == 1, "NIR enums must be packed");
@@ -13494,7 +13495,7 @@ ps5_select_shader_variant(struct ps5_shader *shader, uint32_t address32_hi,
       }
       package_nir = carrier;
    }
-   result = psbc_compile_nir(package_nir, &options, &variant->output);
+   result = ps5_compile_cached_nir(package_nir, &options, &variant->output);
    ralloc_free(carrier);
    ralloc_free(variant_nir);
    printf("[ps5-gallium] compile-shader stage=%u primitive=%u provoking-last=%u smooth=%u variant-attrs=%u result=%d bytes=%zu hash=%08x user-sgprs=%u scratch=%u/%u table=%u\n",
@@ -13530,7 +13531,7 @@ ps5_select_shader_variant(struct ps5_shader *shader, uint32_t address32_hi,
          return false;
       }
       options.split_vertex_instances = shader->stage == PSBC_STAGE_VERTEX;
-      result = psbc_compile_nir(streamout_nir, &options,
+      result = ps5_compile_cached_nir(streamout_nir, &options,
                                 &variant->streamout_output);
       ralloc_free(streamout_nir);
       printf("[ps5-gallium] compile-streamout result=%d bytes=%zu hash=%08x user-sgprs=%u mask=%x instance-base=%u/%u\n",

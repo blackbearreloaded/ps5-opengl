@@ -151,12 +151,21 @@ $(PS5_OPENGL_BUILD)/ps5_egl.o: $(PS5_OPENGL_ROOT)/src/egl/ps5_egl.c \
 
 $(PS5_OPENGL_BUILD)/ps5_screen.o: $(PS5_OPENGL_DRIVER)/ps5_screen.c \
 	$(PS5_OPENGL_DRIVER)/ps5_screen.h $(PS5_OPENGL_PLATFORM)/ps5_agc_package.h \
+	$(PS5_OPENGL_DRIVER)/ps5_shader_cache.h $(PS5_OPENGL_BUILD)/shader-cache-build-id.h \
 	$(PS5_OPENGL_PSBC)/libpsbc/psbc_compile.h \
 	$(ps5_opengl_mk_self) \
 	| $(PS5_OPENGL_BUILD)
 	$(CC) $(PS5_OPENGL_COMMON_CFLAGS) $(PS5_OPENGL_PSBC_CFLAGS) \
 		$(PS5_OPENGL_CORE33_DEFINES) $(PS5_OPENGL_RUNTIME_DEFINES) \
+		-include $(PS5_OPENGL_BUILD)/shader-cache-build-id.h \
 		-I$(PS5_OPENGL_PLATFORM) -c -o $@ $<
+
+$(PS5_OPENGL_BUILD)/shader-cache-build-id.h: ps5-opengl-config-force \
+	$(PS5_OPENGL_BUILD)/runtime-config.txt | ps5-opengl-mesa
+	python3 $(PS5_OPENGL_ROOT)/tools/shader-cache-build-id.py $@ \
+		$(PS5_OPENGL_BUILD)/runtime-config.txt $(PS5_OPENGL_DRIVER)/ps5_screen.c \
+		$(PS5_OPENGL_DRIVER)/ps5_shader_cache.h \
+		$(PS5_OPENGL_PSBC)/libpsbc.ps5.a $(PS5_OPENGL_MESA_LIBS)
 
 $(PS5_OPENGL_BUILD)/ps5_agc_package.o: \
 	$(PS5_OPENGL_PLATFORM)/ps5_agc_package.c \
