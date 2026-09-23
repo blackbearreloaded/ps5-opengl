@@ -13,7 +13,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
 #include <GL/glext.h>
-#include "main/context.h"
+extern int ps5_egl_current_compute_status(unsigned *);
 #include "ps5_screen.h"
 
 #define TAG "[ps5-egl-compute-api] "
@@ -116,8 +116,7 @@ check_buffer(const char *name, GLenum target, GLuint buffer, uint32_t expected)
 }
 
 static int
-finish_dispatch(const char *name, struct pipe_context *pipe,
-                unsigned expected_dispatches, GLbitfield barriers)
+finish_dispatch(const char *name, unsigned expected_dispatches, GLbitfield barriers)
 {
    unsigned dispatches = 0;
    if (!check_gl("dispatch"))
@@ -126,19 +125,18 @@ finish_dispatch(const char *name, struct pipe_context *pipe,
    if (!check_gl("barrier"))
       return 0;
    glFinish();
-   int status = ps5_context_last_compute_status(pipe, &dispatches);
+   int status = ps5_egl_current_compute_status(&dispatches);
    printf(TAG "%s native status=%d dispatches=%u expected=%u\n",
           name, status, dispatches, expected_dispatches);
    return check_gl("dispatch finish") && !status && dispatches == expected_dispatches;
 }
 
 static int
-dispatch_checked(const char *name, struct pipe_context *pipe,
-                 unsigned expected_dispatches, GLbitfield barriers)
+dispatch_checked(const char *name, unsigned expected_dispatches, GLbitfield barriers)
 {
    printf(TAG "%s dispatch begin\n", name);
    glDispatchCompute(1, 1, 1);
-   return finish_dispatch(name, pipe, expected_dispatches, barriers);
+   return finish_dispatch(name, expected_dispatches, barriers);
 }
 
 /* Only the bounded 192-ID, 64-shared and 3-command-word fixtures use these. */
@@ -178,7 +176,7 @@ check_words(const char *name, GLuint buffer, const uint32_t *expected, unsigned 
 }
 
 static int
-reject_indirect(const char *name, struct pipe_context *pipe, GLintptr offset,
+reject_indirect(const char *name, GLintptr offset,
                 GLenum expected_error, unsigned expected_dispatches)
 {
    unsigned dispatches = 0;
@@ -188,7 +186,7 @@ reject_indirect(const char *name, struct pipe_context *pipe, GLintptr offset,
    glDispatchComputeIndirect(offset);
    GLenum error = glGetError();
    glFinish();
-   int status = ps5_context_last_compute_status(pipe, &dispatches);
+   int status = ps5_egl_current_compute_status(&dispatches);
    printf(TAG "%s error=%x expected=%x status=%d dispatches=%u expected=%u\n",
           name, error, expected_error, status, dispatches, expected_dispatches);
    return check_gl("indirect negative finish") && error == expected_error &&
@@ -401,10 +399,7 @@ main(void)
    glFinish();
    if (!check_gl("setup") || !buffers[0] || !buffers[1])
       goto cleanup;
-   struct gl_context *mesa = _mesa_get_current_context();
-   if (!mesa || !mesa->pipe)
-      goto cleanup;
-   (void)ps5_context_last_compute_status(mesa->pipe, &baseline);
+   (void)ps5_egl_current_compute_status(&baseline);
 
    for (unsigned pass = 0; pass < 2; ++pass) {
       uint32_t words[80], readback[80], input[8];
@@ -435,7 +430,7 @@ main(void)
       puts(TAG "readback begin");
       glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(readback), readback);
       glFinish();
-      int status = ps5_context_last_compute_status(mesa->pipe, &dispatches);
+      int status = ps5_egl_current_compute_status(&dispatches);
       printf(TAG "pass=%u native status=%d dispatches=%u baseline=%u\n",
              pass, status, dispatches, baseline);
       if (!check_gl("readback/finish") || status || dispatches != baseline + pass + 1)
@@ -487,13 +482,13 @@ main(void)
       glUniform1i(destination, 0);
       glUniform1f(value, pass ? 0.75f : 0.25f);
       if (!check_gl("image uniforms") ||
-          !dispatch_checked("image writer", mesa->pipe, baseline + 3 + pass * 3,
+          !dispatch_checked("image writer", baseline + 3 + pass * 3,
                             GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT))
          goto cleanup;
       glUseProgram(extra_programs[1]);
       glUniform1i(sampler, 0);
       if (!reset_output(buffers[1]) ||
-          !dispatch_checked("texture sampler", mesa->pipe, baseline + 4 + pass * 3,
+          !dispatch_checked("texture sampler", baseline + 4 + pass * 3,
                             GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT) ||
           !check_buffer("sampled image", GL_SHADER_STORAGE_BUFFER, buffers[1],
                         pass ? UINT32_C(0x3f400000) : UINT32_C(0x3e800000)))
@@ -511,7 +506,7 @@ main(void)
        * alignment correction when lowering binding 7 to a shader buffer. */
       glBindBufferRange(GL_ATOMIC_COUNTER_BUFFER, 7, atomic_buffer, 20, 16);
       if (!reset_output(buffers[1]) ||
-          !dispatch_checked("atomic counter", mesa->pipe, baseline + 5 + pass * 3,
+          !dispatch_checked("atomic counter", baseline + 5 + pass * 3,
                             GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT |
                             GL_BUFFER_UPDATE_BARRIER_BIT) ||
           !check_buffer("atomic returned", GL_SHADER_STORAGE_BUFFER, buffers[1], initial_counter) ||
@@ -530,7 +525,7 @@ main(void)
    glBufferSubData(GL_UNIFORM_BUFFER, 16, sizeof(restored_input), restored_input);
    glBindBufferRange(GL_UNIFORM_BUFFER, 0, buffers[0], 16, 16);
    if (!reset_output(buffers[1]) ||
-       !dispatch_checked("restored defaults+UBO", mesa->pipe, baseline + 9,
+       !dispatch_checked("restored defaults+UBO", baseline + 9,
                          GL_SHADER_STORAGE_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT |
                          GL_BUFFER_UPDATE_BARRIER_BIT) ||
        !check_buffer("restored output", GL_SHADER_STORAGE_BUFFER, buffers[1], 20) ||
@@ -558,21 +553,21 @@ main(void)
       goto cleanup;
    puts(TAG "3D IDs direct dispatch begin");
    glDispatchCompute(2, 3, 2);
-   if (!finish_dispatch("3D IDs direct", mesa->pipe, baseline + 10,
+   if (!finish_dispatch("3D IDs direct", baseline + 10,
                         GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT) ||
        !check_words("3D IDs direct", grid_buffers[0], ids_expected, 208))
       goto cleanup;
 
    glUseProgram(grid_programs[1]);
    if (!reset_results(grid_buffers[0], 64) ||
-       !dispatch_checked("shared xor32", mesa->pipe, baseline + 11,
+       !dispatch_checked("shared xor32", baseline + 11,
                          GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT) ||
        !check_words("shared xor32", grid_buffers[0], shared_expected, 80))
       goto cleanup;
 
    glUseProgram(grid_programs[2]);
    if (!reset_results(grid_buffers[1], 3) ||
-       !dispatch_checked("indirect arguments", mesa->pipe, baseline + 12,
+       !dispatch_checked("indirect arguments", baseline + 12,
                          GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT |
                          GL_BUFFER_UPDATE_BARRIER_BIT) ||
        !check_words("indirect arguments", grid_buffers[1], commands_expected, 19))
@@ -580,14 +575,14 @@ main(void)
    /* Check the GPU-generated counts before allowing indirect submission. */
    glUseProgram(grid_programs[0]);
    glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
-   if (!reject_indirect("missing indirect buffer", mesa->pipe, 32,
+   if (!reject_indirect("missing indirect buffer", 32,
                         GL_INVALID_OPERATION, baseline + 12))
       goto cleanup;
    glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, grid_buffers[1]);
-   if (!reject_indirect("misaligned indirect offset", mesa->pipe, 2,
+   if (!reject_indirect("misaligned indirect offset", 2,
                         GL_INVALID_VALUE, baseline + 12) ||
        /* 76-byte allocation: offset 68 leaves only 8 bytes, not the required 12. */
-       !reject_indirect("short indirect command range", mesa->pipe, 68,
+       !reject_indirect("short indirect command range", 68,
                         GL_INVALID_OPERATION, baseline + 12) ||
        !reset_results(grid_buffers[0], 192))
       goto cleanup;
@@ -596,7 +591,7 @@ main(void)
       goto cleanup;
    puts(TAG "3D IDs indirect offset=32 dispatch begin");
    glDispatchComputeIndirect(32);
-   if (!finish_dispatch("3D IDs indirect", mesa->pipe, baseline + 13,
+   if (!finish_dispatch("3D IDs indirect", baseline + 13,
                         GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT) ||
        !check_words("3D IDs indirect", grid_buffers[0], ids_expected, 208) ||
        !check_words("indirect arguments unchanged", grid_buffers[1], commands_expected, 19))
@@ -606,7 +601,7 @@ main(void)
    glUniform1ui(addend, 7);
    glBindBufferRange(GL_UNIFORM_BUFFER, 0, buffers[0], 16, 16);
    if (!reset_output(buffers[1]) ||
-       !dispatch_checked("post-indirect defaults+UBO", mesa->pipe, baseline + 14,
+       !dispatch_checked("post-indirect defaults+UBO", baseline + 14,
                          GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT) ||
        !check_buffer("post-indirect output", GL_SHADER_STORAGE_BUFFER, buffers[1], 20))
       goto cleanup;
@@ -693,7 +688,7 @@ main(void)
                      pass ? 1.0f : 0.0f, pass ? 0.0f : 1.0f);
          glBindImageTexture(0, normalized_textures[format], 0, GL_FALSE, 0, GL_WRITE_ONLY, internal_format);
          if (!check_gl("normalized store binding") ||
-             !dispatch_checked(store_name, mesa->pipe, baseline + 15 + format * 4 + pass * 2,
+             !dispatch_checked(store_name, baseline + 15 + format * 4 + pass * 2,
                                GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT))
             goto cleanup;
          printf(TAG "%s raw texture readback begin\n", name);
@@ -735,7 +730,7 @@ main(void)
          glUniform1i(source_image, 0);
          glBindImageTexture(0, normalized_textures[format], 0, GL_FALSE, 0, GL_READ_ONLY, internal_format);
          if (!reset_output(buffers[1]) ||
-             !dispatch_checked(load_name, mesa->pipe, baseline + 16 + format * 4 + pass * 2,
+             !dispatch_checked(load_name, baseline + 16 + format * 4 + pass * 2,
                                GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT |
                                GL_SHADER_IMAGE_ACCESS_BARRIER_BIT) ||
              !check_words(load_name, buffers[1], expected, 80))
@@ -794,7 +789,7 @@ main(void)
       glUseProgram(robust_program);
       glUniform1ui(glGetUniformLocation(robust_program, "index"), 4);
       if (!check_gl("robust setup") ||
-          !dispatch_checked("robust SSBO bounds", mesa->pipe, baseline + 27,
+          !dispatch_checked("robust SSBO bounds", baseline + 27,
                             GL_SHADER_STORAGE_BARRIER_BIT |
                             GL_BUFFER_UPDATE_BARRIER_BIT))
          goto cleanup;
@@ -836,7 +831,7 @@ main(void)
    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, capacity_buffer, 32, capacity_bytes);
    glUseProgram(capacity_program);
    if (!check_gl("capacity ranges") ||
-       !dispatch_checked("128MiB unsized capacity", mesa->pipe, baseline + 28,
+       !dispatch_checked("128MiB unsized capacity", baseline + 28,
                          GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT) ||
        !check_buffer("capacity length", GL_SHADER_STORAGE_BUFFER, buffers[1], UINT32_C(33554432)))
       goto cleanup;

@@ -764,7 +764,7 @@ gl46_stress_compute_api.o: egl_public_compute_api.c $(DRIVER)/ps5_screen.h
 		-Dmain=ps5_stress_compute_api_main -c -o $@ $<
 
 gl46_stress_compute_render.o: egl_public_compute_render.c $(DRIVER)/ps5_screen.h
-	$(CC) $(CFLAGS) $(PSBC_CFLAGS) \
+	$(CC) $(CFLAGS) $(PSBC_CFLAGS) -DNDEBUG -DHAVE_FUNC_ATTRIBUTE_UNUSED=1 \
 		-DPS5_SCANOUT_HEIGHT=$(or $(PS5_SCANOUT_HEIGHT),1080) \
 		-Dmain=ps5_stress_compute_render_main \
 		-Wno-unreachable-code-generic-assoc -c -o $@ $<
@@ -854,7 +854,7 @@ compute-render-config-force:
 
 egl_public_compute_render.o: egl_public_compute_render.c $(DRIVER)/ps5_screen.h \
 	$(PSBC)/libpsbc/psbc_compile.h compute-render-config-force
-	$(CC) $(CFLAGS) $(PSBC_CFLAGS) \
+	$(CC) $(CFLAGS) $(PSBC_CFLAGS) -DNDEBUG -DHAVE_FUNC_ATTRIBUTE_UNUSED=1 \
 		-DPS5_SCANOUT_HEIGHT=$(or $(PS5_SCANOUT_HEIGHT),1080) \
 		-Wno-unreachable-code-generic-assoc -c -o $@ $<
 

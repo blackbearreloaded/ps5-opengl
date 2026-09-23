@@ -747,12 +747,12 @@ ps5_agc_compute_execute(struct pipe_screen *screen,
       goto cleanup;
    const PsbcShaderMetadata *m = &shader->metadata;
    for (unsigned i = 0; i < buffer_count; ++i)
-      if (ps5_resource_info(buffers[i], &addresses[i], &sizes[i], &allocation_sizes[i]) ||
+      if (ps5_resource_gpu_info(buffers[i], &addresses[i], &sizes[i], &allocation_sizes[i]) ||
           !addresses[i] || !sizes[i] || sizes[i] > allocation_sizes[i] ||
           allocation_sizes[i] > UINT32_MAX)
          goto cleanup;
    if (m->descriptor_set0_valid) {
-      if (ps5_resource_info(descriptors, &table, &table_size, &table_allocation_size) ||
+      if (ps5_resource_gpu_info(descriptors, &table, &table_size, &table_allocation_size) ||
           !table || ((uintptr_t)table & 15u) ||
           (uintptr_t)table >> 32 != m->address32_hi || !table_size ||
           table_size > table_allocation_size || table_allocation_size > UINT32_MAX ||

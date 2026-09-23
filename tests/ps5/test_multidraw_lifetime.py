@@ -1339,7 +1339,7 @@ with tempfile.TemporaryDirectory() as tmp:
 print("PASS: eight in-flight resource snapshots, FIFO wraparound, oldest-only backpressure, zero/finite/infinite fence waits and old-fence isolation")
 
 # The queue test alone cannot prove that CPU access / lifecycle entry points drain.
-for name in ("ps5_resource_info", "ps5_resource_stencil_info",
+for name in ("ps5_resource_get_info", "ps5_resource_stencil_info",
              "ps5_flush", "ps5_context_last_draw_status", "ps5_context_destroy", "ps5_screen_destroy"):
     start = source.index("\n" + name + "(")
     function = source[start:source.index("\n}\n", start)]

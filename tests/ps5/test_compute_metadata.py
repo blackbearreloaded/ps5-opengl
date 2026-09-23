@@ -17,7 +17,9 @@ backend = (ROOT / "src/platform/ps5_agc_runtime_backend.c").read_text()
 probe = (ROOT / "tests/ps5/egl_public_compute_probe.c").read_text()
 probe = probe[probe.index("#define BUFFER_SPILL_VECTORS"):probe.index("int main(void)")]
 compute_at = backend.index("int\nps5_agc_compute_execute(")
-compute = backend[compute_at:backend.index("\n#endif", compute_at)]
+compute = backend[compute_at:backend.index("\n}\n#endif", compute_at) + 2]
+release_at = runtime.index("static uint32_t *runtime_release_completion(")
+release = runtime[release_at:runtime.index("\n}\n", release_at) + 3]
 parser_at = runtime.index("static int shader_sections(")
 parsers = runtime[parser_at:runtime.index("static int load_apis(", parser_at)]
 types_at = runtime.index("typedef struct agc_register {")
@@ -86,7 +88,7 @@ static uint32_t saved_expected;
 #define MAP_PROTECTION 0x33
 static void ps5_screen_submit_lock(struct pipe_screen *s) { assert(s && !locked); locked=1; }
 static void ps5_screen_submit_unlock(struct pipe_screen *s) { assert(s && locked); locked=0; }
-static int ps5_resource_info(struct pipe_resource *r, void **p, size_t *n, size_t *a) {
+static int ps5_resource_gpu_info(struct pipe_resource *r, void **p, size_t *n, size_t *a) {
     assert(!locked); /* The real function drains graphics under the same mutex. */
     if (!r) return -1;
     if (p) *p=r->data;
@@ -95,6 +97,7 @@ static int ps5_resource_info(struct pipe_resource *r, void **p, size_t *n, size_
     return 0;
 }
 static void runtime_require_retirement(int done) { assert(done); }
+
 static int64_t sceKernelGetDirectMemorySize(void) { return direct_size; }
 static int sceKernelAllocateDirectMemory(int64_t a, int64_t b, size_t n, size_t align,
                                          int type, int64_t *p) {
@@ -119,6 +122,7 @@ static int sceKernelReleaseDirectMemory(int64_t p, size_t n) {
     assert(locked && p==1 && n && allocations); --allocations; return 0;
 }
 static void sceKernelUsleep(uint32_t n) { assert(n==1000); }
+static unsigned runtime_completion_pause(int64_t *deadline) { (void)deadline; sceKernelUsleep(1000); return 1; }
 static void flush_gpu_data(const void *p, size_t n) {
     assert(locked && p && n); ++flushes;
     if(p==watched_resource) { assert(n==watched_allocation); ++watched_flushes; }
@@ -157,7 +161,7 @@ uint32_t *sceAgcCbDispatch(void *p, uint32_t x, uint32_t y, uint32_t z, uint32_t
 }
 static uint32_t *release(void *p, uint8_t a, int16_t g, uint64_t s, int8_t d, void *dest,
                          uint32_t select, uint64_t data, uint16_t i, uint16_t c, int8_t e, int32_t r) {
-    assert(a==40 && g==0x30c && !s && !d && dest && select==1 && !i && !c && !e && !r);
+    assert(a==40 && g==0x30c && !s && !d && dest && select==2 && !i && !c && e==3 && !r);
     saved_marker=dest; saved_expected=data; return emit(p);
 }
 static int submit(void *p) {
@@ -193,7 +197,7 @@ code = r'''
 #include <string.h>
 #include "compiler/nir/nir_builder.h"
 #include "ps5_agc_package.h"
-''' + types + mock + parsers + compute + "\n" + probe + r'''
+''' + types + mock + parsers + release + compute + "\n" + probe + r'''
 static void submission_contract(PsbcShaderOutput *out) {
     expect_private=out->metadata.compute_private_stride!=0;
     expect_scratch=out->metadata.scratch_buffer_backed;

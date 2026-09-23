@@ -35,6 +35,9 @@ int ps5_shader_state_info(void *state, size_t *machine_code_size,
                           unsigned *unresolved_fields);
 int ps5_resource_info(struct pipe_resource *resource, void **address,
                       size_t *logical_size, size_t *allocation_size);
+/* Internal GPU address lookup: does not grant unsynchronized CPU access. */
+int ps5_resource_gpu_info(struct pipe_resource *resource, void **address,
+                          size_t *logical_size, size_t *allocation_size);
 /* Internal typed-image descriptors and exact owned-view validation. */
 int ps5_resource_storage_image_descriptor(struct pipe_resource *resource,
                                           unsigned level,

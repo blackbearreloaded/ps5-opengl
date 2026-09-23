@@ -124,6 +124,6 @@ with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
                         *defines, "-x", "c", "-", "-o", str(exe)], input=code, text=True, check=True)
         subprocess.run([str(exe)], check=True)
-create = source[source.index("ps5_resource_create_unlocked("):source.index("ps5_resource_info(")]
+create = source[source.index("ps5_resource_create_unlocked("):source.index("ps5_resource_get_info(")]
 assert "munmap(" not in create + destroy and "sceKernelReleaseDirectMemory(" not in create + destroy
 print("PASS: resource release order, failed-unmap retention, fail-stop, split stencil and arena ownership")

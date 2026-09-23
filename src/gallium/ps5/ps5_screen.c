@@ -2427,6 +2427,11 @@ ps5_flush_gpu_data(const void *address, size_t bytes)
 #endif
 }
 
+#include "../../platform/ps5_cache_profile.h"
+#ifdef PS5_DRAW_PROFILE
+#define ps5_flush_gpu_data(address, bytes) PS5_CACHE_MEASURE(ps5_flush_gpu_data, address, bytes)
+#endif
+
 static bool
 ps5_texel_buffer_descriptor(const struct pipe_sampler_view *view,
                             uint32_t address32_hi, uint32_t descriptor[4])
@@ -5126,19 +5131,24 @@ ps5_resource_create(struct pipe_screen *screen,
    return resource;
 }
 
-int
-ps5_resource_info(struct pipe_resource *base, void **address,
-                  size_t *logical_size, size_t *allocation_size)
+static int
+ps5_resource_get_info(struct pipe_resource *base, void **address,
+                  size_t *logical_size, size_t *allocation_size, bool cpu_export)
 {
    struct ps5_resource *resource = (struct ps5_resource *)base;
 
-   ps5_draw_batch_drain();
-   if (base && (base->bind & PIPE_BIND_DISPLAY_TARGET))
+   if (cpu_export) {
+      ps5_draw_batch_drain();
+      if (base && (base->bind & PIPE_BIND_DISPLAY_TARGET))
+         ps5_draw_batch_drain_buffer(base);
+   } else {
       ps5_draw_batch_drain_buffer(base);
+   }
    if (!resource)
       return -1;
    if (address) {
-      resource->external_cpu_access = true;
+      if (cpu_export)
+         resource->external_cpu_access = true;
       *address = resource->data;
    }
    if (logical_size)
@@ -5146,6 +5156,21 @@ ps5_resource_info(struct pipe_resource *base, void **address,
    if (allocation_size)
       *allocation_size = resource->allocation_size;
    return 0;
+}
+int
+ps5_resource_info(struct pipe_resource *base, void **address,
+                  size_t *logical_size, size_t *allocation_size)
+{
+   return ps5_resource_get_info(base, address, logical_size, allocation_size, true);
+}
+
+/* Internal GPU access does not export a writable CPU pointer. CPU writes must
+ * still use transfers/subdata; existing persistent/exported flags remain set. */
+int
+ps5_resource_gpu_info(struct pipe_resource *base, void **address,
+                      size_t *logical_size, size_t *allocation_size)
+{
+   return ps5_resource_get_info(base, address, logical_size, allocation_size, false);
 }
 
 int

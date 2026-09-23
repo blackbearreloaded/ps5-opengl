@@ -122,6 +122,17 @@ ps5_egl_current_draw_status(unsigned *draw_calls)
                                        draw_calls);
 }
 
+int
+ps5_egl_current_compute_status(unsigned *dispatches)
+{
+   if (!ps5_current_context || !ps5_current_context->st ||
+       !ps5_current_context->st->pipe)
+      return -100;
+   _mesa_glthread_finish(ps5_current_context->st->ctx);
+   return ps5_context_last_compute_status(ps5_current_context->st->pipe,
+                                          dispatches);
+}
+
 static void
 ps5_set_error(EGLint error)
 {

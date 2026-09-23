@@ -869,6 +869,10 @@ static uint8_t command_out_of_space(agc_command_buffer_t *, uint32_t, void *);
 
 #if defined(AGC_RUNTIME_PACKAGES)
 static void flush_gpu_data(const void *address, size_t bytes);
+#include "ps5_cache_profile.h"
+#ifdef PS5_DRAW_PROFILE
+#define flush_gpu_data(address, bytes) PS5_CACHE_MEASURE(flush_gpu_data, address, bytes)
+#endif
 
 static video_api_t runtime_video_api;
 static int runtime_video_handle = -1;
@@ -2229,7 +2233,7 @@ static int dump_depth_register_template(void *agc_module)
 }
 #endif
 
-static void flush_gpu_data(const void *address, size_t bytes)
+static void (flush_gpu_data)(const void *address, size_t bytes)
 {
 #ifdef PS5_NATIVE_TITLE_RUNTIME
     if (bytes)
