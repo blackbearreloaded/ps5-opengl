@@ -6669,3 +6669,42 @@ index 0000000..e6f9a71
 +    gl_Position = in_position;
 +    captured_position = in_position;
 +}
+diff --git a/src/c11/impl/threads_posix.c b/src/c11/impl/threads_posix.c
+index 6db8c42..4c1bb66 100644
+--- a/src/c11/impl/threads_posix.c
++++ b/src/c11/impl/threads_posix.c
+@@ -252,7 +252,20 @@ thrd_create(thrd_t *thr, thrd_start_t func, void *arg)
+     if (!pack) return thrd_nomem;
+     pack->func = func;
+     pack->arg = arg;
+-    if (pthread_create(thr, NULL, impl_thrd_routine, pack) != 0) {
++#ifdef OPENGNM_PSBC_ORBIS
++    /* Native default stacks cannot hold NIR linker scratch arrays. */
++    pthread_attr_t attr;
++    int result = pthread_attr_init(&attr);
++    if (result == 0) {
++        result = pthread_attr_setstacksize(&attr, 8u * 1024u * 1024u);
++        if (result == 0)
++            result = pthread_create(thr, &attr, impl_thrd_routine, pack);
++        pthread_attr_destroy(&attr);
++    }
++#else
++    int result = pthread_create(thr, NULL, impl_thrd_routine, pack);
++#endif
++    if (result != 0) {
+         free(pack);
+         return thrd_error;
+     }
+diff --git a/src/util/futex.c b/src/util/futex.c
+index b600915..1b1c791 100644
+--- a/src/util/futex.c
++++ b/src/util/futex.c
+@@ -56,7 +56,7 @@ int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout)
+                     FUTEX_BITSET_MATCH_ANY);
+ }
+ 
+-#elif defined(__ORBIS__)
++#elif defined(__ORBIS__) && !defined(__PROSPERO__)
+ 
+ #include <errno.h>
+ #include <pthread.h>

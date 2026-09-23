@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <EGL/egl.h>
@@ -111,6 +112,9 @@ static int check_pixels(unsigned green, int band0_black)
 
 int main(void)
 {
+#ifdef PS5_GLTHREAD_TEST
+   if (setenv("PS5_GLTHREAD", "1", 1) != 0) return 1;
+#endif
    const EGLint ca[] = {EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
       EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
 #ifdef PS5_DEPTH_BATCH_TEST

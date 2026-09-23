@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -43,6 +44,9 @@ compile_shader(GLenum type, const char *source, GLuint *result)
 int
 main(void)
 {
+#ifdef PS5_GLTHREAD_TEST
+   if (setenv("PS5_GLTHREAD", "1", 1) != 0) return 1;
+#endif
    static const char *vertex_source =
       "#version 330 core\n"
       "layout(location=0) in vec2 position;\n"

@@ -18,6 +18,8 @@ sdk=${PS5_PAYLOAD_SDK:-"$template/.deps/native/ps5-payload-sdk"}
     exit 2
 }
 
+# Compiler sources are a separate build graph; never install a stale archive.
+PS5_PAYLOAD_SDK="$sdk" bash "$root/toolchain/build-opengnm-psbc-ps5.sh" --if-needed
 make -C "$root/tests/ps5" --no-print-directory -f native-app.mk -j8 \
     PS5_PAYLOAD_SDK="$sdk" runtime
 

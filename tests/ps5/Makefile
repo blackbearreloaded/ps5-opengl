@@ -2069,6 +2069,9 @@ egl_public_core33_multidraw_texture.o: egl_public_core33_multidraw_batch.c
 egl_public_core33_deferred_draw.o: egl_public_core33_multidraw_batch.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_NATIVE_MULTIDRAW_TEST=1 -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 -c -o $@ $<
 
+egl_public_core33_glthread.o: egl_public_core33_multidraw_batch.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_NATIVE_MULTIDRAW_TEST=1 -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 -DPS5_GLTHREAD_TEST=1 -c -o $@ $<
+
 egl_public_core33_rgba8_vertex.o: egl_public_core33_multidraw_batch.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_NATIVE_MULTIDRAW_TEST=1 -DPS5_MULTIDRAW_TEXTURE_TEST=1 -DPS5_DEFERRED_DRAW_TEST=1 -DPS5_RGBA8_VERTEX_TEST=1 -c -o $@ $<
 
@@ -2396,3 +2399,15 @@ clean:
 		egl_public_core33_visible_animation.o \
 		egl_public_packed_vertex.elf \
 		egl_public_packed_vertex.o
+
+egl_public_core33_context_share_glthread.o: egl_public_core33_context_share.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_GLTHREAD_TEST=1 -c -o $@ $<
+
+egl_public_gl46_compat_glthread.o: egl_public_gl46_compat.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_GLTHREAD_TEST=1 -c -o $@ $<
+
+egl_public_core33_futex.o: egl_public_core33_futex.c
+	$(CC) $(CFLAGS) -DPS5_CLOCK_COST_TEST=1 -c -o $@ $<
+
+egl_public_core33_pc_sample.o: egl_public_core33_pc_sample.c
+	$(CC) $(CFLAGS) -c -o $@ $<

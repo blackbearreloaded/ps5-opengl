@@ -643,6 +643,8 @@ ps5_select_tessellation_pipeline(struct ps5_context *context,
 static bool
 ps5_geometry_ring_itemsize(const PsbcShaderMetadata *metadata,
                            uint32_t *itemsize);
+static void ps5_context_profile_report(struct ps5_context *context);
+
 static bool
 ps5_render_condition_passes(const struct ps5_context *context);
 static unsigned
@@ -9511,6 +9513,10 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       return;
    }
    context->draw_calls++;
+#ifdef PS5_DRAW_PROFILE
+   if (context->draw_calls % 10000u == 0)
+      ps5_context_profile_report(context);
+#endif
    if (!ps5_render_condition_passes(context)) {
       context->last_draw_status = 0;
       return;
@@ -16053,20 +16059,8 @@ ps5_context_last_compute_status(struct pipe_context *base, unsigned *dispatches)
 }
 
 static void
-ps5_context_destroy(struct pipe_context *base)
+ps5_context_profile_report(struct ps5_context *context)
 {
-   struct ps5_context *context = (struct ps5_context *)base;
-   unsigned index;
-
-   ps5_draw_batch_drain();
-#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DEFERRED_DRAW_BATCH)
-   printf("[ps5-descriptor-reuse] hits=%" PRIu64 " misses=%" PRIu64 " retained=%u\n",
-          context->descriptor_cache_hits, context->descriptor_cache_misses,
-          context->descriptor_cache_count[0] + context->descriptor_cache_count[1] +
-          context->descriptor_cache_count[2]);
-   ps5_descriptor_cache_clear(context);
-#endif
-
 #ifdef PS5_DRAW_PROFILE
 #ifdef PS5_NATIVE_TITLE_RUNTIME
    ps5_prepare_report();
@@ -16122,6 +16116,24 @@ ps5_context_destroy(struct pipe_context *base)
       printf("[ps5-framebuffer-fallback] overflow=%" PRIu64 "\n",
              context->framebuffer_fallback_overflow);
 #endif
+}
+
+static void
+ps5_context_destroy(struct pipe_context *base)
+{
+   struct ps5_context *context = (struct ps5_context *)base;
+   unsigned index;
+
+   ps5_draw_batch_drain();
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DEFERRED_DRAW_BATCH)
+   printf("[ps5-descriptor-reuse] hits=%" PRIu64 " misses=%" PRIu64 " retained=%u\n",
+          context->descriptor_cache_hits, context->descriptor_cache_misses,
+          context->descriptor_cache_count[0] + context->descriptor_cache_count[1] +
+          context->descriptor_cache_count[2]);
+   ps5_descriptor_cache_clear(context);
+#endif
+
+   ps5_context_profile_report(context);
    for (index = 0; index < PS5_COMPUTE_BUFFER_SLOTS; ++index)
       pipe_resource_reference(&context->compute_buffers[index].buffer, NULL);
    for (index = 0; index < PS5_COMPUTE_STORAGE_SLOTS; ++index)
@@ -16410,6 +16422,11 @@ ps5_screen_create(void)
    screen->base.get_timestamp = ps5_get_timestamp;
 
    caps = (struct pipe_caps *)&screen->base.caps;
+   /* Buffer-only unsynchronized maps don't touch context state. Their callers
+    * own disjoint ranges; explicit flush/unmap publishes the changed bytes. */
+   const char *threaded = getenv("PS5_GLTHREAD");
+   caps->map_unsynchronized_thread_safe = threaded && !strcmp(threaded, "1");
+   caps->allow_mapped_buffers_during_execution = caps->map_unsynchronized_thread_safe;
    caps->max_label_length = 256; /* Mesa's software object-label storage. */
    caps->graphics = true;
    caps->accelerated = 1;

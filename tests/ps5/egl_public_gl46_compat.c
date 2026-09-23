@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <EGL/egl.h>
@@ -151,6 +152,9 @@ shared_worker(void *data)
 int
 main(void)
 {
+#ifdef PS5_GLTHREAD_TEST
+   if (setenv("PS5_GLTHREAD", "1", 1) != 0) return 1;
+#endif
    static const char *material_vs =
       "#version 460 compatibility\n"
       "layout(location=0) in vec2 position;\n"

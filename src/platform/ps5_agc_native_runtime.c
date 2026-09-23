@@ -4685,6 +4685,8 @@ cleanup:
     if (profile_this_draw)
         runtime_profile_record(profile_ticks, profile_sleeps,
                                result || work_unmap_rc || work_release_rc);
+    if (runtime_prepare_profile_calls + runtime_profile_calls >= 10000u)
+        runtime_profile_report();
 #endif
 #ifdef PS5_DRAW_BATCH_PROBE
     printf("[ps5-batch-probe] repeats=%u wait_ns=%" PRId64 " result=%d\n",

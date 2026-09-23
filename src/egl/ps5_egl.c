@@ -15,6 +15,7 @@
 #include "frontend/api.h"
 #include "glapi/glapi/glapi.h"
 #include "main/context.h"
+#include "main/glthread.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_state.h"
 #include "ps5_screen.h"
@@ -116,6 +117,7 @@ ps5_egl_current_draw_status(unsigned *draw_calls)
    if (!ps5_current_context || !ps5_current_context->st ||
        !ps5_current_context->st->pipe)
       return -100;
+   _mesa_glthread_finish(ps5_current_context->st->ctx);
    return ps5_context_last_draw_status(ps5_current_context->st->pipe,
                                        draw_calls);
 }
@@ -355,6 +357,14 @@ eglGetDisplay(EGLNativeDisplayType display_id)
    return (EGLDisplay)&ps5_display;
 }
 
+static void
+ps5_background_context(struct st_context *st, struct util_queue_monitoring *stats)
+{
+   /* No window-system thread binding is required. Mesa installs its GL TLS. */
+   (void)st;
+   (void)stats;
+}
+
 EGLAPI EGLBoolean EGLAPIENTRY
 eglInitialize(EGLDisplay display, EGLint *major, EGLint *minor)
 {
@@ -373,6 +383,7 @@ eglInitialize(EGLDisplay display, EGLint *major, EGLint *minor)
       memset(&ps5_display.frontend, 0, sizeof(ps5_display.frontend));
       ps5_display.frontend.screen = ps5_display.screen;
       ps5_display.frontend.get_param = ps5_frontend_get_param;
+      ps5_display.frontend.set_background_context = ps5_background_context;
       ps5_display.next_drawable_id = 1;
 
       struct pipe_resource resource;
@@ -788,6 +799,11 @@ eglCreateContext(EGLDisplay display, EGLConfig config, EGLContext share,
                     EGL_BAD_ALLOC : EGL_BAD_MATCH);
       return EGL_NO_CONTEXT;
    }
+   const char *threaded = getenv("PS5_GLTHREAD");
+   if (threaded && !strcmp(threaded, "1")) {
+      _mesa_glthread_init(context->st->ctx);
+      printf("[ps5-egl] glthread=%u\n", context->st->ctx->GLThread.enabled);
+   }
    context->magic = PS5_EGL_CONTEXT_MAGIC;
    context->config_id = config == EGL_NO_CONFIG_KHR ? 0 : 1;
    context->major = major;
@@ -820,6 +836,8 @@ eglMakeCurrent(EGLDisplay display, EGLSurface draw_handle,
    }
    if (context_handle == EGL_NO_CONTEXT && draw_handle == EGL_NO_SURFACE &&
        read_handle == EGL_NO_SURFACE) {
+      if (ps5_current_context)
+         _mesa_glthread_finish(ps5_current_context->st->ctx);
       if (!st_api_make_current(NULL, NULL, NULL)) {
          ps5_set_error(EGL_BAD_ACCESS);
          return EGL_FALSE;
@@ -844,6 +862,10 @@ eglMakeCurrent(EGLDisplay display, EGLSurface draw_handle,
          ps5_set_error(EGL_BAD_ACCESS);
          return EGL_FALSE;
       }
+      if (ps5_current_context)
+         _mesa_glthread_finish(ps5_current_context->st->ctx);
+      if (context != ps5_current_context)
+         _mesa_glthread_finish(context->st->ctx);
       if (!st_api_make_current(context->st, NULL, NULL)) {
          ps5_set_error(EGL_BAD_MATCH);
          return EGL_FALSE;
@@ -865,6 +887,10 @@ eglMakeCurrent(EGLDisplay display, EGLSurface draw_handle,
       ps5_set_error(EGL_BAD_ACCESS);
       return EGL_FALSE;
    }
+   if (ps5_current_context)
+      _mesa_glthread_finish(ps5_current_context->st->ctx);
+   if (context != ps5_current_context)
+      _mesa_glthread_finish(context->st->ctx);
    if (!st_api_make_current(context->st, &draw->drawable, &read->drawable)) {
       ps5_set_error(EGL_BAD_MATCH);
       return EGL_FALSE;
@@ -913,6 +939,7 @@ eglSwapBuffers(EGLDisplay display, EGLSurface surface_handle)
       ps5_set_error(EGL_BAD_CURRENT_SURFACE);
       return EGL_FALSE;
    }
+   _mesa_glthread_finish(ps5_current_context->st->ctx);
    st_context_flush(ps5_current_context->st,
                     ST_FLUSH_FRONT | ST_FLUSH_END_OF_FRAME |
                        ((!surface->window || surface->swap_interval) ?
