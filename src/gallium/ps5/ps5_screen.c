@@ -1360,6 +1360,8 @@ static bool
 ps5_packed_vertex_format(enum pipe_format format)
 {
    switch (format) {
+   case PIPE_FORMAT_R8G8B8A8_SNORM:
+   case PIPE_FORMAT_R16G16_UNORM:
    case PIPE_FORMAT_R8G8B8A8_UNORM:
    case PIPE_FORMAT_B8G8R8A8_UNORM:
    case PIPE_FORMAT_R10G10B10A2_UNORM:
@@ -11402,7 +11404,7 @@ ps5_draw_batch_fence_submit(void)
 static bool
 ps5_draw_batch_fence_finish(uint64_t sequence, uint64_t timeout)
 {
-   const uint64_t start = os_time_get_nano();
+   const uint64_t start = timeout ? os_time_get_nano() : 0;
    for (;;) {
       simple_mtx_lock(&ps5_deferred_mutex);
       while (ps5_completed_sequence < sequence && ps5_inflight_count &&
@@ -11411,6 +11413,8 @@ ps5_draw_batch_fence_finish(uint64_t sequence, uint64_t timeout)
       simple_mtx_unlock(&ps5_deferred_mutex);
       if (complete)
          return true;
+      if (!timeout)
+         return false;
       uint64_t elapsed = (uint64_t)os_time_get_nano() - start;
       if (elapsed >= timeout)
          return false;
@@ -12973,6 +12977,12 @@ static bool
 ps5_vertex_format(enum pipe_format format, PsbcVertexFormat *out)
 {
    switch (format) {
+   case PIPE_FORMAT_R8G8B8A8_SNORM:
+      *out = PSBC_VERTEX_FORMAT_R8G8B8A8_SNORM;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R16G16_UNORM:
+      *out = PSBC_VERTEX_FORMAT_R16G16_UNORM;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
    case PIPE_FORMAT_R32_FLOAT:
       *out = PSBC_VERTEX_FORMAT_R32_FLOAT;
       return true;

@@ -527,7 +527,7 @@ index 945737d..b2755c7 100644
  
  	psbc_free_output(&output);
 diff --git a/libpsbc/psbc_compile.c b/libpsbc/psbc_compile.c
-index bacbc6a..9026125 100644
+index bacbc6a..0902318 100644
 --- a/libpsbc/psbc_compile.c
 +++ b/libpsbc/psbc_compile.c
 @@ -12,6 +12,7 @@
@@ -1722,7 +1722,7 @@ index bacbc6a..9026125 100644
          ac_info->has_fma_mix = true;
      } else if (gfxlevel == GFX10) {
          ac_info->max_waves_per_simd = 20;
-@@ -928,26 +1983,1310 @@ static void setup_target(PsbcTarget target,
+@@ -928,26 +1983,1312 @@ static void setup_target(PsbcTarget target,
      }
  }
  
@@ -2039,6 +2039,8 @@ index bacbc6a..9026125 100644
 +    case PSBC_VERTEX_FORMAT_R11G11B10_FLOAT: return PIPE_FORMAT_R11G11B10_FLOAT;
 +    case PSBC_VERTEX_FORMAT_B8G8R8A8_UNORM: return PIPE_FORMAT_B8G8R8A8_UNORM;
 +    case PSBC_VERTEX_FORMAT_R8G8B8A8_UNORM: return PIPE_FORMAT_R8G8B8A8_UNORM;
++    case PSBC_VERTEX_FORMAT_R8G8B8A8_SNORM: return PIPE_FORMAT_R8G8B8A8_SNORM;
++    case PSBC_VERTEX_FORMAT_R16G16_UNORM: return PIPE_FORMAT_R16G16_UNORM;
 +    case PSBC_VERTEX_FORMAT_R10G10B10A2_UNORM: return PIPE_FORMAT_R10G10B10A2_UNORM;
 +    case PSBC_VERTEX_FORMAT_B10G10R10A2_UNORM: return PIPE_FORMAT_B10G10R10A2_UNORM;
 +    case PSBC_VERTEX_FORMAT_R10G10B10A2_SNORM: return PIPE_FORMAT_R10G10B10A2_SNORM;
@@ -3038,7 +3040,7 @@ index bacbc6a..9026125 100644
  
      /* Ensure library is initialized */
      psbc_init();
-@@ -959,79 +3298,329 @@ PsbcResult psbc_compile_shader(
+@@ -959,79 +3300,329 @@ PsbcResult psbc_compile_shader(
      setup_target(opts->target, &gfxlevel, &chipfamily, &neo);
  
      /* Construct ac_compiler_info for the target GPU */
@@ -3417,7 +3419,7 @@ index bacbc6a..9026125 100644
  
      /* Determine previous stage for shader args declaration.
       * HS/GS need previous_stage=VERTEX so that the merged-pipeline args
-@@ -1046,19 +3635,40 @@ PsbcResult psbc_compile_shader(
+@@ -1046,19 +3637,40 @@ PsbcResult psbc_compile_shader(
      default:                    previous_stage = MESA_SHADER_NONE;      break;
      }
  
@@ -3463,7 +3465,7 @@ index bacbc6a..9026125 100644
          /* Convert emit_vertex to emit_vertex_with_counter */
          NIR_PASS(_, nir, nir_lower_gs_intrinsics,
                   nir_lower_gs_intrinsics_per_stream);
-@@ -1068,7 +3678,7 @@ PsbcResult psbc_compile_shader(
+@@ -1068,7 +3680,7 @@ PsbcResult psbc_compile_shader(
              .gfx_level = gfxlevel,
              .export_clipdist_mask = 0xff,
              .write_pos_to_clipvertex = true,
@@ -3472,7 +3474,7 @@ index bacbc6a..9026125 100644
              .disable_streamout = true,
          };
          nir_shader* gs_copy = NULL;
-@@ -1080,16 +3690,70 @@ PsbcResult psbc_compile_shader(
+@@ -1080,16 +3692,70 @@ PsbcResult psbc_compile_shader(
              ralloc_free(gs_copy);
      }
  
@@ -3547,7 +3549,7 @@ index bacbc6a..9026125 100644
          psbc_shutdown();
          return PSBC_RESULT_COMPILE_ACO;
      }
-@@ -1098,6 +3762,22 @@ PsbcResult psbc_compile_shader(
+@@ -1098,6 +3764,22 @@ PsbcResult psbc_compile_shader(
      struct radv_shader_binary_legacy* legacy =
          (struct radv_shader_binary_legacy*)binary;
  
@@ -3570,7 +3572,7 @@ index bacbc6a..9026125 100644
      /* The data layout in radv_shader_binary_legacy is:
       * [stats | code | ir | disasm | debug_info]
       * Code starts at offset stats_size. */
-@@ -1107,7 +3787,7 @@ PsbcResult psbc_compile_shader(
+@@ -1107,7 +3789,7 @@ PsbcResult psbc_compile_shader(
      /* Build the PS4/PS5 shader binary */
      const BuildContext buildctx = {
          .rinfo = &binary->info,
@@ -3579,7 +3581,7 @@ index bacbc6a..9026125 100644
          .config = &binary->config,
          .nir = nir,
          .gfx_level = gfxlevel,
-@@ -1116,28 +3796,130 @@ PsbcResult psbc_compile_shader(
+@@ -1116,28 +3798,130 @@ PsbcResult psbc_compile_shader(
          .psbc_stage = opts->stage,
          .spirv_data = spirv,
          .spirv_size = spirv_size,
@@ -3714,7 +3716,7 @@ index bacbc6a..9026125 100644
  }
  
  const char* psbc_result_string(PsbcResult result) {
-@@ -1149,6 +3931,7 @@ const char* psbc_result_string(PsbcResult result) {
+@@ -1149,6 +3933,7 @@ const char* psbc_result_string(PsbcResult result) {
      case PSBC_RESULT_COMPILE_ACO:      return "ACO shader compilation failed";
      case PSBC_RESULT_OUT_OF_MEMORY:    return "out of memory";
      case PSBC_RESULT_INTERNAL_ERROR:   return "internal error";
@@ -3723,7 +3725,7 @@ index bacbc6a..9026125 100644
      }
  }
 diff --git a/libpsbc/psbc_compile.h b/libpsbc/psbc_compile.h
-index 000e7e1..d2fd95a 100644
+index 000e7e1..d038c5a 100644
 --- a/libpsbc/psbc_compile.h
 +++ b/libpsbc/psbc_compile.h
 @@ -20,6 +20,11 @@
@@ -3738,7 +3740,7 @@ index 000e7e1..d2fd95a 100644
  /* === Types === */
  
  typedef enum {
-@@ -49,11 +54,178 @@ typedef enum {
+@@ -49,11 +54,180 @@ typedef enum {
      PSBC_RESULT_COMPILE_ACO,
      PSBC_RESULT_OUT_OF_MEMORY,
      PSBC_RESULT_INTERNAL_ERROR,
@@ -3793,6 +3795,8 @@ index 000e7e1..d2fd95a 100644
 +    PSBC_VERTEX_FORMAT_R64G64B64_FLOAT,
 +    PSBC_VERTEX_FORMAT_R64G64B64A64_FLOAT,
 +    PSBC_VERTEX_FORMAT_R11G11B10_FLOAT,
++    PSBC_VERTEX_FORMAT_R8G8B8A8_SNORM,
++    PSBC_VERTEX_FORMAT_R16G16_UNORM,
 +} PsbcVertexFormat;
 +
 +typedef struct {
@@ -3919,7 +3923,7 @@ index 000e7e1..d2fd95a 100644
  } PsbcShaderOutput;
  
  typedef struct {
-@@ -61,8 +233,71 @@ typedef struct {
+@@ -61,8 +235,71 @@ typedef struct {
      PsbcStage   stage;
      const char* entrypoint;  /* Default: "main" */
      bool        optimise;    /* Default: true */
@@ -3991,7 +3995,7 @@ index 000e7e1..d2fd95a 100644
  /* === API === */
  
  /*
-@@ -77,20 +312,26 @@ void psbc_init(void);
+@@ -77,20 +314,26 @@ void psbc_init(void);
   */
  void psbc_shutdown(void);
  
@@ -4023,7 +4027,7 @@ index 000e7e1..d2fd95a 100644
   */
  PsbcResult psbc_compile_shader(
      const uint32_t*       spirv,
-@@ -99,6 +340,55 @@ PsbcResult psbc_compile_shader(
+@@ -99,6 +342,55 @@ PsbcResult psbc_compile_shader(
      PsbcShaderOutput*     out
  );
  
@@ -5173,6 +5177,32 @@ index 705faaa..4038127 100644
        bool use_per_attribute_vb_descs : 1;
        bool has_prolog : 1;
        bool dynamic_inputs : 1;
+diff --git a/src/c11/impl/threads_posix.c b/src/c11/impl/threads_posix.c
+index 6db8c42..4c1bb66 100644
+--- a/src/c11/impl/threads_posix.c
++++ b/src/c11/impl/threads_posix.c
+@@ -252,7 +252,20 @@ thrd_create(thrd_t *thr, thrd_start_t func, void *arg)
+     if (!pack) return thrd_nomem;
+     pack->func = func;
+     pack->arg = arg;
+-    if (pthread_create(thr, NULL, impl_thrd_routine, pack) != 0) {
++#ifdef OPENGNM_PSBC_ORBIS
++    /* Native default stacks cannot hold NIR linker scratch arrays. */
++    pthread_attr_t attr;
++    int result = pthread_attr_init(&attr);
++    if (result == 0) {
++        result = pthread_attr_setstacksize(&attr, 8u * 1024u * 1024u);
++        if (result == 0)
++            result = pthread_create(thr, &attr, impl_thrd_routine, pack);
++        pthread_attr_destroy(&attr);
++    }
++#else
++    int result = pthread_create(thr, NULL, impl_thrd_routine, pack);
++#endif
++    if (result != 0) {
+         free(pack);
+         return thrd_error;
+     }
 diff --git a/src/compiler/glsl_types.c b/src/compiler/glsl_types.c
 index d1cbac2..92f89f3 100644
 --- a/src/compiler/glsl_types.c
@@ -5566,6 +5596,19 @@ index ef63f4e..bdb7fbd 100644
           /**
            * whether this shader has pixel_local_storage load/store instructions
            */
+diff --git a/src/util/futex.c b/src/util/futex.c
+index b600915..1b1c791 100644
+--- a/src/util/futex.c
++++ b/src/util/futex.c
+@@ -56,7 +56,7 @@ int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout)
+                     FUTEX_BITSET_MATCH_ANY);
+ }
+ 
+-#elif defined(__ORBIS__)
++#elif defined(__ORBIS__) && !defined(__PROSPERO__)
+ 
+ #include <errno.h>
+ #include <pthread.h>
 diff --git a/tests/dual-source.frag b/tests/dual-source.frag
 new file mode 100644
 index 0000000..9864c60
@@ -6669,42 +6712,3 @@ index 0000000..e6f9a71
 +    gl_Position = in_position;
 +    captured_position = in_position;
 +}
-diff --git a/src/c11/impl/threads_posix.c b/src/c11/impl/threads_posix.c
-index 6db8c42..4c1bb66 100644
---- a/src/c11/impl/threads_posix.c
-+++ b/src/c11/impl/threads_posix.c
-@@ -252,7 +252,20 @@ thrd_create(thrd_t *thr, thrd_start_t func, void *arg)
-     if (!pack) return thrd_nomem;
-     pack->func = func;
-     pack->arg = arg;
--    if (pthread_create(thr, NULL, impl_thrd_routine, pack) != 0) {
-+#ifdef OPENGNM_PSBC_ORBIS
-+    /* Native default stacks cannot hold NIR linker scratch arrays. */
-+    pthread_attr_t attr;
-+    int result = pthread_attr_init(&attr);
-+    if (result == 0) {
-+        result = pthread_attr_setstacksize(&attr, 8u * 1024u * 1024u);
-+        if (result == 0)
-+            result = pthread_create(thr, &attr, impl_thrd_routine, pack);
-+        pthread_attr_destroy(&attr);
-+    }
-+#else
-+    int result = pthread_create(thr, NULL, impl_thrd_routine, pack);
-+#endif
-+    if (result != 0) {
-         free(pack);
-         return thrd_error;
-     }
-diff --git a/src/util/futex.c b/src/util/futex.c
-index b600915..1b1c791 100644
---- a/src/util/futex.c
-+++ b/src/util/futex.c
-@@ -56,7 +56,7 @@ int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout)
-                     FUTEX_BITSET_MATCH_ANY);
- }
- 
--#elif defined(__ORBIS__)
-+#elif defined(__ORBIS__) && !defined(__PROSPERO__)
- 
- #include <errno.h>
- #include <pthread.h>

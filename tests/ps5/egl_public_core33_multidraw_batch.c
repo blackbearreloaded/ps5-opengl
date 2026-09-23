@@ -16,12 +16,16 @@
 
 enum { BANDS = 9, WIDTH = BANDS * 8, HEIGHT = 32, DRAWS = BANDS + 2 };
 struct vertex {
-#ifdef PS5_DEPTH_BATCH_TEST
+#ifdef PS5_NORMALIZED_VERTEX_TEST
+   uint16_t position[2];
+#elif defined(PS5_DEPTH_BATCH_TEST)
    float position[3];
 #else
    float position[2];
 #endif
-#ifdef PS5_RGBA8_VERTEX_TEST
+#ifdef PS5_NORMALIZED_VERTEX_TEST
+   int8_t color[4];
+#elif defined(PS5_RGBA8_VERTEX_TEST)
    uint8_t color[4];
 #else
    float color[4];
@@ -36,7 +40,10 @@ static int depth_test_active = 1;
 static int varying_draw_state = 1;
 #endif
 static const uint8_t colors[7][4] = {
-#ifdef PS5_RGBA8_VERTEX_TEST
+#ifdef PS5_NORMALIZED_VERTEX_TEST
+   {129,0,0,255}, {0,255,0,255}, {0,0,255,255}, {255,129,0,255},
+   {255,0,255,255}, {0,255,129,255}, {255,255,255,129}
+#elif defined(PS5_RGBA8_VERTEX_TEST)
    {127,0,0,255}, {0,63,0,255}, {0,0,191,255}, {255,127,0,255},
    {255,0,255,255}, {0,191,63,255}, {1,127,254,63}
 #else
@@ -101,8 +108,21 @@ static int check_pixels(unsigned green, int band0_black)
                                        (texture_pixels[1][texel1][c] / 255);
 #endif
          if (band0_black && x < 8) memset(expected, 0, 3);
-         if (memcmp(pixels + 4 * (y * WIDTH + x), expected, 4)) {
-            printf("[ps5-multidraw] pixel mismatch x=%u y=%u\n", x, y);
+         int mismatch = 0;
+         for (unsigned c = 0; c < 4; ++c) {
+            int tolerance = 0;
+#ifdef PS5_NORMALIZED_VERTEX_TEST
+            /* GPU UNORM output rounding may differ by one unit. The vertex
+             * shader separately checks the fetched float before quantization. */
+            tolerance = expected[c] == 129;
+#endif
+            mismatch |= abs((int)pixels[4 * (y * WIDTH + x) + c] - expected[c]) > tolerance;
+         }
+         if (mismatch) {
+            const uint8_t *actual = pixels + 4 * (y * WIDTH + x);
+            printf("[ps5-multidraw] pixel mismatch x=%u y=%u actual=%u,%u,%u,%u expected=%u,%u,%u,%u\n",
+                   x, y, actual[0], actual[1], actual[2], actual[3],
+                   expected[0], expected[1], expected[2], expected[3]);
             return 0;
          }
       }
@@ -160,7 +180,12 @@ int main(void)
    glDrawBuffer(GL_FRONT); glReadBuffer(GL_FRONT);
 #endif
    vs = shader(GL_VERTEX_SHADER, "#version 330 core\n"
-#ifdef PS5_DEPTH_BATCH_TEST
+#ifdef PS5_NORMALIZED_VERTEX_TEST
+      "layout(location=0) in vec2 p; layout(location=1) in vec4 c;"
+      "out vec4 color; void main(){gl_Position=vec4(p*2-1,0,1);"
+      "vec4 d=min(abs(c),abs(c-vec4(64.0/127.0))); d=min(d,abs(abs(c)-vec4(1)));"
+      "color=all(lessThan(d,vec4(0.00001)))?max(c,vec4(0)):vec4(1,0,1,1);}");
+#elif defined(PS5_DEPTH_BATCH_TEST)
       "layout(location=0) in vec3 p; layout(location=1) in vec4 c;"
       "out vec4 color; void main(){gl_Position=vec4(p,1); color=c;}");
 #else
@@ -203,16 +228,27 @@ int main(void)
       const float x0 = -1.0f + 2.0f * position / BANDS, x1 = -1.0f + 2.0f * (position + 1) / BANDS;
       const float p[6][2] = {{x0,-1},{x1,-1},{x0,1},{x0,1},{x1,-1},{x1,1}};
       for (unsigned v = 0; v < 6; ++v) {
+#ifdef PS5_NORMALIZED_VERTEX_TEST
+         for (unsigned c = 0; c < 2; ++c)
+            vertices[band * 6 + v].position[c] = (uint16_t)((p[v][c] + 1) * 32767.5f + 0.5f);
+#else
          memcpy(vertices[band * 6 + v].position, p[v], sizeof(p[v]));
+#endif
 #ifdef PS5_DEPTH_BATCH_TEST
          vertices[band * 6 + v].position[2] = band == BANDS ? 0.5f : 0.0f;
 #endif
-         for (unsigned c = 0; c < 4; ++c)
+         for (unsigned c = 0; c < 4; ++c) {
+#ifdef PS5_NORMALIZED_VERTEX_TEST
+            const unsigned value = colors[band == BANDS ? 2 : band % 7][c];
+            vertices[band * 6 + v].color[c] = value == 255 ? 127 : value == 129 ? 64 : (c & 1) ? -128 : -127;
+#else
             vertices[band * 6 + v].color[c] = colors[band == BANDS ? 2 : band % 7][c]
 #ifndef PS5_RGBA8_VERTEX_TEST
                / 255.0f
 #endif
                ;
+#endif
+         }
          indices16[band * 6 + v] = indices32[band * 6 + v] = band * 6 + v;
       }
    }
@@ -223,6 +259,11 @@ int main(void)
    glGenVertexArrays(1, &vao); glBindVertexArray(vao);
    glGenBuffers(1, &vbo); glBindBuffer(GL_ARRAY_BUFFER, vbo);
    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+#ifdef PS5_NORMALIZED_VERTEX_TEST
+   glVertexAttribPointer(0, 2, GL_UNSIGNED_SHORT, GL_TRUE, sizeof(struct vertex), (void *)offsetof(struct vertex, position));
+   glVertexAttribPointer(1, 4, GL_BYTE, GL_TRUE, sizeof(struct vertex), (void *)offsetof(struct vertex, color));
+   printf("[ps5-normalized-vertex] position=UNORM16x2 color=SNORM8x4 extrema=-128,-127,127 intermediate=64\n");
+#else
    glVertexAttribPointer(0, sizeof(vertices[0].position) / sizeof(float), GL_FLOAT, GL_FALSE,
                          sizeof(struct vertex), (void *)offsetof(struct vertex, position));
 #ifdef PS5_RGBA8_VERTEX_TEST
@@ -230,6 +271,7 @@ int main(void)
    printf("[ps5-rgba8-vertex] normalized=1 channels=RGBA intermediate-values=1\n");
 #else
    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(struct vertex), (void *)offsetof(struct vertex, color));
+#endif
 #endif
    glEnableVertexAttribArray(0); glEnableVertexAttribArray(1);
    glGenBuffers(1, &ebo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);

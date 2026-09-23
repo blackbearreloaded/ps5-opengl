@@ -1256,8 +1256,8 @@ print("PASS: asynchronous flush, query scope changes, queued/in-flight query reu
 fence_code = async_code[:async_code.index("int main(void) {")]
 fence_code = fence_code.replace("static uint64_t os_time_get_nano(void) { return 1; }", """
 static uint64_t now_ns;
-static unsigned ready_batches;
-static uint64_t os_time_get_nano(void) { return now_ns; }
+static unsigned ready_batches, clock_reads;
+static uint64_t os_time_get_nano(void) { ++clock_reads; return now_ns; }
 static void os_time_sleep(int64_t us) { assert(!locked); now_ns += us ? (uint64_t)us*1000 : 1; }
 static void mock_pause(void) { assert(!locked); now_ns += 1000; }
 #define __builtin_ia32_pause() mock_pause()
@@ -1275,6 +1275,7 @@ int main(void) {
     ps5_agc_gate2_batch_retire=async_retire;
     assert(ps5_draw_batch_fence_submit()==0);
     assert(ps5_draw_batch_fence_finish(0,0));
+    assert(!clock_reads);
     for (unsigned round=0;round<3;++round) {
         uint64_t first=0, last=0;
         unsigned waits_before=blocking_waits;
@@ -1287,12 +1288,16 @@ int main(void) {
         }
         unsigned freed_before=freed;
         uint64_t time_before=now_ns;
+        unsigned clocks_before=clock_reads;
         assert(!ps5_draw_batch_fence_finish(last,0));
+        assert(clock_reads==clocks_before);
         assert(now_ns==time_before && freed==freed_before);
         assert(!ps5_draw_batch_fence_finish(last,250000));
         assert(now_ns-time_before==250000 && freed==freed_before);
         ready_batches=1;
+        clocks_before=clock_reads;
         assert(ps5_draw_batch_fence_finish(first,0));
+        assert(clock_reads==clocks_before);
         assert(ps5_completed_sequence==first && ps5_inflight_count==PS5_INFLIGHT_BATCH_CAPACITY-1);
         assert(!ps5_draw_batch_fence_finish(last,0));
         // Fill again, then only the oldest batch blocks to make room.
