@@ -1005,6 +1005,121 @@ static struct runtime_work_allocation {
 static unsigned runtime_work_free_count;
 static size_t runtime_work_free_bytes;
 
+/* Queue-lock protected, immutable after publication. Keep entries until all
+ * submissions retire at shutdown; a full cache falls back to the original path. */
+static struct runtime_shader_pair {
+    const void *vs_key, *ps_key;
+    size_t vs_size, ps_size, bytes;
+    uint32_t primitive;
+    uint8_t *source, *memory;
+    int64_t direct;
+    void *vertex, *pixel;
+} runtime_shader_pairs[512];
+static unsigned runtime_shader_pair_count;
+static size_t runtime_shader_pair_bytes;
+
+/* Prepared draws write every emitted command and own only these mutable state
+ * pages. Shader code lives in the pair allocation; unused command capacity is
+ * neither executed nor an upload. Downward scratch is published separately. */
+static void runtime_prepared_work_clear(uint8_t *memory)
+{
+    memset(memory + 0x4000, 0, 0x4000);
+}
+
+static int runtime_prepared_work_publish(uint8_t *memory,
+                                          const agc_command_buffer_t *command)
+{
+    if (command->bottom != (uint32_t *)(memory + 0x8000) ||
+        command->top != (uint32_t *)(memory + 0xc000) ||
+        command->up < command->bottom || command->down < command->up ||
+        command->down > command->top)
+        return -1;
+    flush_gpu_data(memory + 0x4000, 0x4000);
+    flush_gpu_data(command->bottom, (size_t)(command->up - command->bottom) * 4);
+    flush_gpu_data(command->down, (size_t)(command->top - command->down) * 4);
+    return 0;
+}
+
+static struct runtime_shader_pair *runtime_shader_pair_get(
+    const agc_api_t *agc, int64_t direct_limit,
+    const uint8_t *vs_header, size_t vs_header_size,
+    const uint8_t *vs_code, size_t vs_code_size,
+    const uint8_t *ps_header, size_t ps_header_size,
+    const uint8_t *ps_code, size_t ps_code_size)
+{
+    const size_t limit = 64u * 1024u * 1024u;
+    for (unsigned i = 0; i < runtime_shader_pair_count; ++i) {
+        struct runtime_shader_pair *p = &runtime_shader_pairs[i];
+        if (p->vs_key == runtime_vs_package && p->ps_key == runtime_ps_package &&
+            p->vs_size == runtime_vs_package_len && p->ps_size == runtime_ps_package_len &&
+            p->primitive == runtime_primitive_type &&
+            !memcmp(p->source, runtime_vs_package, p->vs_size) &&
+            !memcmp(p->source + p->vs_size, runtime_ps_package, p->ps_size))
+            return p; /* Byte comparison also covers freed/reused package addresses. */
+    }
+    if (runtime_shader_pair_count == sizeof(runtime_shader_pairs) / sizeof(runtime_shader_pairs[0]))
+        return NULL;
+    const size_t vs_header_at = 0x2000;
+    const size_t vs_code_at = (vs_header_at + vs_header_size + 0xfffu) & ~(size_t)0xfffu;
+    const size_t ps_header_at = (vs_code_at + vs_code_size + 0xfffu) & ~(size_t)0xfffu;
+    const size_t ps_code_at = (ps_header_at + ps_header_size + 0xfffu) & ~(size_t)0xfffu;
+    const size_t bytes = (ps_code_at + ps_code_size + 0x3fffu) & ~(size_t)0x3fffu;
+    const size_t source_bytes = (size_t)runtime_vs_package_len + runtime_ps_package_len;
+    if (bytes > limit || source_bytes > limit - bytes ||
+        runtime_shader_pair_bytes > limit - bytes - source_bytes)
+        return NULL;
+    struct runtime_shader_pair p = {.vs_key = runtime_vs_package, .ps_key = runtime_ps_package,
+        .vs_size = runtime_vs_package_len, .ps_size = runtime_ps_package_len,
+        .bytes = bytes, .primitive = runtime_primitive_type, .direct = -1};
+    p.source = malloc(source_bytes);
+    if (!p.source)
+        return NULL;
+    if (sceKernelAllocateDirectMemory(0, direct_limit, bytes, 0x4000,
+                                     DIRECT_MEMORY_TYPE, &p.direct) != 0)
+        goto fail;
+    if (sceKernelMapDirectMemory((void **)&p.memory, bytes, MAP_PROTECTION, 0,
+                                p.direct, 0x4000) != 0) {
+        p.memory = NULL;
+        goto fail;
+    }
+    memset(p.memory, 0, bytes);
+    memcpy(p.source, runtime_vs_package, p.vs_size);
+    memcpy(p.source + p.vs_size, runtime_ps_package, p.ps_size);
+    memcpy(p.memory + vs_header_at, vs_header, vs_header_size);
+    memcpy(p.memory + vs_code_at, vs_code, vs_code_size);
+    memcpy(p.memory + ps_header_at, ps_header, ps_header_size);
+    memcpy(p.memory + ps_code_at, ps_code, ps_code_size);
+    if (agc->create_shader(&p.vertex, p.memory + vs_header_at, p.memory + vs_code_at) ||
+        agc->create_shader(&p.pixel, p.memory + ps_header_at, p.memory + ps_code_at) ||
+        agc->link_shaders(p.memory, p.memory + 0x1000, NULL, p.vertex, p.pixel, p.primitive))
+        goto fail;
+    flush_gpu_data(p.memory, bytes);
+    runtime_shader_pair_bytes += bytes + source_bytes;
+    runtime_shader_pairs[runtime_shader_pair_count] = p;
+    return &runtime_shader_pairs[runtime_shader_pair_count++];
+fail:
+    if (p.memory && munmap(p.memory, bytes) != 0)
+        abort(); /* Never release a still-mapped allocation. */
+    if (p.direct >= 0 && sceKernelReleaseDirectMemory(p.direct, bytes) != 0)
+        abort();
+    free(p.source);
+    return NULL;
+}
+
+static int runtime_shader_pair_clear(void)
+{
+    while (runtime_shader_pair_count) {
+        struct runtime_shader_pair *p = &runtime_shader_pairs[runtime_shader_pair_count - 1];
+        if (munmap(p->memory, p->bytes) != 0 ||
+            sceKernelReleaseDirectMemory(p->direct, p->bytes) != 0)
+            return -1;
+        free(p->source);
+        --runtime_shader_pair_count;
+    }
+    runtime_shader_pair_bytes = 0;
+    return 0;
+}
+
 static int runtime_work_take(size_t bytes, void **memory, int64_t *direct)
 {
     for (unsigned i = 0; i < runtime_work_free_count; ++i) {
@@ -1672,6 +1787,7 @@ int ps5_agc_gate2_shutdown_present(void)
 
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
     runtime_require_retirement(runtime_work_cache_clear() == 0);
+    runtime_require_retirement(runtime_shader_pair_clear() == 0);
 #endif
 
 #ifdef PS5_FRAME_SUSPEND
@@ -2929,6 +3045,9 @@ int main(void)
     size_t ps_header_at = 0, ps_code_at = 0;
     size_t tess_descriptors_at = 0;
     size_t work_bytes = WORK_BYTES;
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
+    struct runtime_shader_pair *prepared = NULL;
+#endif
 #ifndef PS5_NATIVE_TITLE_RUNTIME
     void *agc_module = NULL, *driver_module = NULL, *video_module = NULL;
 #endif
@@ -3177,6 +3296,15 @@ int main(void)
         goto cleanup;
     }
 #endif
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
+    if (!runtime_hs_package) {
+        prepared = runtime_shader_pair_get(&agc, direct_limit,
+            vs_header, vs_header_size, vs_code, vs_code_size,
+            ps_header, ps_header_size, ps_code, ps_code_size);
+        if (prepared)
+            work_bytes = WORK_BYTES;
+    }
+#endif
 #ifdef PS5_DRAW_GPU_TIMESTAMPS
     work_bytes += 0x4000;
 #endif
@@ -3208,10 +3336,26 @@ int main(void)
             goto receipt;
     }
     failure_phase = "shaders";
-    memset(memory, 0, work_bytes);
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH) && \
+    !defined(PS5_DRAW_GPU_TIMESTAMPS) && !defined(AGC_RUNTIME_DIAGNOSTICS)
+    if (prepared)
+        runtime_prepared_work_clear(memory);
+    else
+#endif
+        memset(memory, 0, work_bytes);
 #ifdef AGC_RUNTIME_PACKAGES
     completion_marker = (volatile uint64_t *)(memory + 0x6ff0);
 #endif
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
+    if (prepared) {
+        vertex = prepared->vertex;
+        pixel = prepared->pixel;
+        memcpy(memory + 0x5000, prepared->memory, 34 * sizeof(agc_register_t));
+        memcpy(memory + 0x6000, prepared->memory + 0x1000, 3 * sizeof(agc_register_t));
+        hull_rc = vertex_rc = pixel_rc = link_rc = 0;
+    } else
+#endif
+    {
     memcpy(memory + vs_header_at, vs_header, vs_header_size);
     memcpy(memory + vs_code_at, vs_code, vs_code_size);
     memcpy(memory + ps_header_at, ps_header, ps_header_size);
@@ -3250,6 +3394,7 @@ int main(void)
 #else
                                    4);
 #endif
+    }
     if (link_rc != 0)
         goto receipt;
     failure_phase = "framebuffer";
@@ -4169,7 +4314,14 @@ int main(void)
 
 #ifdef AGC_TRIANGLE_SUBMIT
     PS5_PROFILE_MARK(4);
-    flush_gpu_data(memory, work_bytes);
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH) && \
+    !defined(PS5_DRAW_GPU_TIMESTAMPS) && !defined(AGC_RUNTIME_DIAGNOSTICS)
+    if (prepared) {
+        if (runtime_prepared_work_publish(memory, &command) != 0)
+            goto receipt;
+    } else
+#endif
+        flush_gpu_data(memory, work_bytes);
     PS5_PROFILE_MARK(5);
 #ifdef PS5_MULTIDRAW_BATCH
     if (runtime_batch_active) {
