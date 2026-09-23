@@ -7731,9 +7731,8 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    bool direct_tiled_dst;
    unsigned min_x, min_y, max_x, max_y;
 
-   ps5_draw_batch_drain();
-   if (info && info->dst.resource && (info->dst.resource->bind & PIPE_BIND_DISPLAY_TARGET))
-      ps5_draw_batch_drain_buffer(info->dst.resource);
+   ps5_draw_batch_drain_buffer(info ? info->src.resource : NULL);
+   ps5_draw_batch_drain_buffer(info ? info->dst.resource : NULL);
    if (ps5_blit_gpu_color(ps5, info))
       return;
    if (PS5_ENABLE_MSAA4_CANDIDATE && info && info->src.resource &&
@@ -8197,7 +8196,7 @@ ps5_generate_mipmap(struct pipe_context *context,
    bool depth;
    unsigned components;
 
-   ps5_draw_batch_drain();
+   ps5_draw_batch_drain_buffer(base);
    if (!PS5_ENABLE_TEXTURE_MIPMAP_CANDIDATE || !resource ||
        format != resource->base.format ||
        base_level >= last_level || last_level > resource->base.last_level ||
@@ -12290,7 +12289,8 @@ ps5_clear_gpu_depth_stencil(struct ps5_context *context, unsigned buffers,
       return false;
    struct pipe_surface surface = context->framebuffer.zsbuf;
    const struct ps5_resource *target = (const struct ps5_resource *)surface.texture;
-   if (!target || target->base.target != PIPE_TEXTURE_2D ||
+   if (!target || (target->base.target != PIPE_TEXTURE_2D &&
+                   target->base.target != PIPE_TEXTURE_2D_ARRAY) ||
        target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
        target->base.last_level || target->base.array_size != 1 ||
        target->base.depth0 != 1 || !context->framebuffer.width || !context->framebuffer.height ||
@@ -12635,7 +12635,7 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
    struct ps5_resource *resource;
 
    if (context && context->render_condition_query)
-      ps5_draw_batch_drain();
+      ps5_draw_batch_drain_query(context->render_condition_query);
    resource = context && context->framebuffer.zsbuf.texture
                  ? (struct ps5_resource *)context->framebuffer.zsbuf.texture
                  : NULL;

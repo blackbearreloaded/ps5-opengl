@@ -59,8 +59,10 @@ test_target(GLenum target, unsigned layer, float *depth)
    GLenum error = GL_NO_ERROR;
    GLint object_type = 0, object_name = 0, attached_layer = -1;
    float array_pixels[SIZE * LAYERS];
+   const int large_array = target == GL_TEXTURE_2D_ARRAY && layer == 0;
+   const int width = large_array ? 512 : SIZE;
    int height = (target == GL_TEXTURE_1D || target == GL_TEXTURE_1D_ARRAY)
-                   ? 1 : SIZE;
+                   ? 1 : width;
    int attachment_ok = 0, routing_ok = 1, result = 0;
 
    glGenTextures(1, &texture);
@@ -85,7 +87,8 @@ test_target(GLenum target, unsigned layer, float *depth)
                       GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
       break;
    case GL_TEXTURE_2D_ARRAY:
-      glTexImage3D(target, 0, GL_DEPTH_COMPONENT32F, SIZE, SIZE, LAYERS, 0,
+      glTexImage3D(target, 0, GL_DEPTH_COMPONENT32F, width, height,
+                   large_array ? 1 : LAYERS, 0,
                    GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
       break;
    default:
@@ -116,15 +119,17 @@ test_target(GLenum target, unsigned layer, float *depth)
          GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
          GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER, &attached_layer);
 
-   glViewport(0, 0, SIZE, height);
+   glViewport(0, 0, width, height);
    glClearDepth(0.75);
    glClear(GL_DEPTH_BUFFER_BIT);
+   float cleared = 0.0f;
+   glReadPixels(width / 2, height / 2, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &cleared);
    glDrawArrays(GL_TRIANGLES, 0, 3);
 #ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
    ++host_draw_calls;
 #endif
    glFinish();
-   glReadPixels(SIZE / 2, height / 2, 1, 1,
+   glReadPixels(width / 2, height / 2, 1, 1,
                 GL_DEPTH_COMPONENT, GL_FLOAT, depth);
    if (target == GL_TEXTURE_1D_ARRAY) {
       glGetTexImage(target, 0, GL_DEPTH_COMPONENT, GL_FLOAT, array_pixels);
@@ -149,7 +154,8 @@ test_target(GLenum target, unsigned layer, float *depth)
    result = attachment_ok &&
             ((target != GL_TEXTURE_1D_ARRAY && target != GL_TEXTURE_2D_ARRAY) ||
              attached_layer == (GLint)layer) &&
-            routing_ok && fabsf(*depth - 0.5f) < 0.00001f &&
+            routing_ok && fabsf(cleared - 0.75f) < 0.00001f &&
+            fabsf(*depth - 0.5f) < 0.00001f &&
             error == GL_NO_ERROR;
 
 cleanup:
@@ -171,11 +177,12 @@ main(void)
    static const char *fragment_source =
       "#version 330 core\n"
       "void main(){}\n";
-   static const GLenum targets[4] = {
+   static const GLenum targets[5] = {
       GL_TEXTURE_1D, GL_TEXTURE_1D_ARRAY,
       GL_TEXTURE_CUBE_MAP, GL_TEXTURE_2D_ARRAY,
+      GL_TEXTURE_2D_ARRAY,
    };
-   static const unsigned layers[4] = {0, 2, 0, 2};
+   static const unsigned layers[5] = {0, 2, 0, 2, 0};
    static const EGLint config_attributes[] = {
       EGL_SURFACE_TYPE, SURFACE_TYPE,
       EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
@@ -195,7 +202,7 @@ main(void)
    EGLint count = 0;
    GLuint shaders[2] = {0}, program = 0, vao = 0;
    GLint linked = GL_FALSE;
-   float depths[4] = {0};
+   float depths[5] = {0};
    unsigned matching = 0, draw_calls = 0;
    int draw_status = -1, current = 0, passed = 0;
    EGLBoolean cleanup_ok = EGL_TRUE;
@@ -243,14 +250,19 @@ main(void)
    glEnable(GL_DEPTH_TEST);
    glDepthFunc(GL_LESS);
    glDepthMask(GL_TRUE);
-   for (unsigned index = 0; index < 4; ++index)
+   for (unsigned index = 0; index < 5; ++index)
       matching += test_target(targets[index], layers[index], &depths[index]);
    draw_status = ps5_egl_current_draw_status(&draw_calls);
-   passed = matching == 4 && draw_status == 0 && draw_calls == 4 &&
+#ifdef PS5_DEPTH_TARGETS_HOST_REFERENCE
+   const unsigned expected_draws = 5;
+#else
+   const unsigned expected_draws = 6; /* Five draws plus the large GPU depth clear. */
+#endif
+   passed = matching == 5 && draw_status == 0 && draw_calls == expected_draws &&
             glGetError() == GL_NO_ERROR;
    printf(TAG " matching=%u depths="
-          "%.6f/%.6f/%.6f/%.6f draw=%d/%u result=%d\n",
-          matching, depths[0], depths[1], depths[2], depths[3],
+          "%.6f/%.6f/%.6f/%.6f/%.6f draw=%d/%u result=%d\n",
+          matching, depths[0], depths[1], depths[2], depths[3], depths[4],
           draw_status, draw_calls, passed ? 0 : 1);
 
 cleanup:

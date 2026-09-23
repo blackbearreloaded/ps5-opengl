@@ -65,7 +65,7 @@ static unsigned drains,flushes;
 static size_t cpu_packs;
 static const void *expected_data;
 static size_t expected_size;
-static void ps5_draw_batch_drain(void) { ++drains; }
+static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { assert(r); ++drains; }
 static void ps5_flush_gpu_data(const void *p,size_t n) {
     assert(p==expected_data && n==expected_size); ++flushes;
 }

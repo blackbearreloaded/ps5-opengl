@@ -267,6 +267,7 @@ static bool gpu_depth;
 static int gpu_depth_status;
 static void record(char stage) { assert(used < 15); order[used++] = stage; }
 static __attribute__((unused)) void ps5_draw_batch_drain(void) { record('D'); pending = 0; }
+static void ps5_draw_batch_drain_query(bool query) { assert(query); record('Q'); }
 static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { (void)r; record('D'); pending=0; }
 static bool ps5_render_condition_passes(struct ps5_context *c)
 { assert(c); record('R'); return condition; }
@@ -309,7 +310,7 @@ int main(void)
     run(1, "RDZ", 0); /* Prior GPU work must retire before this CPU access. */
     run(2, "RDZ", 0); run(3, "RDZ", 0); run(0, "R", 1);
     for (unsigned buffers = 5; buffers <= 7; ++buffers) run(buffers, "RDZC", 1);
-    condition = false; run(7, "DR", 0); condition = true;
+    condition = false; run(7, "QR", 1); condition = true;
     depth_ok = false; run(7, "RDZ", 0); depth_ok = true;
     gpu_ok = false; run(7, "RDZCDF", 0); gpu_ok = true;
     gpu_status = -30; run(7, "RDZC", 1); /* No CPU replay after attempted GPU failure. */
@@ -380,7 +381,10 @@ int main(void) {
 #define CHECK(c,b,m,s,d) ps5_clear_gpu_depth_stencil(c,b,m,s,d,0x69)
     assert(CHECK(&good,3,255,NULL,.375));
     target.base.target=PIPE_TEXTURE_2D_ARRAY;
+    assert(CHECK(&good,3,255,NULL,.375));
+    target.base.array_size=2;
     assert(!CHECK(&good,3,255,NULL,.375));
+    target.base.array_size=1;
     target.base.target=PIPE_TEXTURE_2D;
     assert(CHECK(&good,2,255,NULL,NAN)); /* Unused depth must not reject stencil. */
     assert(CHECK(&good,1,255,NULL,.375)); /* Large full clears use the GPU. */

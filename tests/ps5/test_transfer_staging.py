@@ -22,7 +22,7 @@ transfers = source[start:source.index("static void\nps5_blit_scissor_bounds(")]
 # is outside this regression. MSAA write maps are covered below.
 blit = source[source.index("static void\nps5_blit("):
               source.index("static void\nps5_texture_subdata(")]
-color_blit = (blit[:blit.index("   ps5_draw_batch_drain();")] +
+color_blit = (blit[:blit.index("   ps5_draw_batch_drain_buffer(")] +
               blit[blit.index("   if (!info || !info->src.resource"):])
 scissor = source[source.index("static void\nps5_blit_scissor_bounds("):
                  source.index("static bool\nps5_color_view_format_compatible(")]
