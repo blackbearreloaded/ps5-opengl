@@ -194,6 +194,7 @@ body = source[start:source.index("\n#endif\n\n#ifdef PS5_DRAW_PROFILE", start)]
 code = r'''
 #include <assert.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <setjmp.h>
@@ -419,12 +420,15 @@ code = r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <setjmp.h>
 #include "ps5_screen.h"
 #define MIN2(a,b) ((a)<(b)?(a):(b))
+#define MAX2(a,b) ((a)>(b)?(a):(b))
+#define PS5_DIRECT_ALIGNMENT 64 /* Small backing in this ownership-only fixture. */
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define BITFIELD_BIT(b) (1u << (b))
 #define PS5_RENDER_ARENA_OFFSET (2u * 0xa00000u)
@@ -1118,9 +1122,9 @@ with tempfile.TemporaryDirectory() as tmp:
             candidate = candidate.replace("if (ps5_deferred.owner && ps5_deferred.owner != context)", "if (false)")
             assert candidate != deferred_code
         if mutate == 2:
-            candidate = candidate.replace("   memset(batch, 0, sizeof(*batch));",
+            candidate = candidate.replace("   memset(batch, 0, offsetof(struct ps5_deferred_batch, slots));",
                 "   struct ps5_batch_flush_cache stale = batch->flush_cache;\n"
-                "   memset(batch, 0, sizeof(*batch));\n"
+                "   memset(batch, 0, offsetof(struct ps5_deferred_batch, slots));\n"
                 "   batch->flush_cache = stale;")
             assert candidate != deferred_code
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", *flags,
@@ -1181,8 +1185,15 @@ int main(void) {
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     assert(ps5_end_query(&context.base,(struct pipe_query *)&occlusion));
     assert(!ended && !freed && ps5_deferred.owner);
+    /* Unoccupied slots must not be copied or cleared at submission. */
+    ps5_deferred.slots[PS5_MULTIDRAW_BATCH_CAPACITY-1].retained_count=0xabc;
+    ps5_inflight[ps5_inflight_head].slots[PS5_MULTIDRAW_BATCH_CAPACITY-1].retained_count=0xdef;
     ps5_draw_batch_submit();
     assert(in_flight && probes==1 && !blocking_waits && !freed);
+    assert(ps5_deferred.slots[PS5_MULTIDRAW_BATCH_CAPACITY-1].retained_count==0xabc);
+    assert(ps5_inflight[ps5_inflight_head].slots[PS5_MULTIDRAW_BATCH_CAPACITY-1].retained_count==0xdef);
+    ps5_deferred.slots[PS5_MULTIDRAW_BATCH_CAPACITY-1].retained_count=0;
+    ps5_inflight[ps5_inflight_head].slots[PS5_MULTIDRAW_BATCH_CAPACITY-1].retained_count=0;
     assert(ps5_inflight[ps5_inflight_head].owner && !ps5_deferred.owner && !occlusion.value);
     ps5_draw_batch_submit(); /* An empty flush must not retire the prior batch. */
     assert(in_flight && !blocking_waits && !freed);

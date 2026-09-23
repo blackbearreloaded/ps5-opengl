@@ -50,14 +50,16 @@ int main(void) {
   c.constants[1][0]=(struct ps5_constant_state){true,true,65536}; count=0;
   assert(ps5_batch_copy_descriptors(&c.base,saved,out));
   for(unsigned i=0;i<3;++i) { struct ps5_resource *r=(void*)out[i];
-   assert(r->size==(i?ps5_descriptor_snapshot_size(&c,i-1):PS5_DIRECT_ALIGNMENT));
-   assert(!memcmp(r->data,src[i].data,r->size)); assert(r->data[r->size]==0xcc);
+   size_t live=i?ps5_descriptor_snapshot_size(&c,i-1):PS5_DIRECT_ALIGNMENT;
+   assert(r->size==MAX2(PS5_DIRECT_ALIGNMENT,live));
+   assert(!memcmp(r->data,src[i].data,live));
+   for(size_t j=live;j<=r->size;++j) assert(r->data[j]==0xcc);
   }
  }
  c.constants[0][0]=(struct ps5_constant_state){true,false,65536};
- assert(ps5_descriptor_snapshot_size(&c,0)==16384);
+ assert(ps5_descriptor_snapshot_size(&c,0)==4096);
  c.constants[0][0]=(struct ps5_constant_state){false,true,65536};
- assert(ps5_descriptor_snapshot_size(&c,0)==16384);
+ assert(ps5_descriptor_snapshot_size(&c,0)==4096);
  void **stages[]={&c.gs,&c.tcs,&c.tes};
  for(unsigned i=0;i<3;++i) { *stages[i]=&c; assert(ps5_descriptor_snapshot_size(&c,0)==PS5_DESCRIPTOR_STORAGE_BYTES); assert(ps5_descriptor_snapshot_size(&c,1)==69632); *stages[i]=NULL; }
  src[2].size=4096;count=0; assert(!ps5_batch_copy_descriptors(&c.base,saved,out));

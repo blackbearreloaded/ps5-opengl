@@ -2937,9 +2937,9 @@ ps5_descriptor_snapshot_size(const struct ps5_context *context, unsigned slot)
                                       : PS5_DIRECT_ALIGNMENT;
    const struct ps5_constant_state *state = &context->constants[slot][0];
    return state->valid && state->copied
-      ? MAX2(PS5_DIRECT_ALIGNMENT,
+      ? MAX2(PS5_CONSTANT_DATA_OFFSET,
              PS5_CONSTANT_DATA_OFFSET + ((state->size + 15u) & ~15u))
-      : PS5_DIRECT_ALIGNMENT;
+      : PS5_CONSTANT_DATA_OFFSET;
 }
 
 static unsigned
@@ -11081,9 +11081,10 @@ ps5_batch_copy_descriptors(struct pipe_context *base,
       if (!source || !source->data || source->base.target != PIPE_BUFFER)
          return false;
       struct pipe_resource templ = source->base;
+      const size_t live_bytes = stage ? ps5_descriptor_snapshot_size(
+         (const struct ps5_context *)base, stage - 1) : source->size;
       if (stage)
-         templ.width0 = ps5_descriptor_snapshot_size(
-            (const struct ps5_context *)base, stage - 1);
+         templ.width0 = MAX2(PS5_DIRECT_ALIGNMENT, live_bytes);
       if (templ.width0 > source->size)
          return false;
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DEFERRED_DRAW_BATCH)
@@ -11095,7 +11096,7 @@ ps5_batch_copy_descriptors(struct pipe_context *base,
       if (!copy || !copy->data || copy->size != templ.width0 ||
           (uintptr_t)copy->data >> 32 != (uintptr_t)source->data >> 32)
          return false;
-      memcpy(copy->data, source->data, copy->size);
+      memcpy(copy->data, source->data, live_bytes);
    }
    return true;
 }
@@ -11318,7 +11319,8 @@ ps5_deferred_batch_release(struct ps5_deferred_batch *batch)
 #endif
       ps5_deferred_slot_release(&batch->slots[slot]);
    }
-   memset(batch, 0, sizeof(*batch));
+   /* Released slots are already zero; unused capacity never owned resources. */
+   memset(batch, 0, offsetof(struct ps5_deferred_batch, slots));
 }
 
 static bool
@@ -11365,9 +11367,12 @@ ps5_draw_batch_flush_locked(void)
          _Exit(EXIT_FAILURE);
       }
       ps5_deferred.sequence = ++ps5_submitted_sequence;
-      ps5_inflight[(ps5_inflight_head + ps5_inflight_count) % PS5_INFLIGHT_BATCH_CAPACITY] = ps5_deferred;
+      const size_t live_bytes = offsetof(struct ps5_deferred_batch, slots) +
+         ps5_deferred.count * sizeof(ps5_deferred.slots[0]);
+      memcpy(&ps5_inflight[(ps5_inflight_head + ps5_inflight_count) % PS5_INFLIGHT_BATCH_CAPACITY],
+             &ps5_deferred, live_bytes);
       ++ps5_inflight_count;
-      memset(&ps5_deferred, 0, sizeof(ps5_deferred));
+      memset(&ps5_deferred, 0, live_bytes);
       ps5_draw_batch_retire_locked(false);
       return;
    }
