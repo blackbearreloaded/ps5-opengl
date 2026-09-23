@@ -40,6 +40,10 @@ code = r'''
 #define PIPE_FORMAT_R16G16B16A16_FLOAT 4
 #define PIPE_FORMAT_R11G11B10_FLOAT 5
 #define PIPE_FORMAT_R8G8B8A8_SRGB 6
+#define PIPE_FORMAT_R10G10B10A2_UNORM 7
+#define PIPE_FORMAT_R16_FLOAT 8
+#define PIPE_FORMAT_R32_FLOAT 9
+#define PIPE_FORMAT_R32G32B32A32_UINT 10
 union pipe_color_union { uint32_t ui[4]; float f[4]; };
 struct pipe_scissor_state { unsigned minx,miny,maxx,maxy; };
 struct resource { unsigned target, nr_samples, nr_storage_samples, format; };
@@ -140,7 +144,7 @@ int main(void) {
      * must retain the CPU fallback, including incompatible sRGB views. */
     target.base.target=PIPE_TEXTURE_2D_ARRAY;
     target.render_staging_size=4096;
-    for (unsigned format=1;format<=6;++format) {
+    for (unsigned format=1;format<=10;++format) {
         target.base.format=good.framebuffer.cbufs[0].format=format;
         linear_pitch=0;
         assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));

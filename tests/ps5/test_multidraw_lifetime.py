@@ -576,7 +576,8 @@ static int end(void) {
     if (context.framebuffer.zsbuf.texture == &depth_buffer.base)
         assert(depth_buffer.base.refs == 1+factor);
     for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) {
-        unsigned bindings = !!(shader_textures & (1u << unit)) + !!(fragment_textures & (1u << unit));
+        unsigned bindings = ((shader_textures & (1u << unit)) && context.sampler_views[0][unit]) +
+                            ((fragment_textures & (1u << unit)) && context.sampler_views[1][unit]);
         if (bindings) assert(textures[unit].base.refs == 1+factor*bindings);
     }
     if (fail_end) return -1;
@@ -755,10 +756,10 @@ int main(void) {
         for (unsigned unit=0; unit<PS5_MAX_TEXTURE_UNITS; ++unit) assert(textures[unit].base.refs == 1+failure);
     }
     reset(); context.fs=&fragment_shader; fragment_textures=1u << 7;
-    assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); /* Used sparse unit missing. */
+    assert(ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); /* Null descriptor is legal. */
+    assert(ps5_try_multi_draw_batch(&context.base,&info,20,NULL,draws,TEST_DRAWS));
     context.sampler_views[1][7]=&views[7];
     assert(ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS));
-    REJECT(sampler_views[1][7],NULL);
 #define REJECT_TEX(field,value) do { struct ps5_resource saved=textures[7]; textures[7].field=value; \
     assert(!ps5_multidraw_eligible(&context,&info,NULL,draws,TEST_DRAWS)); textures[7]=saved; } while(0)
     REJECT_TEX(depth_staging_size,1); REJECT_TEX(data,NULL); REJECT_TEX(size,0);

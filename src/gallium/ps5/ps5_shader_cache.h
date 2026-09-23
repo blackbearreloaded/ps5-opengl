@@ -6,9 +6,9 @@
 #include <unistd.h>
 
 #ifdef PS5_SHADER_CACHE_BUILD_ID
-/* ponytail: direct-mapped slots bound disk use to 64 MiB. Collisions recompile;
+/* ponytail: direct-mapped slots bound disk use to 4 GiB. Collisions recompile;
  * add associative eviction only if measured collision misses justify it. */
-#define PS5_SHADER_CACHE_SLOTS 1024u
+#define PS5_SHADER_CACHE_SLOTS 65536u
 #define PS5_SHADER_CACHE_LIMIT (64u * 1024u)
 struct ps5_shader_cache_record {
    uint8_t key[BLAKE3_KEY_LEN];

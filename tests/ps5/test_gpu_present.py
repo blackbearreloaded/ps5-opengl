@@ -299,6 +299,10 @@ code = r'''
 #include <stddef.h>
 #define PS5_PROFILE_MARK(i) ((void)0)
 static int flushes;
+static int writes_scanout;
+#ifdef TEST_SCANOUT_CLASSIFICATION
+#define PS5_RUNTIME_WRITES_SCANOUT() writes_scanout
+#endif
 static void flush_gpu_data(const void *p, size_t n) { assert(p && n); ++flushes; }
 static void run(int runtime_batch_active, unsigned runtime_batch_count,
                 int runtime_video_registered, void *framebuffer, size_t framebuffer_pool_bytes,
@@ -309,7 +313,8 @@ static void run(int runtime_batch_active, unsigned runtime_batch_count,
 }
 int main(void) {
     char pools[2];
-    for (unsigned state = 0; state < 64; ++state) {
+    for (unsigned state = 0; state < 128; ++state) {
+        writes_scanout = (state & 64) != 0;
         int active = state & 1, queued = state & 2, registered = state & 4;
         int same_pointer = state & 8, same_size = state & 16;
         int larger_registration = state & 32; /* The application registers its entire render arena. */
@@ -317,7 +322,11 @@ int main(void) {
         run(active, queued ? 2 : 0, registered, pools, 64,
             pools + !same_pointer, larger_registration ? 128 : same_size ? 64 : 32);
 #ifdef PS5_GPU_PRESENT_BATCH
-        assert(flushes == !(active && registered && same_pointer &&
+        int reusable = active;
+#ifdef TEST_SCANOUT_CLASSIFICATION
+        reusable |= !writes_scanout;
+#endif
+        assert(flushes == !(reusable && registered && same_pointer &&
                            (same_size || larger_registration)));
 #else
         assert(flushes == 1);
@@ -347,7 +356,8 @@ int main(void) {
 with tempfile.TemporaryDirectory() as tmp:
     c, exe = Path(tmp) / "flush.c", Path(tmp) / "flush"
     c.write_text(code)
-    for flags in ([], ["-DPS5_GPU_PRESENT_BATCH=1"]):
+    for flags in ([], ["-DPS5_GPU_PRESENT_BATCH=1"],
+                  ["-DPS5_GPU_PRESENT_BATCH=1", "-DTEST_SCANOUT_CLASSIFICATION=1"]):
         subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", *flags,
                         str(c), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)

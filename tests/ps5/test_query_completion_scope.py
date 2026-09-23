@@ -4,6 +4,15 @@ from pathlib import Path
 import subprocess,tempfile
 root=Path(__file__).resolve().parents[2];s=(root/'src/gallium/ps5/ps5_screen.c').read_text()
 a=s.index('static bool\nps5_draw_batch_query_ready(');b=s.index('static bool\nps5_buffer_overlaps_resource(',a)
+for name in ['ps5_get_timestamp','ps5_begin_query','ps5_end_query',
+             'ps5_destroy_query','ps5_render_condition']:
+ i=s.index('\n'+name+'(');f=s[i:s.index('\n}\n',i)]
+ assert 'ps5_draw_batch_drain();' not in f, name
+ if name in ['ps5_destroy_query','ps5_render_condition']:
+  assert 'ps5_draw_batch_drain_query(query);' in f
+ else:
+  assert 'ps5_screen_submit_lock(NULL);' in f
+  assert 'ps5_screen_submit_unlock(NULL);' in f
 for name in ['ps5_get_query_result','ps5_get_query_result_resource']:
  i=s.index('\n'+name+'(');f=s[i:s.index('\n}\n',i)]
  assert 'ps5_draw_batch_drain();' not in f

@@ -79,7 +79,11 @@ static void tiled_checks(void) {
                 before=flushes;
                 tiled(&cache,0,0,0,msaa,depth,&texture,64);
                 tiled(&cache,1,0,1,msaa,depth,&texture,64);
-                assert(flushes==before+2); /* Vertex/merged stages remain uncached. */
+#ifdef PS5_DEFERRED_DRAW_BATCH
+                assert(flushes==before); /* Publication is shared across stages. */
+#else
+                assert(flushes==before+2);
+#endif
             }
     struct ps5_batch_flush_cache cache={0};
     texture.texture_publication_epoch=0;
@@ -192,7 +196,8 @@ int main(void) {
 with tempfile.TemporaryDirectory() as temp:
     test, executable = Path(temp) / 'cache.c', Path(temp) / 'cache'
     test.write_text(harness)
-    for defines in ([], ['-DPS5_GPU_PRESENT_BATCH=1']):
+    for defines in ([], ['-DPS5_GPU_PRESENT_BATCH=1'],
+                    ['-DPS5_GPU_PRESENT_BATCH=1', '-DPS5_DEFERRED_DRAW_BATCH=1']):
         subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
                         '-fsanitize=address,undefined', *defines, str(test),
                         '-o', str(executable)], check=True)

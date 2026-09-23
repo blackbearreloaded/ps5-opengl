@@ -2551,10 +2551,14 @@ ps5_flush_texture_backing(struct ps5_batch_flush_cache *batch, unsigned slot,
    uint64_t *epoch = stencil ? &texture->stencil_publication_epoch : &texture->texture_publication_epoch;
    size_t *published = stencil ? &texture->stencil_published_bytes : &texture->texture_published_bytes;
    const void *data = stencil ? texture->stencil_data : texture->data;
-   /* Retained, unstaged fragment textures cannot be CPU-modified without a
-    * resource drain. Explicit drains invalidate all publications; raw-pointer
-    * exports and persistent maps publish on each use. */
-   const bool reusable = batch && !texture->external_cpu_access &&
+   /* Publication belongs to the resource, not a draw batch or shader stage.
+    * CPU access invalidates it through the resource drain. Raw-pointer exports,
+    * persistent mappings and CPU-staged depth keep their per-use publication. */
+   const bool reusable =
+#ifndef PS5_DEFERRED_DRAW_BATCH
+      batch &&
+#endif
+      !texture->external_cpu_access &&
       texture->base.target != PIPE_BUFFER &&
       !(texture->base.bind & PIPE_BIND_DISPLAY_TARGET) &&
       !texture->depth_staging_size;
@@ -3773,7 +3777,14 @@ ps5_prepare_texture(struct ps5_context *context,
          state_slot = slots[(binding->binding - PS5_TESSELLATION_TEXTURE_BINDING) / PS5_MAX_TEXTURE_UNITS];
       }
       view = context->sampler_views[state_slot][unit];
-      if (!view || !view->texture) {
+      if (!view) {
+         /* Match radeonsi's null sampler view: an unused/absent descriptor
+          * must not reject the entire draw. Invalid SRDs suppress accesses. */
+         memset(table->data + binding->offset, 0, binding->stride);
+         flush_size = MAX2(flush_size, binding->offset + binding->stride);
+         continue;
+      }
+      if (!view->texture) {
          printf("[ps5-gallium] texture-prepare reject=view slot=%u unit=%u view=%u texture=%u\n",
                 state_slot, unit, view != NULL,
                 view && view->texture);
@@ -4756,14 +4767,14 @@ ps5_resource_create_unlocked(struct pipe_screen *screen,
          return NULL;
       }
       combined = render_staging_offset + render_staging_size;
-      if (combined > SIZE_MAX - (PS5_RENDER_ALIGNMENT - 1u)) {
+      if (combined > SIZE_MAX - (PS5_COLOR_TARGET_ALIGNMENT - 1u)) {
          free(resource);
          return NULL;
       }
       allocation_size =
-         (combined + PS5_RENDER_ALIGNMENT - 1u) &
-         ~(size_t)(PS5_RENDER_ALIGNMENT - 1u);
-      allocation_alignment = PS5_RENDER_ALIGNMENT;
+         (combined + PS5_COLOR_TARGET_ALIGNMENT - 1u) &
+         ~(size_t)(PS5_COLOR_TARGET_ALIGNMENT - 1u);
+      allocation_alignment = PS5_COLOR_TARGET_ALIGNMENT;
    } else if (depth_staging) {
       const unsigned layers = ps5_texture_level_layers(templ, 0);
       size_t combined;
@@ -4903,6 +4914,11 @@ ps5_resource_create_unlocked(struct pipe_screen *screen,
       0, direct_limit, allocation_size, allocation_alignment,
       PS5_DIRECT_MEMORY_TYPE, &resource->direct_start);
    if (allocation_status != 0) {
+      static unsigned failures;
+      if (failures++ < 8)
+         printf("[ps5-gallium] resource-allocate-failed rc=%08x target=%u format=%u bytes=%zu alignment=%zu limit=%016llx\n",
+                (unsigned)allocation_status, templ->target, templ->format,
+                allocation_size, allocation_alignment, (unsigned long long)direct_limit);
 #ifdef PS5_PUBLIC_STENCIL_TEST
       printf("[ps5-gallium] public-stencil-resource-failure stage=depth-allocate rc=%08x format=%u bytes=%zu alignment=%zu limit=%016llx\n",
              (unsigned)allocation_status, templ->format, allocation_size,
@@ -4920,6 +4936,11 @@ ps5_resource_create_unlocked(struct pipe_screen *screen,
       (void **)&resource->data, allocation_size, PS5_MAP_PROTECTION, 0,
       resource->direct_start, allocation_alignment);
    if (map_status != 0 || !resource->data) {
+      static unsigned failures;
+      if (failures++ < 8)
+         printf("[ps5-gallium] resource-map-failed rc=%08x target=%u format=%u bytes=%zu direct=%016llx\n",
+                (unsigned)map_status, templ->target, templ->format,
+                allocation_size, (unsigned long long)resource->direct_start);
 #ifdef PS5_PUBLIC_STENCIL_TEST
       printf("[ps5-gallium] public-stencil-resource-failure stage=depth-map rc=%08x format=%u direct=%016llx bytes=%zu alignment=%zu address=%p\n",
              (unsigned)map_status, templ->format,
@@ -8357,7 +8378,9 @@ static uint64_t
 ps5_get_timestamp(struct pipe_screen *screen)
 {
    (void)screen;
-   ps5_draw_batch_drain();
+   /* GPU completion does not modify CPU texture storage. */
+   ps5_screen_submit_lock(NULL);
+   ps5_screen_submit_unlock(NULL);
    return os_time_get_nano();
 }
 
@@ -8423,9 +8446,9 @@ ps5_destroy_query(struct pipe_context *base, struct pipe_query *pipe_query)
    struct ps5_context *context = (struct ps5_context *)base;
    struct ps5_query *query = (struct ps5_query *)pipe_query;
 
-   ps5_draw_batch_drain();
    if (!query)
       return;
+   ps5_draw_batch_drain_query(query);
    if (context->active_occlusion_query == query)
       context->active_occlusion_query = NULL;
    for (unsigned i = 0; i < PIPE_MAX_VERTEX_STREAMS; ++i) {
@@ -8492,7 +8515,8 @@ ps5_begin_query(struct pipe_context *base, struct pipe_query *pipe_query)
    }
    if (query->type != PIPE_QUERY_TIME_ELAPSED)
       return false;
-   ps5_draw_batch_drain();
+   ps5_screen_submit_lock(NULL);
+   ps5_screen_submit_unlock(NULL);
    query->start = os_time_get_nano();
    query->end = 0;
    query->active = true;
@@ -8546,7 +8570,8 @@ ps5_end_query(struct pipe_context *base, struct pipe_query *pipe_query)
    } else if (query->active) {
       return false;
    }
-   ps5_draw_batch_drain();
+   ps5_screen_submit_lock(NULL);
+   ps5_screen_submit_unlock(NULL);
    query->end = os_time_get_nano();
    query->active = false;
    query->ready = true;
@@ -8635,7 +8660,8 @@ ps5_render_condition(struct pipe_context *base, struct pipe_query *pipe_query,
    struct ps5_context *context = (struct ps5_context *)base;
    struct ps5_query *query = (struct ps5_query *)pipe_query;
 
-   ps5_draw_batch_drain();
+   if (query)
+      ps5_draw_batch_drain_query(query);
    if (query && query->type != PIPE_QUERY_OCCLUSION_COUNTER &&
        query->type != PIPE_QUERY_OCCLUSION_PREDICATE &&
        query->type != PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE &&
@@ -9353,6 +9379,17 @@ ps5_vertex_buffer_descriptor(uintptr_t address, size_t available,
    return true;
 }
 
+/* End bounds are validated separately; publish only the fetched vertex range. */
+static uint64_t
+ps5_vertex_fetch_begin(unsigned offset, unsigned stride, unsigned divisor,
+                       unsigned first_vertex, unsigned first_instance,
+                       unsigned split_instance)
+{
+   const uint64_t first = divisor
+      ? (uint64_t)first_instance + split_instance / divisor : first_vertex;
+   return offset + first * stride;
+}
+
 static void
 ps5_draw_vbo_locked(struct pipe_context *base,
                     const struct pipe_draw_info *info,
@@ -9396,7 +9433,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
    struct ps5_resource *index_resource = NULL;
    size_t index_offset = 0;
    uint32_t base_vertex;
-   unsigned vertex_count;
+   unsigned vertex_count, first_vertex;
    bool streamout_active = false;
    bool primitive_query_active = false;
    uint32_t streamout_mask = 0;
@@ -9501,9 +9538,12 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          return;
       }
       vertex_count = (unsigned)end;
+      first_vertex = draws[0].start;
+#ifdef AGC_RUNTIME_DIAGNOSTICS
       if (draws[0].start)
          printf("[ps5-gallium] first-vertex first=%u count=%u descriptor-count=%u\n",
                 draws[0].start, draws[0].count, vertex_count);
+#endif
    }
    if (info->index_size) {
       const void *indices;
@@ -9562,10 +9602,13 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          return;
       }
       vertex_count = max_effective + 1u;
+      first_vertex = min_effective;
+#ifdef AGC_RUNTIME_DIAGNOSTICS
       if (draws[0].index_bias)
          printf("[ps5-gallium] base-vertex bias=%d raw-min=%u raw-max=%u effective-min=%u effective-max=%u\n",
                 draws[0].index_bias, min_index, max_index,
                 min_effective, max_effective);
+#endif
    }
    tessellation_active = context->tcs || context->tes;
    if (!context->vs || !context->fs || !context->framebuffer_valid ||
@@ -9830,6 +9873,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       uint32_t binding_mask = 0;
       uint32_t binding_records[PIPE_MAX_ATTRIBS] = {0};
       size_t binding_bytes[PIPE_MAX_ATTRIBS] = {0};
+      size_t binding_begin[PIPE_MAX_ATTRIBS];
+      memset(binding_begin, 0xff, sizeof(binding_begin));
       unsigned descriptor_index = 0;
       unsigned element_index;
       unsigned binding;
@@ -9898,6 +9943,11 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          binding_bytes[element->vertex_buffer_index] =
             MAX2(binding_bytes[element->vertex_buffer_index],
                  (size_t)(required - vertex_buffer->buffer_offset));
+         binding_begin[element->vertex_buffer_index] =
+            MIN2(binding_begin[element->vertex_buffer_index],
+                 ps5_vertex_fetch_begin(element->src_offset, element->src_stride,
+                    element->instance_divisor, first_vertex, info->start_instance,
+                    context->split_instance_id));
          binding_mask |= BITFIELD_BIT(element->vertex_buffer_index);
       }
       descriptor_address = (uintptr_t)descriptor_resource->data;
@@ -9950,7 +10000,8 @@ ps5_draw_vbo_locked(struct pipe_context *base,
          ps5_flush_batch_backing(
             vertex_resource->external_cpu_access ? NULL : flush_cache,
             2 + PS5_MAX_TEXTURE_UNITS + binding,
-            (const void *)vertex_address, binding_bytes[binding]);
+            (const void *)(vertex_address + binding_begin[binding]),
+            binding_bytes[binding] - binding_begin[binding]);
          descriptor_index++;
       }
       input_user_data[input_metadata->vertex_buffer_table_user_data_dword] =
@@ -10939,6 +10990,8 @@ ps5_multidraw_eligible(struct ps5_context *context,
          /* Descriptor preparation handles all valid targets, formats, levels,
           * layers and sample counts. Only per-draw staging and attachment alias
           * hazards prevent deferred execution. */
+         if (!view)
+            continue;
          if (!texture || !texture->data || !texture->size ||
              texture == depth || texture->depth_staging_size || staged_stencil) {
             rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_TEXTURE - 1);
@@ -11083,7 +11136,8 @@ ps5_batch_retain_resources(const struct ps5_context *context,
       if (!texture_stages[stage])
          continue;
       for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit)
-         if (ps5_texture_used(context, texture_stages[stage], NULL, unit))
+         if (context->sampler_views[stage][unit] &&
+             ps5_texture_used(context, texture_stages[stage], NULL, unit))
             pipe_resource_reference(&retained[retained_count++],
                                     context->sampler_views[stage][unit]->texture);
    }
@@ -12125,7 +12179,9 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        surface->last_layer ||
        (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
         surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
-        surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB) ||
+        surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB &&
+        surface->format != PIPE_FORMAT_R10G10B10A2_UNORM && surface->format != PIPE_FORMAT_R16_FLOAT &&
+        surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R32G32B32A32_UINT) ||
        target->base.format != surface->format ||
        context->framebuffer.width != ps5_surface_width(surface) ||
        context->framebuffer.height != ps5_surface_height(surface))
@@ -15527,8 +15583,18 @@ ps5_create_sampler_view(struct pipe_context *base,
        (templ->target == PIPE_TEXTURE_CUBE_ARRAY &&
         (templ->u.tex.last_layer - templ->u.tex.first_layer + 1) % 6) ||
        (templ->target == PIPE_TEXTURE_3D &&
-        (templ->u.tex.first_layer || templ->u.tex.last_layer)))
+        (templ->u.tex.first_layer || templ->u.tex.last_layer))) {
+      printf("[ps5-gallium] sampler-view reject target=%u/%u format=%u/%u levels=%u..%u/%u layers=%u..%u/%u\n",
+             texture ? texture->target : 0, templ ? templ->target : 0,
+             texture ? texture->format : 0, templ ? templ->format : 0,
+             templ ? templ->u.tex.first_level : 0,
+             templ ? templ->u.tex.last_level : 0,
+             texture ? texture->last_level : 0,
+             templ ? templ->u.tex.first_layer : 0,
+             templ ? templ->u.tex.last_layer : 0,
+             texture ? texture->array_size : 0);
       return NULL;
+   }
    view = calloc(1, sizeof(*view));
    if (!view)
       return NULL;

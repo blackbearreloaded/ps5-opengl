@@ -104,8 +104,9 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
    if (array) {
       glGenTextures(1, &texture);
       glBindTexture(GL_TEXTURE_2D_ARRAY, texture);
-      glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, test->internal_format, WIDTH, HEIGHT, 2);
-      glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, 0, 1);
+      /* Large layer-zero clears exercise the GPU clear path as well as draws. */
+      glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, test->internal_format, 256, 256, 2);
+      glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, 0, 0);
    }
    status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
    if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -114,6 +115,20 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
       glDeleteTextures(1, &texture);
       return 0;
    }
+
+   /* A fresh attachment must accept GPU writes without a preceding CPU clear. */
+   float fresh_pixel[4] = {0};
+   glUseProgram(program);
+   glUniform4fv(color_location, 1, draw);
+   glDisable(GL_BLEND);
+   glDrawArrays(GL_TRIANGLES, 0, 3);
+   glFinish();
+   glReadPixels(WIDTH / 2, HEIGHT / 2, 1, 1, GL_RGBA, GL_FLOAT, fresh_pixel);
+   const int fresh_ok = glGetError() == GL_NO_ERROR &&
+      check_pixel(fresh_pixel, draw, test->channels, test->tolerance);
+   printf("[ps5-egl-render-float] fresh array=%d case=%s pixel=%.4f/%.4f/%.4f/%.4f result=%d\n",
+          array, test->name, fresh_pixel[0], fresh_pixel[1], fresh_pixel[2], fresh_pixel[3],
+          fresh_ok ? 0 : 1);
 
    glClearColor(clear_color[0], clear_color[1], clear_color[2],
                 clear_color[3]);
@@ -136,7 +151,7 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
    glReadPixels(WIDTH / 2, HEIGHT / 2, 1, 1, GL_RGBA, GL_FLOAT,
                 draw_pixel);
    error = glGetError();
-   passed = error == GL_NO_ERROR &&
+   passed = fresh_ok && error == GL_NO_ERROR &&
             check_pixel(clear_pixel, masked_expected, test->channels,
                         test->tolerance) &&
             check_pixel(draw_pixel, draw, test->channels, test->tolerance);

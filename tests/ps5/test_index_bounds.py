@@ -29,6 +29,7 @@ c+='void\n'+function((m/'main/sse_minmax.c').read_text(),'_mesa_uint_array_min_m
 c+='void\n'+function((m/'vbo/vbo_minmax_index.c').read_text(),'vbo_get_minmax_index_mapped')+'\n'
 c+='static uint32_t\n'+function(s,'ps5_index_value')+'\n'
 c+='static bool\n'+function(s,'ps5_index_bounds')+'\n'
+c+='static uint64_t\n'+function(s,'ps5_vertex_fetch_begin')+'\n'
 c+=r'''
 static bool reference(const void *p,unsigned size,unsigned n,int bias,unsigned out[4]) {
  out[0]=out[2]=UINT32_MAX;out[1]=out[3]=0;
@@ -42,6 +43,22 @@ static bool reference(const void *p,unsigned size,unsigned n,int bias,unsigned o
  return out[3]!=UINT32_MAX;
 }
 int main(void) {
+ /* Compare the flush start with the actual fetches across draw/instance ranges. */
+ for(unsigned stride=0;stride<129;stride+=8)
+ for(unsigned divisor=0;divisor<9;++divisor)
+ for(unsigned split=0;split<17;++split)
+ for(unsigned first=0;first<1025;first+=128) {
+  uint64_t begin=ps5_vertex_fetch_begin(12,stride,divisor,first,37,split);
+  uint64_t lowest=UINT64_MAX;
+  for(unsigned instance=split;instance<split+7;++instance)
+   for(unsigned vertex=first;vertex<first+19;++vertex) {
+    uint64_t address=12+(uint64_t)(divisor ? 37+instance/divisor : vertex)*stride;
+    lowest=MIN2(lowest,address);
+    assert(address>=begin);
+   }
+  assert(begin==lowest);
+ }
+ assert(ps5_vertex_fetch_begin(16,32,0,1000000,0,0)==32000016);
  uint32_t state=1,data[260];uint16_t small[260];
  const int biases[]={0,1,-1,127,-127,INT_MAX,INT_MIN};
  for(unsigned trial=0;trial<10000;++trial) {
