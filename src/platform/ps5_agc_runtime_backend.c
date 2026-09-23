@@ -234,13 +234,30 @@ ps5_agc_emit_texture_barrier(struct ps5_agc_command_buffer *command)
                     ? combined_release
                  : ps5_agc_depth_to_texture_barrier
                     ? depth_release : color_release;
-   if (!command || !command->up || !command->top ||
-       (size_t)(command->top - command->up) <
-          sizeof(color_release) / sizeof(color_release[0]))
+   if (!command || !command->up || !command->down || !command->top ||
+       command->down > command->top || command->down < command->up ||
+       (size_t)(command->down - command->up) < 47u)
       return false;
-   /* CB/DB flush followed by GLM/GLV/GL1/GL2 writeback/invalidation. */
+   /* GFX10 RELEASE_MEM is asynchronous. As in radeonsi's CB/DB barrier,
+    * signal completion and wait before a following draw can sample the write.
+    * Command-local scratch survives batch combination with its allocation;
+    * the downward reservation keeps appended command groups from overwriting it. */
+   uintptr_t fence = ((uintptr_t)command->down - 64u) & ~(uintptr_t)63u;
+   uint32_t *scratch = (uint32_t *)fence;
+   command->down = scratch;
+   *scratch = 0;
    memcpy(command->up, release_mem, sizeof(color_release));
+   command->up[2] = UINT32_C(0x23000000); /* MEM, write-confirm, value32. */
+   command->up[3] = (uint32_t)fence;
+   command->up[4] = (uint32_t)(fence >> 32);
+   command->up[5] = 1;
    command->up += sizeof(color_release) / sizeof(color_release[0]);
+   const uint32_t wait[] = {
+      PS5_AGC_PKT3(0x3c, 5), UINT32_C(0x13), /* memory, equal, ME */
+      (uint32_t)fence, (uint32_t)(fence >> 32), 1, UINT32_MAX, 4,
+   };
+   memcpy(command->up, wait, sizeof(wait));
+   command->up += sizeof(wait) / sizeof(wait[0]);
    return true;
 }
 
@@ -1134,6 +1151,7 @@ ps5_agc_linear_color_bytes(uint32_t info)
 {
    switch (info) {
    case UINT32_C(0x00008028): return 4; /* RGBA8_UNORM */
+   case UINT32_C(0x00008128): return 4; /* RGBA8_SNORM */
    case UINT32_C(0x00008628): return 4; /* RGBA8_SRGB: preserve native conversion bits. */
    case UINT32_C(0x00060718): return 4; /* R11G11B10_FLOAT: packed 32-bit texels. */
    case UINT32_C(0x00008004): return 1; /* R8_UNORM */

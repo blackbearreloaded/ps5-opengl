@@ -57,8 +57,8 @@ code += "\n".join(function(name) for name in (
 ))
 code += r'''
 static const uint32_t formats[] = {0x8028, 0x8004, 0x800c, 0x60730, 0x8628, 0x60718,
-                                 0x8024, 0x60708, 0x60710, 0x70438};
-static const unsigned bpps[] = {4, 1, 2, 8, 4, 4, 4, 2, 4, 16};
+                                 0x8024, 0x60708, 0x60710, 0x70438, 0x8128};
+static const unsigned bpps[] = {4, 1, 2, 8, 4, 4, 4, 2, 4, 16, 4};
 static unsigned rejections;
 struct layout {
    void *targets[8];
@@ -353,8 +353,8 @@ int main(void)
 
    /* The shared extent helper retains the original tile geometry at both
     * sample counts, including a tile boundary in each dimension. */
-   const unsigned tile_widths[] = {128, 256, 256, 128, 128, 128, 128, 256, 128, 64};
-   const unsigned tile_heights[] = {128, 256, 128, 64, 128, 128, 128, 128, 128, 64};
+   const unsigned tile_widths[] = {128, 256, 256, 128, 128, 128, 128, 256, 128, 64, 128};
+   const unsigned tile_heights[] = {128, 256, 128, 64, 128, 128, 128, 128, 128, 64, 128};
    for (unsigned samples = 1; samples <= 4; samples += 3) {
       assert(ps5_agc_gate2_set_multisample_state(samples, 0xffff, 1, 0, 0, 0) == 0);
       for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); ++f) {

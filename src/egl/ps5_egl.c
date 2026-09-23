@@ -390,7 +390,8 @@ eglInitialize(EGLDisplay display, EGLint *major, EGLint *minor)
 
       memset(&resource, 0, sizeof(resource));
       resource.target = PIPE_TEXTURE_2D;
-      resource.format = PIPE_FORMAT_R8G8B8A8_UNORM;
+      /* VideoOut consumes BGRA bytes; Gallium must preserve logical RGBA. */
+      resource.format = PIPE_FORMAT_B8G8R8A8_UNORM;
       resource.width0 = PS5_EGL_WIDTH;
       resource.height0 = PS5_EGL_HEIGHT;
       resource.depth0 = 1;
@@ -415,7 +416,7 @@ eglInitialize(EGLDisplay display, EGLint *major, EGLint *minor)
       memset(&ps5_config, 0, sizeof(ps5_config));
       ps5_config.visual.buffer_mask = ST_ATTACHMENT_FRONT_LEFT_MASK |
                                       ST_ATTACHMENT_DEPTH_STENCIL_MASK;
-      ps5_config.visual.color_format = PIPE_FORMAT_R8G8B8A8_UNORM;
+      ps5_config.visual.color_format = PIPE_FORMAT_B8G8R8A8_UNORM;
       ps5_config.visual.depth_stencil_format =
          PIPE_FORMAT_Z32_FLOAT_S8X24_UINT;
       ps5_config.visual.accum_format = PIPE_FORMAT_NONE;
@@ -1286,7 +1287,7 @@ eglCreatePbufferSurface(EGLDisplay display, EGLConfig config,
    }
    memset(&resource, 0, sizeof(resource));
    resource.target = PIPE_TEXTURE_2D;
-   resource.format = PIPE_FORMAT_R8G8B8A8_UNORM;
+   resource.format = PIPE_FORMAT_B8G8R8A8_UNORM;
    resource.width0 = width;
    resource.height0 = height;
    resource.depth0 = 1;

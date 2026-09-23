@@ -1071,6 +1071,7 @@ ps5_core_render_target_format(enum pipe_format format)
    case PIPE_FORMAT_R8_SNORM:
    case PIPE_FORMAT_R8G8_UNORM:
    case PIPE_FORMAT_R8G8_SNORM:
+   case PIPE_FORMAT_B8G8R8A8_UNORM:
    case PIPE_FORMAT_R8G8B8A8_UNORM:
    case PIPE_FORMAT_R8G8B8A8_SNORM:
    case PIPE_FORMAT_R8G8B8A8_SRGB:
@@ -6296,13 +6297,18 @@ ps5_linear_color_pitch(const struct pipe_surface *surface)
        (r->base.target == PIPE_TEXTURE_2D && r->base.array_size != 1) ||
        (r->base.bind & PIPE_BIND_DISPLAY_TARGET) || !(r->base.bind & PIPE_BIND_RENDER_TARGET) ||
        r->base.nr_samples > 1 || r->base.nr_storage_samples > 1 ||
-       surface->format != r->base.format || !r->render_staging_size || r->depth_staging_size ||
+       /* A legal texture view reinterprets texels, not their linear addresses. */
+       util_format_get_blockwidth(r->base.format) != 1 ||
+       util_format_get_blockheight(r->base.format) != 1 ||
+       util_format_get_blocksize(surface->format) != util_format_get_blocksize(r->base.format) ||
+       !r->render_staging_size || r->depth_staging_size ||
        !ps5_linear_sampled_layout(&r->base) || !r->data || r->size > r->allocation_size ||
        surface->level > r->base.last_level || surface->level >= ARRAY_SIZE(r->level_stride) ||
        surface->level >= 32 || surface->first_layer != surface->last_layer ||
        surface->last_layer >= ps5_surface_layer_count(surface) || !r->layer_stride ||
        surface->last_layer >= r->size / r->layer_stride ||
-       (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
+       (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM &&
+        surface->format != PIPE_FORMAT_R8G8B8A8_SNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
         surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
         surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB &&
         surface->format != PIPE_FORMAT_R10G10B10A2_UNORM && surface->format != PIPE_FORMAT_R16_FLOAT &&
@@ -12182,12 +12188,14 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        (target->render_staging_size && !ps5_linear_color_pitch(surface)) ||
        surface->level || surface->first_layer ||
        surface->last_layer ||
-       (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
+       (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM &&
+        surface->format != PIPE_FORMAT_R8G8B8A8_SNORM &&
+        surface->format != PIPE_FORMAT_B8G8R8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
         surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
         surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB &&
         surface->format != PIPE_FORMAT_R10G10B10A2_UNORM && surface->format != PIPE_FORMAT_R16_FLOAT &&
         surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R32G32B32A32_UINT) ||
-       target->base.format != surface->format ||
+       (target->base.format != surface->format && !ps5_linear_color_pitch(surface)) ||
        context->framebuffer.width != ps5_surface_width(surface) ||
        context->framebuffer.height != ps5_surface_height(surface))
       return false;

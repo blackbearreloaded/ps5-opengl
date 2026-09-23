@@ -100,12 +100,21 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                              GL_RENDERBUFFER, renderbuffer);
-   GLuint texture = 0;
+   GLuint texture = 0, storage = 0;
    if (array) {
       glGenTextures(1, &texture);
       glBindTexture(GL_TEXTURE_2D_ARRAY, texture);
       /* Large layer-zero clears exercise the GPU clear path as well as draws. */
-      glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, test->internal_format, 256, 256, 2);
+      if (array == 2) {
+         /* Reinterpret an integer allocation, including a nonzero mip/layer. */
+         storage = texture;
+         glTexStorage3D(GL_TEXTURE_2D_ARRAY, 2, GL_RGBA8UI, 512, 512, 2);
+         glGenTextures(1, &texture);
+         glTextureView(texture, GL_TEXTURE_2D_ARRAY, storage,
+                       test->internal_format, 1, 1, 1, 1);
+      } else {
+         glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, test->internal_format, 256, 256, 2);
+      }
       glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, 0, 0);
    }
    status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -113,6 +122,7 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
       printf("[ps5-egl-render-float] case=%s fbo=0x%x result=1\n",
              test->name, status);
       glDeleteTextures(1, &texture);
+      glDeleteTextures(1, &storage);
       return 0;
    }
 
@@ -161,6 +171,7 @@ run_case(const struct format_case *test, GLuint program, GLint color_location,
           clear_pixel[3], draw_pixel[0], draw_pixel[1], draw_pixel[2],
           draw_pixel[3], error, passed ? 0 : 1);
    glDeleteTextures(1, &texture);
+      glDeleteTextures(1, &storage);
    return passed;
 }
 
@@ -372,6 +383,11 @@ run_srgb_texture(GLuint vertex, GLuint render, GLint color_location,
                srgb_expected[(y * SRGB_WIDTH + x) * 4 + c] = srgb_encode(draw[c], enabled && c != 3);
       glDisable(GL_SCISSOR_TEST);
       glDisable(GL_FRAMEBUFFER_SRGB);
+#ifdef PS5_SAMPLE_FINISH_DIAGNOSTIC
+      /* Diagnostic only: passing this variant does not qualify implicit ordering. */
+      glFinish();
+      printf("[ps5-egl-render-float] diagnostic=finish-before-sample enabled=%u\n", enabled);
+#endif
       /* Sample the FBO write immediately: no readback/finish may hide a missing barrier. */
       glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, renderbuffer);
       if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -539,13 +555,16 @@ main(void)
       matching += run_case(&cases[i], program, color_location,
                            framebuffer, renderbuffer, array);
 
+   matching += run_case(&cases[5], program, color_location,
+                        framebuffer, renderbuffer, 2);
+
    /* Masked clears may legitimately add internal draws. Pixel oracles above
     * validate the public API without assuming a driver-internal draw count. */
    int mrt_passed = run_mrt_clears(framebuffer);
    int srgb_passed = run_srgb_texture(shaders[0], program, color_location,
                                      framebuffer, renderbuffer);
    passed = major == 1 && minor >= 4 && mrt_passed && srgb_passed &&
-            matching == 2 * sizeof(cases) / sizeof(cases[0]) &&
+            matching == 1 + 2 * sizeof(cases) / sizeof(cases[0]) &&
             glGetError() == GL_NO_ERROR;
    printf("[ps5-egl-render-float] matching=%u result=%d\n",
           matching, passed ? 0 : 1);

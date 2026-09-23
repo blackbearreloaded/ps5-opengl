@@ -2411,3 +2411,7 @@ egl_public_core33_futex.o: egl_public_core33_futex.c
 
 egl_public_core33_pc_sample.o: egl_public_core33_pc_sample.c
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+egl_public_core33_render_format_float_sync.o: \
+	egl_public_core33_render_format_float.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_SAMPLE_FINISH_DIAGNOSTIC=1 -c -o $@ $<
