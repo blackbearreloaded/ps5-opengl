@@ -2418,3 +2418,6 @@ egl_public_core33_render_format_float_sync.o: \
 
 egl_public_core33_depth_array_glthread.o: egl_public_core33_depth_array_samples.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -DPS5_GLTHREAD_TEST=1 -c -o $@ $<
+
+egl_public_core33_present_concurrent.o: egl_public_core33_present_concurrent.c
+	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<

@@ -156,6 +156,8 @@ ps5_screen_present_lock(struct pipe_screen *base)
 #ifdef PS5_DEFERRED_DRAW_BATCH
    (void)base;
    simple_mtx_lock(&ps5_deferred_mutex);
+   /* Another context can enqueue after the EGL flush releases this mutex. */
+   ps5_draw_batch_flush_locked();
    ps5_draw_batch_retire_locked(false);
 #else
    simple_mtx_lock(&((struct ps5_screen *)base)->submit_mutex);
@@ -5151,8 +5153,10 @@ ps5_screen_prepare_present(struct pipe_screen *base)
    struct ps5_resource *pool = screen && screen->render_pool
       ? (struct ps5_resource *)screen->render_pool : NULL;
 
-   return pool && pool->data && ps5_agc_gate2_prepare_present
-      ? ps5_agc_gate2_prepare_present(pool->data, pool->allocation_size)
+   /* Only the two scanouts are registered, not the trailing offscreen arena. */
+   return pool && pool->data && pool->allocation_size >= PS5_SCANOUT_POOL_BYTES &&
+          ps5_agc_gate2_prepare_present
+      ? ps5_agc_gate2_prepare_present(pool->data, PS5_SCANOUT_POOL_BYTES)
       : -1;
 }
 

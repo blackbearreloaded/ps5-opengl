@@ -950,19 +950,24 @@ eglSwapBuffers(EGLDisplay display, EGLSurface surface_handle)
       return EGL_TRUE;
    if (ps5_agc_gate2_present) {
       int present_status;
+      const char *phase = "prepare";
 
       if (surface->swap_interval)
          ps5_screen_submit_lock(ps5_display.screen);
       else
          ps5_screen_present_lock(ps5_display.screen);
       present_status = ps5_screen_prepare_present(ps5_display.screen);
-      if (present_status == 0)
+      if (present_status == 0) {
+         phase = "flip";
          present_status = ps5_agc_gate2_present(surface->buffer_index,
                                                 surface->swap_interval);
+      }
       ps5_screen_submit_unlock(ps5_display.screen);
       if (present_status != 0) {
-         fprintf(stderr, "[ps5-egl] present failed status=%d interval=%d\n",
-                 present_status, surface->swap_interval);
+         fprintf(stderr, "[ps5-egl] present failed phase=%s status=%d interval=%d\n",
+                 phase, present_status, surface->swap_interval);
+         printf("[ps5-egl] present failure phase=%s status=%d interval=%d\n",
+                phase, present_status, surface->swap_interval);
          ps5_set_error(EGL_BAD_SURFACE);
          return EGL_FALSE;
       }

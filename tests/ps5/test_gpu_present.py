@@ -15,8 +15,23 @@ start = source.index("int ps5_agc_gate2_batch_present(")
 body = source[start:source.index("\n#endif", start)]
 start = source.index("int ps5_agc_gate2_present(unsigned buffer_index, unsigned swap_interval)")
 present = source[start:source.index("\n#endif", source.index("    return result;", start))]
+screen_source = (root / "src/gallium/ps5/ps5_screen.c").read_text()
+a = screen_source.index("void\nps5_screen_present_lock(")
+present_lock = screen_source[a:screen_source.index("\n}\n", a) + 3]
+lock_support = r'''
+#define PS5_DEFERRED_DRAW_BATCH 1
+struct pipe_screen { int unused; };
+static int ps5_deferred_mutex, locked;
+static void simple_mtx_lock(int *m) { assert(m == &ps5_deferred_mutex && !locked); locked=1; }
+static void ps5_draw_batch_flush_locked(void) {
+    assert(locked);
+    if (runtime_batch_active) { runtime_batch_active=runtime_batch_count=0; ++runtime_pending_batches; }
+}
+static void ps5_draw_batch_retire_locked(int wait) { assert(locked && !wait); }
+'''
 code = r'''
 #include <assert.h>
+#include <stdbool.h>
 #include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
@@ -98,7 +113,7 @@ static struct {
     int (*submit_flip)(int, int, uint32_t, int64_t);
 } runtime_video_api = {status, pending, vblank, cpu_flip};
 static int runtime_video_wait_idle(void) { ++idle_calls; return idle_error; }
-''' + body + present + r'''
+''' + body + present + lock_support + present_lock + r'''
 static void reset(void) {
     runtime_video_registered = 1; runtime_video_handle = 7;
     runtime_pending_batches = 0;
@@ -117,6 +132,11 @@ static void reset(void) {
     runtime_video_framebuffer_size = runtime_gpu_present_deferred = runtime_gpu_present_is_cpu = 0;
 }
 int main(void) {
+    reset(); /* A second context queued after the first context flushed. */
+    ps5_screen_present_lock(NULL);
+    assert(locked && !runtime_batch_active && !runtime_batch_count && runtime_pending_batches==1);
+    assert(ps5_agc_gate2_present(1,0)==0);
+    locked=0;
     reset(); assert(ps5_agc_gate2_batch_present(1) == 0);
     runtime_batch_count = runtime_batch_active = 0; runtime_pending_batches = 1;
     assert(ps5_agc_gate2_present(1, 0) == 0 && !polls && !cpu_flips);
@@ -216,6 +236,11 @@ with tempfile.TemporaryDirectory() as tmp:
     c.write_text(code)
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(c), "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
+    broken = code.replace("   ps5_draw_batch_flush_locked();", "   if (0) ps5_draw_batch_flush_locked();")
+    assert broken != code
+    c.write_text(broken)
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(c), "-o", str(exe)], check=True)
+    assert subprocess.run([str(exe)], cwd=tmp, capture_output=True).returncode != 0
 egl = (root / "src/egl/ps5_egl.c").read_text()
 assert "&fence, surface->window ? ps5_before_swap_flush : NULL, surface)" in egl
 assert "ps5_context_queue_present(ps5_current_context->st->pipe, surface->buffer_index)" in egl
@@ -231,8 +256,11 @@ print("PASS: bounded GPU-flip tail, post-tail marker, exact flip/idle completion
 # depend on an application draw to open/register the native scanout pool.
 start = source.index("int ps5_agc_gate2_prepare_present(")
 prepare = source[start:source.index("\nstatic int runtime_video_wait_idle", start)]
+a = screen_source.index("int\nps5_screen_prepare_present(")
+prepare_screen = screen_source[a:screen_source.index("\n}\n", a) + 3]
 code = r'''
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #define FRAMEBUFFER_BYTES 64u
@@ -255,6 +283,13 @@ static int runtime_video_acquire(const video_api_t *video, uint8_t *framebuffer,
     ++acquires; *attempts = 1; return acquire_result;
 }
 ''' + prepare + r'''
+#define PS5_SCANOUT_POOL_BYTES 128u
+static int (*prepare_hook)(void *, size_t) = ps5_agc_gate2_prepare_present;
+#define ps5_agc_gate2_prepare_present prepare_hook
+struct pipe_screen { int unused; };
+struct ps5_resource { void *data; size_t allocation_size; };
+struct ps5_screen { struct pipe_screen base; struct ps5_resource *render_pool; };
+''' + prepare_screen + r'''
 int main(void) {
     _Alignas(FRAMEBUFFER_ALIGNMENT) uint8_t pool[128] = {0};
     assert(ps5_agc_gate2_prepare_present(NULL, sizeof(pool)) == -1);
@@ -267,6 +302,16 @@ int main(void) {
     runtime_video_framebuffer_size = sizeof(pool);
     assert(ps5_agc_gate2_prepare_present(pool, sizeof(pool)) == 0);
     assert(ps5_agc_gate2_prepare_present(pool, FRAMEBUFFER_BYTES) == 0);
+    assert(!loads && !flushes && !acquires);
+
+    /* A large offscreen arena must not reopen an already registered scanout. */
+    struct ps5_resource resource = {pool, sizeof(pool) + 4096};
+    struct ps5_screen screen = {{0}, &resource};
+    assert(ps5_screen_prepare_present(&screen.base) == 0);
+    assert(!loads && !flushes && !acquires);
+    resource.allocation_size = PS5_SCANOUT_POOL_BYTES - 1;
+    assert(ps5_screen_prepare_present(&screen.base) == -1);
+    assert(ps5_screen_prepare_present(NULL) == -1);
     assert(!loads && !flushes && !acquires);
 
     runtime_video_registered = 0;
@@ -296,6 +341,7 @@ start = source.rindex("    PS5_PROFILE_MARK(1);", 0, source.index("    /* The fi
 flush_gate = source[start:source.index("    PS5_PROFILE_MARK(2);", start)]
 code = r'''
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #define PS5_PROFILE_MARK(i) ((void)0)
 static int flushes;
@@ -374,6 +420,7 @@ start = screen.index("         if (flush_depth_stencil)")
 stencil_flush = screen[start:screen.index(';', start) + 1] + "\n"
 code = r'''
 #include <assert.h>
+#include <stdbool.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -472,6 +519,7 @@ a = source.index("static int runtime_video_prepare_draw(void)")
 prepare_draw = source[a:source.index("\nint ps5_agc_gate2_present", a)]
 code = r'''
 #include <assert.h>
+#include <stdbool.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
