@@ -276,7 +276,8 @@ static void queue(unsigned n) {
     assert(ps5_agc_gate2_batch_begin() != 0);
     for (unsigned i = 0; i < n; ++i) {
         agc_submit_description_t d = {memory[i], 1, 0, {0}};
-        assert(runtime_batch_queue(&api, &d, memory[i], i * 64, 64, &markers[i], 101 + i) == 0);
+        const struct runtime_batch_entry entry={d,memory[i],i*64,64,&markers[i],101+i,0,0,0};
+        assert(runtime_batch_queue(&api, &entry) == 0);
     }
     assert(!submits && !unmaps && !releases); /* Staging is not execution. */
 }
@@ -292,7 +293,8 @@ int main(void) {
     reset(); queue(PS5_MULTIDRAW_BATCH_CAPACITY);
     const agc_api_t api = {submit, suspend_point};
     agc_submit_description_t d = {memory[0], 1, 0, {0}};
-    assert(runtime_batch_queue(&api, &d, memory[0], 0, 64, &markers[0], 101) != 0);
+    const struct runtime_batch_entry entry={d,memory[0],0,64,&markers[0],101,0,0,0};
+    assert(runtime_batch_queue(&api, &entry) != 0);
     assert(ps5_agc_gate2_batch_end() == 0);
     reset(); delay=5; queue(3);
     assert(ps5_agc_gate2_batch_submit() == 0 && runtime_pending[runtime_pending_head].count == 3);
@@ -345,7 +347,8 @@ static void queue_one(unsigned i) {
     const agc_api_t api={submit,suspend_point};
     assert(ps5_agc_gate2_batch_begin()==0);
     agc_submit_description_t d={memory[i],1,0,{0}};
-    assert(runtime_batch_queue(&api,&d,memory[i],i*64,64,&markers[i],101+i)==0);
+    const struct runtime_batch_entry entry={d,memory[i],i*64,64,&markers[i],101+i,0,0,0};
+    assert(runtime_batch_queue(&api,&entry)==0);
 }
 int main(void) {
     reset(); delay=100000;
@@ -1375,7 +1378,9 @@ for name, calls in {
 }.items():
     start = source.index("\n" + name + "(")
     function = source[start:source.index("\n}\n", start)]
-    for call in calls: assert function.count(call) == 1, (name, call)
+    # Mip generation also retires its GPU blit before CPU tail filtering;
+    # test_generate_mipmap.py exercises that dependency with pending output.
+    for call in calls: assert function.count(call) == (2 if name == "ps5_generate_mipmap" else 1), (name, call)
     assert "ps5_draw_batch_drain();" not in function, name
 # End-query does not wait; the queued-query lifetime cases above verify collection.
 start = source.index("\nps5_end_query(")

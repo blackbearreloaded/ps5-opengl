@@ -11,11 +11,14 @@ code = r'''
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#define PS5_ASYNC_NATIVE_PREP 1
 #define DIRECT_MEMORY_TYPE 12
 #define MAP_PROTECTION 0x33
-static const uint8_t *runtime_vs_package, *runtime_ps_package;
-static unsigned runtime_vs_package_len=128, runtime_ps_package_len=128;
-static uint32_t runtime_primitive_type=4;
+static _Thread_local const uint8_t *runtime_vs_package, *runtime_ps_package;
+static _Thread_local unsigned runtime_vs_package_len=128, runtime_ps_package_len=128;
+static _Thread_local uint32_t runtime_primitive_type=4;
 static int allocations, releases, maps, unmaps, creates, links, flushes, fail_create, fail_map;
 static int sceKernelAllocateDirectMemory(int64_t a,int64_t b,size_t n,size_t align,int type,int64_t *p) {
     assert(align==0x4000 && type==12); *p=++allocations; return 0;
@@ -43,6 +46,22 @@ typedef uint64_t agc_register_t;
 static void restore(struct runtime_shader_pair *prepared, uint8_t *memory) {
     void *vertex, *pixel;
 ''' + s[s.index('        vertex = prepared->vertex;'):s.index('        hull_rc = vertex_rc = pixel_rc = link_rc = 0;')] + r'''
+}
+static atomic_int ready, go;
+static uint8_t shared_vs[128]={1}, shared_ps[128]={2};
+static void *cache_worker(void *unused) {
+    (void)unused;
+    runtime_vs_package=shared_vs; runtime_ps_package=shared_ps;
+    agc_api_t api={create,link_pair};
+    atomic_fetch_add(&ready,1);
+    while(!atomic_load(&go)) {}
+    for(unsigned i=0;i<1000;++i) {
+        runtime_primitive_type=i%8;
+        struct runtime_shader_pair *p=runtime_shader_pair_get(&api,0,
+            shared_vs,96,shared_vs+96,32,shared_ps,96,shared_ps+96,32);
+        assert(p && p->primitive==i%8 && ((uint8_t*)p->vertex)[0]==1);
+    }
+    return NULL;
 }
 int main(void) {
     uint8_t vs[128]={1}, ps[128]={2};
@@ -76,6 +95,14 @@ int main(void) {
     assert(runtime_shader_pair_clear()==0 && !runtime_shader_pair_count && !runtime_shader_pair_bytes);
     assert(allocations==releases && maps==unmaps);
     assert(runtime_shader_pair_clear()==0);
+    int old_creates=creates, old_links=links;
+    pthread_t workers[2];
+    for(unsigned i=0;i<2;++i) assert(!pthread_create(&workers[i],NULL,cache_worker,NULL));
+    while(atomic_load(&ready)!=2) {}
+    atomic_store(&go,1);
+    for(unsigned i=0;i<2;++i) assert(!pthread_join(workers[i],NULL));
+    assert(runtime_shader_pair_count==8 && creates==old_creates+16 && links==old_links+8);
+    assert(!runtime_shader_pair_clear() && allocations==releases && maps==unmaps);
     uint8_t work[0x10000]; memset(work,0xa5,sizeof(work));
     runtime_prepared_work_clear(work);
     for(unsigned i=0;i<sizeof(work);++i)
@@ -98,6 +125,6 @@ int main(void) {
 '''
 with tempfile.TemporaryDirectory() as d:
     src=Path(d)/'test.c'; exe=Path(d)/'test'; src.write_text(code)
-    subprocess.run(['clang','-std=c11','-O1','-g','-fsanitize=address,undefined',str(src),'-o',str(exe)],check=True)
-    subprocess.run([str(exe)],check=True)
+    subprocess.run(['clang','-std=c11','-O1','-g','-pthread','-fsanitize=address,undefined',str(src),'-o',str(exe)],check=True)
+    subprocess.run([str(exe)],check=True,timeout=30)
 print('PASS prepared-pair hits, address reuse, primitive changes, failures, limits and lifetime')

@@ -67,10 +67,10 @@ static int ps5_agc_find_register(const struct ps5_agc_register *, uint32_t,
 _Static_assert(sizeof(struct ps5_agc_register) == 8,
                "unexpected AGC register record size");
 
-static ps5_agc_set_instances_fn ps5_agc_set_instances;
-static ps5_agc_draw_auto_fn ps5_agc_draw_auto;
-static ps5_agc_draw_index_fn ps5_agc_draw_index;
-static ps5_agc_set_cx_fn ps5_agc_set_cx;
+static _Thread_local ps5_agc_set_instances_fn ps5_agc_set_instances;
+static _Thread_local ps5_agc_draw_auto_fn ps5_agc_draw_auto;
+static _Thread_local ps5_agc_draw_index_fn ps5_agc_draw_index;
+static _Thread_local ps5_agc_set_cx_fn ps5_agc_set_cx;
 struct ps5_agc_backend_draw_state {
    uint32_t instance_count;
    void *mrt_targets[PS5_AGC_MRT_TARGETS];

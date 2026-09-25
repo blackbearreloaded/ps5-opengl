@@ -13,7 +13,7 @@ tail = source[tail_start:source.index('    final_words =', tail_start)]
 assert tail.index('completion_offset = draw_words - PS5_AGC_POST_DRAW_BARRIER_WORDS') < tail.index('release_mem(&command, 45, 12')
 assert tail.index('release_mem(&command, 45, 12') < tail.index('if (!completion_offset)') < tail.index('runtime_release_completion(&agc, &command, completion_marker,')
 assert 'if (command.down >= command.up && command.down <= command.top)' in source
-assert 'entry->command_capacity = (uint32_t)(command.down - words);' in source
+assert 'entry.command_capacity = (uint32_t)(command.down - words);' in source
 code = r'''
 #include <assert.h>
 #include <stdint.h>
@@ -86,9 +86,11 @@ static void reset(unsigned count) {
     for (unsigned i=0;i<count;++i) {
         memory[i][0]=1000+i; memory[i][1]=2000+i; memory[i][2]=3000+i;
         agc_submit_description_t d={memory[i],3,0,{0}};
-        assert(!runtime_batch_queue(&api,&d,memory[i],i*64,64,&markers[i],101+i));
-        runtime_batch_entries[i].completion_offset=2;
-        runtime_batch_entries[i].command_capacity=16;
+        struct runtime_batch_entry entry={d,memory[i],i*64,64,&markers[i],101+i,2,16,0};
+        assert(!runtime_batch_queue(&api,&entry));
+        memset(&entry,0,sizeof(entry)); /* Batch owns a complete value snapshot. */
+        assert(runtime_batch_entries[i].completion_offset==2);
+        assert(runtime_batch_entries[i].command_capacity==16);
     }
 }
 int main(void) {

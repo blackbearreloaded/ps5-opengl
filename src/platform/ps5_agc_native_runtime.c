@@ -905,7 +905,7 @@ typedef struct video_api {
 static int load_apis(void *agc_module, void *driver_module,
                      void *video_module, agc_api_t *agc, video_api_t *video);
 
-static volatile unsigned out_of_space;
+static _Thread_local volatile unsigned out_of_space;
 static uint8_t command_out_of_space(agc_command_buffer_t *, uint32_t, void *);
 
 #if defined(AGC_RUNTIME_PACKAGES)
@@ -1075,6 +1075,14 @@ static struct runtime_shader_pair {
 } runtime_shader_pairs[512];
 static unsigned runtime_shader_pair_count;
 static size_t runtime_shader_pair_bytes;
+#ifdef PS5_ASYNC_NATIVE_PREP
+static pthread_mutex_t runtime_shader_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define RUNTIME_SHADER_LOCK() do { if (pthread_mutex_lock(&runtime_shader_mutex)) abort(); } while (0)
+#define RUNTIME_SHADER_UNLOCK() do { if (pthread_mutex_unlock(&runtime_shader_mutex)) abort(); } while (0)
+#else
+#define RUNTIME_SHADER_LOCK() ((void)0)
+#define RUNTIME_SHADER_UNLOCK() ((void)0)
+#endif
 
 /* Prepared draws write every emitted command and own only these mutable state
  * pages. Shader code lives in the pair allocation; unused command capacity is
@@ -1098,7 +1106,7 @@ static int runtime_prepared_work_publish(uint8_t *memory,
     return 0;
 }
 
-static struct runtime_shader_pair *runtime_shader_pair_get(
+static struct runtime_shader_pair *runtime_shader_pair_get_unlocked(
     const agc_api_t *agc, int64_t direct_limit,
     const uint8_t *vs_header, size_t vs_header_size,
     const uint8_t *vs_code, size_t vs_code_size,
@@ -1162,6 +1170,21 @@ fail:
         abort();
     free(p.source);
     return NULL;
+}
+
+static struct runtime_shader_pair *runtime_shader_pair_get(
+    const agc_api_t *agc, int64_t direct_limit,
+    const uint8_t *vs_header, size_t vs_header_size,
+    const uint8_t *vs_code, size_t vs_code_size,
+    const uint8_t *ps_header, size_t ps_header_size,
+    const uint8_t *ps_code, size_t ps_code_size)
+{
+    RUNTIME_SHADER_LOCK();
+    struct runtime_shader_pair *pair = runtime_shader_pair_get_unlocked(
+        agc, direct_limit, vs_header, vs_header_size, vs_code, vs_code_size,
+        ps_header, ps_header_size, ps_code, ps_code_size);
+    RUNTIME_SHADER_UNLOCK();
+    return pair; /* Entries remain immutable until workers stop and GPU retires. */
 }
 
 static int runtime_shader_pair_clear(void)
@@ -1260,56 +1283,77 @@ static agc_api_t runtime_batch_api;
 static unsigned runtime_batch_count;
 static int runtime_batch_active, runtime_batch_faulted;
 static int runtime_batch_fixed_framebuffer;
+static int runtime_batch_append(const agc_api_t *, const struct runtime_batch_entry *);
 
 #ifdef PS5_ASYNC_NATIVE_PREP
 /* The producer keeps translating GL draws while this worker prepares native
  * commands. Submission/retirement stays ordered at the existing batch edge. */
+static int64_t runtime_next_render_marker(void);
+static int runtime_async_prepare_draw(void);
+static int runtime_async_drain(void);
+#ifndef PS5_NATIVE_PREP_WORKERS
+#define PS5_NATIVE_PREP_WORKERS 2
+#endif
+#if PS5_NATIVE_PREP_WORKERS < 1 || PS5_NATIVE_PREP_WORKERS > 2
+#error "Native preparation supports one or two workers"
+#endif
+#if PS5_NATIVE_PREP_WORKERS > 1 && (defined(PS5_DRAW_PROFILE) || defined(PS5_DRAW_GPU_TIMESTAMPS) || defined(AGC_RUNTIME_DIAGNOSTICS))
+#error "Multiworker preparation requires profile0; shared diagnostic counters are not concurrent"
+#endif
 #define RUNTIME_ASYNC_JOBS PS5_MULTIDRAW_BATCH_CAPACITY
 struct runtime_async_job {
     struct runtime_draw_inputs draw;
     struct ps5_agc_backend_draw_state backend;
     uint32_t ngg_valid, ngg_value;
+    int64_t marker;
+    agc_api_t api;
+    struct runtime_batch_entry entry;
+    int has_entry;
+    _Atomic uint64_t ready;
 };
 static struct runtime_async_job runtime_async_jobs[RUNTIME_ASYNC_JOBS];
-static pthread_t runtime_async_thread;
-static _Atomic uint64_t runtime_async_produced, runtime_async_consumed, runtime_async_completed;
-static _Atomic int runtime_async_stop_requested, runtime_async_error, runtime_async_ready;
+static _Thread_local struct runtime_async_job *runtime_async_output;
+static pthread_t runtime_async_threads[PS5_NATIVE_PREP_WORKERS];
+static _Atomic uint64_t runtime_async_produced, runtime_async_consumed;
+static uint64_t runtime_async_collected;
+static _Atomic int runtime_async_stop_requested, runtime_async_error;
+static _Atomic int runtime_async_ready[PS5_NATIVE_PREP_WORKERS];
 static int runtime_async_started;
 
 int ps5_agc_gate2_run_sync(void);
 
-static int runtime_async_pin(void)
+static int runtime_async_pin(unsigned worker)
 {
 #ifdef PS5_ASYNC_HOST_TEST
+    (void)worker;
     return 0;
 #else
-    /* GPU translation is pinned to CPU 8 in this development profile; CPU 10
-     * is the measured spare physical core. Fail closed if this differs. */
+    /* Keep preparation on distinct physical cores, separate from producer8. */
+    unsigned cpu = 10u + worker * 2u;
     cpuset_t one = {0}, verified = {0};
-    CPU_SET(10, &one);
+    CPU_SET(cpu, &one);
     if (cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 8, &one) ||
         cpuset_getaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 8, &verified) ||
         memcmp(&one, &verified, 8))
         return -1;
-    printf("[ps5-async-prep] cpu=10 verified=1\n");
+    printf("[ps5-async-prep] cpu=%u verified=1 worker=%u\n", cpu, worker);
     return 0;
 #endif
 }
 
-static void *runtime_async_main(void *unused)
+static void *runtime_async_main(void *argument)
 {
-    (void)unused;
+    unsigned worker = (unsigned)(uintptr_t)argument;
 #ifdef PS5_DRAW_PROFILE
     int64_t first_job_ns = 0;
 #endif
-    int pin = runtime_async_pin();
-    atomic_store_explicit(&runtime_async_ready, pin ? -1 : 1, memory_order_release);
+    int pin = runtime_async_pin(worker);
+    atomic_store_explicit(&runtime_async_ready[worker], pin ? -1 : 1, memory_order_release);
     if (pin)
         return NULL;
     for (;;) {
-        struct runtime_async_job job;
         uint64_t consumed = atomic_load_explicit(&runtime_async_consumed, memory_order_relaxed);
-        if (consumed == atomic_load_explicit(&runtime_async_produced, memory_order_acquire)) {
+        if (consumed >= atomic_load_explicit(&runtime_async_produced, memory_order_acquire)) {
             if (atomic_load_explicit(&runtime_async_stop_requested, memory_order_acquire))
                 return NULL;
             /* ponytail: this development worker busy-spins on a spare core;
@@ -1317,22 +1361,29 @@ static void *runtime_async_main(void *unused)
             __builtin_ia32_pause();
             continue;
         }
-        job = runtime_async_jobs[consumed % RUNTIME_ASYNC_JOBS];
-        atomic_store_explicit(&runtime_async_consumed, consumed + 1, memory_order_release);
+        if (!atomic_compare_exchange_weak_explicit(&runtime_async_consumed,
+                &consumed, consumed + 1, memory_order_relaxed, memory_order_relaxed))
+            continue;
+        struct runtime_async_job *job = &runtime_async_jobs[consumed % RUNTIME_ASYNC_JOBS];
 
-        runtime_draw_state = job.draw;
-        ps5_agc_draw_state = job.backend;
-        runtime_ngg_ge_pc_alloc_valid = job.ngg_valid;
-        runtime_ngg_ge_pc_alloc = job.ngg_value;
+        runtime_draw_state = job->draw;
+        ps5_agc_draw_state = job->backend;
+        runtime_ngg_ge_pc_alloc_valid = job->ngg_valid;
+        runtime_ngg_ge_pc_alloc = job->ngg_value;
 #ifdef PS5_DRAW_PROFILE
         if (!first_job_ns)
             first_job_ns = os_time_get_nano();
 #endif
+        runtime_async_output = job;
         int result = ps5_agc_gate2_run_sync();
+        runtime_async_output = NULL;
 
-        if (result && !atomic_load_explicit(&runtime_async_error, memory_order_relaxed))
-            atomic_store_explicit(&runtime_async_error, result, memory_order_relaxed);
-        atomic_store_explicit(&runtime_async_completed, consumed + 1, memory_order_release);
+        if (result) {
+            int expected = 0;
+            atomic_compare_exchange_strong_explicit(&runtime_async_error, &expected,
+                result, memory_order_relaxed, memory_order_relaxed);
+        }
+        atomic_store_explicit(&job->ready, consumed + 1, memory_order_release);
 #ifdef PS5_DRAW_PROFILE
         if ((consumed + 1) % 100000 == 0)
             printf("[ps5-async-elapsed] completed=%" PRIu64 " elapsed_ns=%" PRId64 "\n",
@@ -1341,41 +1392,72 @@ static void *runtime_async_main(void *unused)
     }
 }
 
+/* Only the producer appends results. A later completed draw cannot publish
+ * past an earlier one, and a ring slot remains owned until collection. */
+static void runtime_async_collect_one(void)
+{
+    struct runtime_async_job *job =
+        &runtime_async_jobs[runtime_async_collected % RUNTIME_ASYNC_JOBS];
+    while (atomic_load_explicit(&job->ready, memory_order_acquire) != runtime_async_collected + 1)
+        __builtin_ia32_pause();
+    if (job->has_entry && runtime_batch_append(&job->api, &job->entry) != 0)
+        abort(); /* Accepted allocation must never lose its retirement owner. */
+    job->has_entry = 0;
+    atomic_store_explicit(&job->ready, 0, memory_order_relaxed);
+    ++runtime_async_collected;
+}
+
 int ps5_agc_gate2_run(void)
 {
     if (!runtime_batch_active)
         return ps5_agc_gate2_run_sync();
+    /* Tessellation changes the process-wide factor ring. Finish workers first. */
+    if (runtime_draw_state.hs_package) {
+        if (runtime_async_drain() != 0)
+            return -1;
+        return ps5_agc_gate2_run_sync();
+    }
+    if (runtime_async_prepare_draw() != 0)
+        return -1;
     if (!runtime_async_started) {
         pthread_attr_t attr;
         if (pthread_attr_init(&attr) != 0)
             return -1;
-        int stack = pthread_attr_setstacksize(&attr, 8u * 1024u * 1024u);
-        int created = stack ? stack :
-            pthread_create(&runtime_async_thread, &attr, runtime_async_main, NULL);
-        pthread_attr_destroy(&attr);
-        if (created)
-            return -1;
-        int ready;
-        unsigned spins = 0;
-        while (!(ready = atomic_load_explicit(&runtime_async_ready, memory_order_acquire))) {
-            if ((++spins & 1023u) == 0)
-                sched_yield();
-            else
-                __builtin_ia32_pause();
+        unsigned created = 0;
+        int failed = pthread_attr_setstacksize(&attr, 8u * 1024u * 1024u);
+        while (!failed && created < PS5_NATIVE_PREP_WORKERS) {
+            failed = pthread_create(&runtime_async_threads[created], &attr,
+                                     runtime_async_main, (void *)(uintptr_t)created);
+            if (!failed)
+                ++created;
         }
-        if (ready < 0) {
-            if (pthread_join(runtime_async_thread, NULL) != 0)
-                abort();
-            atomic_store(&runtime_async_ready, 0);
+        pthread_attr_destroy(&attr);
+        for (unsigned i = 0; i < created; ++i) {
+            int ready;
+            unsigned spins = 0;
+            while (!(ready = atomic_load_explicit(&runtime_async_ready[i], memory_order_acquire))) {
+                if ((++spins & 1023u) == 0)
+                    sched_yield();
+                else
+                    __builtin_ia32_pause();
+            }
+            failed |= ready < 0;
+        }
+        if (failed) {
+            atomic_store_explicit(&runtime_async_stop_requested, 1, memory_order_release);
+            for (unsigned i = 0; i < created; ++i) {
+                if (pthread_join(runtime_async_threads[i], NULL) != 0)
+                    abort();
+                atomic_store(&runtime_async_ready[i], 0);
+            }
+            atomic_store(&runtime_async_stop_requested, 0);
             return -1;
         }
         runtime_async_started = 1;
     }
     uint64_t produced = atomic_load_explicit(&runtime_async_produced, memory_order_relaxed);
-    while (produced - atomic_load_explicit(&runtime_async_consumed, memory_order_acquire)
-           == RUNTIME_ASYNC_JOBS &&
-           !atomic_load_explicit(&runtime_async_error, memory_order_relaxed))
-        __builtin_ia32_pause();
+    if (produced - runtime_async_collected == RUNTIME_ASYNC_JOBS)
+        runtime_async_collect_one();
     if (atomic_load_explicit(&runtime_async_error, memory_order_acquire))
         return -1;
     struct runtime_async_job *job =
@@ -1384,6 +1466,8 @@ int ps5_agc_gate2_run(void)
     job->backend = ps5_agc_draw_state;
     job->ngg_valid = runtime_ngg_ge_pc_alloc_valid;
     job->ngg_value = runtime_ngg_ge_pc_alloc;
+    job->marker = runtime_next_render_marker();
+    job->has_entry = 0;
     atomic_store_explicit(&runtime_async_produced, produced + 1, memory_order_release);
     return 0;
 }
@@ -1393,8 +1477,8 @@ static int runtime_async_drain(void)
     if (!runtime_async_started)
         return 0;
     uint64_t target = atomic_load_explicit(&runtime_async_produced, memory_order_relaxed);
-    while (atomic_load_explicit(&runtime_async_completed, memory_order_acquire) != target)
-        __builtin_ia32_pause();
+    while (runtime_async_collected != target)
+        runtime_async_collect_one();
     return atomic_load_explicit(&runtime_async_error, memory_order_acquire);
 }
 
@@ -1402,16 +1486,19 @@ static void runtime_async_stop(void)
 {
     if (!runtime_async_started)
         return;
+    runtime_async_drain();
     atomic_store_explicit(&runtime_async_stop_requested, 1, memory_order_release);
-    if (pthread_join(runtime_async_thread, NULL) != 0)
-        abort();
+    for (unsigned i = 0; i < PS5_NATIVE_PREP_WORKERS; ++i) {
+        if (pthread_join(runtime_async_threads[i], NULL) != 0)
+            abort();
+        atomic_store(&runtime_async_ready[i], 0);
+    }
     runtime_async_started = 0;
     atomic_store(&runtime_async_stop_requested, 0);
     atomic_store(&runtime_async_error, 0);
-    atomic_store(&runtime_async_ready, 0);
     atomic_store(&runtime_async_produced, 0);
     atomic_store(&runtime_async_consumed, 0);
-    atomic_store(&runtime_async_completed, 0);
+    runtime_async_collected = 0;
 }
 #endif
 
@@ -1434,25 +1521,38 @@ int ps5_agc_gate2_batch_begin_framebuffer(void)
     return result;
 }
 
-static int runtime_batch_queue(const agc_api_t *api,
-                               const agc_submit_description_t *submit,
-                               void *memory, int64_t direct, size_t bytes,
-                               volatile uint64_t *marker, uint32_t expected)
+static int runtime_batch_append(const agc_api_t *api,
+                               const struct runtime_batch_entry *entry)
 {
     if (!runtime_batch_active || runtime_batch_faulted ||
         runtime_batch_count == PS5_MULTIDRAW_BATCH_CAPACITY ||
-        !memory || direct < 0 || !bytes || !marker || !api || !submit || !api->submit ||
-        !api->suspend_point || !submit->words || !submit->word_count)
+        !entry || !entry->memory || entry->direct < 0 || !entry->bytes ||
+        !entry->marker || !api || !api->submit || !api->suspend_point ||
+        !entry->submit.words || !entry->submit.word_count)
         return -1;
     if (runtime_batch_count &&
         (runtime_batch_api.submit != api->submit ||
          runtime_batch_api.suspend_point != api->suspend_point))
         return -1;
     runtime_batch_api = *api;
-    runtime_batch_entries[runtime_batch_count++] = (struct runtime_batch_entry){
-        *submit, memory, direct, bytes, marker, expected, 0, 0, 0
-    };
+    runtime_batch_entries[runtime_batch_count++] = *entry;
     return 0; /* Ownership transfers only on success. No GPU work yet. */
+}
+
+static int runtime_batch_queue(const agc_api_t *api,
+                               const struct runtime_batch_entry *entry)
+{
+#ifdef PS5_ASYNC_NATIVE_PREP
+    if (runtime_async_output) {
+        if (!api || !entry || runtime_async_output->has_entry)
+            return -1;
+        runtime_async_output->api = *api;
+        runtime_async_output->entry = *entry;
+        runtime_async_output->has_entry = 1;
+        return 0;
+    }
+#endif
+    return runtime_batch_append(api, entry);
 }
 
 /* Keep draw bodies and their dependency barriers. Fixed-framebuffer batches
@@ -1508,7 +1608,6 @@ int ps5_agc_gate2_batch_submit(void)
     int result = 0;
 #ifdef PS5_DRAW_PROFILE
     int64_t ticks[3] = {0};
-    const int profile = runtime_present_count >= 30 && runtime_batch_count;
 #define BATCH_SUBMIT_MARK(i) ticks[i] = os_time_get_nano()
 #else
 #define BATCH_SUBMIT_MARK(i) ((void)0)
@@ -1525,6 +1624,9 @@ int ps5_agc_gate2_batch_submit(void)
     runtime_batch_active = 0;
     if (!runtime_batch_count)
         return 0;
+#ifdef PS5_DRAW_PROFILE
+    const int profile = runtime_present_count >= 30;
+#endif
     BATCH_SUBMIT_MARK(0);
     unsigned groups = runtime_batch_combine();
     (void)groups;
@@ -2218,6 +2320,33 @@ static int runtime_video_prepare_draw(void)
 #endif
     return runtime_video_registered ? 0 : -1;
 }
+
+#ifdef PS5_ASYNC_NATIVE_PREP
+static int runtime_async_prepare_draw(void)
+{
+    /* Initialization and scanout ownership belong to the ordered producer.
+     * Workers only build commands against the already registered pool. */
+    if (!runtime_framebuffer || runtime_framebuffer_size < FRAMEBUFFER_BYTES ||
+        ((uintptr_t)runtime_framebuffer & (FRAMEBUFFER_ALIGNMENT - 1u)))
+        return -1;
+    if (!runtime_agc_initialized) {
+        agc_api_t agc = {0};
+        video_api_t video = {0};
+        if (load_apis(NULL, NULL, NULL, &agc, &video) != 0 || agc.init(8) != 0)
+            return -1;
+        runtime_agc_initialized = 1;
+    }
+    size_t bytes = runtime_framebuffer_size >= FRAMEBUFFER_POOL_BYTES
+        ? FRAMEBUFFER_POOL_BYTES : FRAMEBUFFER_BYTES;
+    if (!runtime_video_registered || runtime_video_framebuffer != runtime_framebuffer ||
+        runtime_video_framebuffer_size < bytes) {
+        if (runtime_async_drain() != 0 ||
+            ps5_agc_gate2_prepare_present(runtime_framebuffer, bytes) != 0)
+            return -1;
+    }
+    return runtime_video_prepare_draw();
+}
+#endif
 
 int ps5_agc_gate2_present(unsigned buffer_index, unsigned swap_interval)
 {
@@ -3640,6 +3769,9 @@ int main(void)
         descriptors[26] = TESS_OFFCHIP_BYTES;
         descriptors[27] = UINT32_C(0x3004dfac);
     }
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
+    RUNTIME_SHADER_LOCK();
+#endif
     if (runtime_hs_package)
         hull_rc = agc.create_shader(&hull, memory + hs_header_at,
                                     memory + hs_code_at);
@@ -3657,6 +3789,9 @@ int main(void)
                                    runtime_primitive_type);
 #else
                                    4);
+#endif
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)
+    RUNTIME_SHADER_UNLOCK();
 #endif
     }
     if (link_rc != 0)
@@ -3934,14 +4069,25 @@ int main(void)
     flush_gpu_data(framebuffer, framebuffer_pool_bytes);
     PS5_PROFILE_MARK(2);
 #ifdef AGC_RUNTIME_PACKAGES
+#ifdef PS5_ASYNC_NATIVE_PREP
+    if (!runtime_async_output) {
+#endif
     if (runtime_video_acquire(&video, framebuffer, framebuffer_pool_bytes,
                               &video_open_attempts) != 0)
         goto receipt;
-    video_handle = runtime_video_handle;
-    buffers_registered = runtime_video_registered;
     if (runtime_video_prepare_draw() != 0)
         goto receipt;
+#ifdef PS5_ASYNC_NATIVE_PREP
+    }
+#endif
+    video_handle = runtime_video_handle;
+    buffers_registered = runtime_video_registered;
+#ifdef PS5_ASYNC_NATIVE_PREP
+    render_marker = runtime_async_output ? runtime_async_output->marker :
+                                          runtime_next_render_marker();
+#else
     render_marker = runtime_next_render_marker();
+#endif
     failure_phase = "state";
     PS5_PROFILE_MARK(3);
 #else
@@ -4597,15 +4743,19 @@ int main(void)
     PS5_PROFILE_MARK(5);
 #ifdef PS5_MULTIDRAW_BATCH
     if (runtime_batch_active) {
-        if (runtime_batch_queue(&agc, &submit, memory, work_start, work_bytes,
-                                completion_marker, (uint32_t)render_marker) != 0)
-            goto receipt;
-        struct runtime_batch_entry *entry = &runtime_batch_entries[runtime_batch_count - 1];
+        /* Finish all metadata before transferring ownership to the batch. */
+        struct runtime_batch_entry entry = {
+            .submit = submit, .memory = memory, .direct = work_start,
+            .bytes = work_bytes, .marker = completion_marker,
+            .expected = (uint32_t)render_marker,
+        };
         if (command.down >= command.up && command.down <= command.top) {
-            entry->completion_offset = completion_offset;
-            entry->upload_prefix_words = upload_prefix_words;
-            entry->command_capacity = (uint32_t)(command.down - words);
+            entry.completion_offset = completion_offset;
+            entry.upload_prefix_words = upload_prefix_words;
+            entry.command_capacity = (uint32_t)(command.down - words);
         }
+        if (runtime_batch_queue(&agc, &entry) != 0)
+            goto receipt;
         memory = NULL;
         work_start = -1;
         result = 0;
