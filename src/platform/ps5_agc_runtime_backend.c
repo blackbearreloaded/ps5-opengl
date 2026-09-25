@@ -71,49 +71,77 @@ static ps5_agc_set_instances_fn ps5_agc_set_instances;
 static ps5_agc_draw_auto_fn ps5_agc_draw_auto;
 static ps5_agc_draw_index_fn ps5_agc_draw_index;
 static ps5_agc_set_cx_fn ps5_agc_set_cx;
-static uint32_t ps5_agc_instance_count = 1;
-static void *ps5_agc_mrt_targets[PS5_AGC_MRT_TARGETS];
-static size_t ps5_agc_mrt_sizes[PS5_AGC_MRT_TARGETS];
-static void *ps5_agc_scanout_target;
-static size_t ps5_agc_scanout_size;
-static uint32_t ps5_agc_mrt_blend[PS5_AGC_MRT_TARGETS];
-static uint32_t ps5_agc_mrt_color_info[PS5_AGC_MRT_TARGETS] = {
-   UINT32_C(0x00008028), UINT32_C(0x00008028),
-   UINT32_C(0x00008028), UINT32_C(0x00008028),
-   UINT32_C(0x00008028), UINT32_C(0x00008028),
-   UINT32_C(0x00008028), UINT32_C(0x00008028),
+struct ps5_agc_backend_draw_state {
+   uint32_t instance_count;
+   void *mrt_targets[PS5_AGC_MRT_TARGETS];
+   size_t mrt_sizes[PS5_AGC_MRT_TARGETS];
+   void *scanout_target;
+   size_t scanout_size;
+   uint32_t mrt_blend[PS5_AGC_MRT_TARGETS];
+   uint32_t mrt_color_info[PS5_AGC_MRT_TARGETS];
+   uint32_t mrt_attrib2[PS5_AGC_MRT_TARGETS];
+   uint32_t mrt_views[PS5_AGC_MRT_TARGETS];
+   /* Zero pitch keeps the existing tiled target layout. */
+   uint32_t mrt_pitches[PS5_AGC_MRT_TARGETS];
+   uint32_t mrt_mask;
+   unsigned mrt_count, mrt_samples;
+   uint32_t sample_mask;
+   bool multisample_enable, alpha_to_coverage, poly_line_smooth;
+   bool sample_shading, dual_source_blend;
+   const uint8_t *streamout_package;
+   uint32_t streamout_mask;
+   void *occlusion_query;
+   bool occlusion_precise;
+   uint32_t clip_control;
+   bool clip_control_valid;
+   uint32_t vs_out_control;
+   bool vs_out_control_valid;
+   bool color_to_texture_barrier, depth_to_texture_barrier;
+   uint32_t depth_width, depth_height;
+   const void *border_color_table;
 };
-static uint32_t ps5_agc_mrt_attrib2[PS5_AGC_MRT_TARGETS] = {
-   UINT32_C(0x01dfc437), UINT32_C(0x01dfc437),
-   UINT32_C(0x01dfc437), UINT32_C(0x01dfc437),
-   UINT32_C(0x01dfc437), UINT32_C(0x01dfc437),
-   UINT32_C(0x01dfc437), UINT32_C(0x01dfc437),
+static _Thread_local struct ps5_agc_backend_draw_state ps5_agc_draw_state = {
+   .instance_count = 1,
+   .mrt_color_info = {0x8028, 0x8028, 0x8028, 0x8028,
+                      0x8028, 0x8028, 0x8028, 0x8028},
+   .mrt_attrib2 = {0x01dfc437, 0x01dfc437, 0x01dfc437, 0x01dfc437,
+                   0x01dfc437, 0x01dfc437, 0x01dfc437, 0x01dfc437},
+   .mrt_mask = 0xf, .mrt_count = 1, .mrt_samples = 1,
+   .sample_mask = 0xffff,
+   .depth_width = PS5_RENDER_WIDTH, .depth_height = PS5_RENDER_HEIGHT,
 };
-static uint32_t ps5_agc_mrt_views[PS5_AGC_MRT_TARGETS];
-/* Byte pitches: zero retains the existing 64KB_R_X target layout. */
-static uint32_t ps5_agc_mrt_pitches[PS5_AGC_MRT_TARGETS];
-static uint32_t ps5_agc_mrt_mask = UINT32_C(0xf);
-static unsigned ps5_agc_mrt_count = 1;
-static unsigned ps5_agc_mrt_samples = 1;
-static uint32_t ps5_agc_sample_mask = UINT32_C(0xffff);
-static bool ps5_agc_multisample_enable;
-static bool ps5_agc_alpha_to_coverage;
-static bool ps5_agc_poly_line_smooth;
-static bool ps5_agc_sample_shading;
-static bool ps5_agc_dual_source_blend;
-static const uint8_t *ps5_agc_streamout_package;
-static uint32_t ps5_agc_streamout_mask;
-static void *ps5_agc_occlusion_query;
-static bool ps5_agc_occlusion_precise;
-static uint32_t ps5_agc_clip_control;
-static bool ps5_agc_clip_control_valid;
-static uint32_t ps5_agc_vs_out_control;
-static bool ps5_agc_vs_out_control_valid;
-static bool ps5_agc_color_to_texture_barrier;
-static bool ps5_agc_depth_to_texture_barrier;
-static uint32_t ps5_agc_depth_width = PS5_RENDER_WIDTH;
-static uint32_t ps5_agc_depth_height = PS5_RENDER_HEIGHT;
-static const void *ps5_agc_border_color_table;
+#define ps5_agc_instance_count ps5_agc_draw_state.instance_count
+#define ps5_agc_mrt_targets ps5_agc_draw_state.mrt_targets
+#define ps5_agc_mrt_sizes ps5_agc_draw_state.mrt_sizes
+#define ps5_agc_scanout_target ps5_agc_draw_state.scanout_target
+#define ps5_agc_scanout_size ps5_agc_draw_state.scanout_size
+#define ps5_agc_mrt_blend ps5_agc_draw_state.mrt_blend
+#define ps5_agc_mrt_color_info ps5_agc_draw_state.mrt_color_info
+#define ps5_agc_mrt_attrib2 ps5_agc_draw_state.mrt_attrib2
+#define ps5_agc_mrt_views ps5_agc_draw_state.mrt_views
+#define ps5_agc_mrt_pitches ps5_agc_draw_state.mrt_pitches
+#define ps5_agc_mrt_mask ps5_agc_draw_state.mrt_mask
+#define ps5_agc_mrt_count ps5_agc_draw_state.mrt_count
+#define ps5_agc_mrt_samples ps5_agc_draw_state.mrt_samples
+#define ps5_agc_sample_mask ps5_agc_draw_state.sample_mask
+#define ps5_agc_multisample_enable ps5_agc_draw_state.multisample_enable
+#define ps5_agc_alpha_to_coverage ps5_agc_draw_state.alpha_to_coverage
+#define ps5_agc_poly_line_smooth ps5_agc_draw_state.poly_line_smooth
+#define ps5_agc_sample_shading ps5_agc_draw_state.sample_shading
+#define ps5_agc_dual_source_blend ps5_agc_draw_state.dual_source_blend
+#define ps5_agc_streamout_package ps5_agc_draw_state.streamout_package
+#define ps5_agc_streamout_mask ps5_agc_draw_state.streamout_mask
+#define ps5_agc_occlusion_query ps5_agc_draw_state.occlusion_query
+#define ps5_agc_occlusion_precise ps5_agc_draw_state.occlusion_precise
+#define ps5_agc_clip_control ps5_agc_draw_state.clip_control
+#define ps5_agc_clip_control_valid ps5_agc_draw_state.clip_control_valid
+#define ps5_agc_vs_out_control ps5_agc_draw_state.vs_out_control
+#define ps5_agc_vs_out_control_valid ps5_agc_draw_state.vs_out_control_valid
+#define ps5_agc_color_to_texture_barrier ps5_agc_draw_state.color_to_texture_barrier
+#define ps5_agc_depth_to_texture_barrier ps5_agc_draw_state.depth_to_texture_barrier
+#define ps5_agc_depth_width ps5_agc_draw_state.depth_width
+#define ps5_agc_depth_height ps5_agc_draw_state.depth_height
+#define ps5_agc_border_color_table ps5_agc_draw_state.border_color_table
 
 static bool
 ps5_agc_streamout_enabled(void)

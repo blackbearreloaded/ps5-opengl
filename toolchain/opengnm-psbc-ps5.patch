@@ -527,7 +527,7 @@ index 945737d..b2755c7 100644
  
  	psbc_free_output(&output);
 diff --git a/libpsbc/psbc_compile.c b/libpsbc/psbc_compile.c
-index bacbc6a..0902318 100644
+index bacbc6a..71754c2 100644
 --- a/libpsbc/psbc_compile.c
 +++ b/libpsbc/psbc_compile.c
 @@ -12,6 +12,7 @@
@@ -1722,7 +1722,7 @@ index bacbc6a..0902318 100644
          ac_info->has_fma_mix = true;
      } else if (gfxlevel == GFX10) {
          ac_info->max_waves_per_simd = 20;
-@@ -928,26 +1983,1312 @@ static void setup_target(PsbcTarget target,
+@@ -928,26 +1983,1321 @@ static void setup_target(PsbcTarget target,
      }
  }
  
@@ -2041,6 +2041,14 @@ index bacbc6a..0902318 100644
 +    case PSBC_VERTEX_FORMAT_R8G8B8A8_UNORM: return PIPE_FORMAT_R8G8B8A8_UNORM;
 +    case PSBC_VERTEX_FORMAT_R8G8B8A8_SNORM: return PIPE_FORMAT_R8G8B8A8_SNORM;
 +    case PSBC_VERTEX_FORMAT_R16G16_UNORM: return PIPE_FORMAT_R16G16_UNORM;
++    case PSBC_VERTEX_FORMAT_R16G16_FLOAT: return PIPE_FORMAT_R16G16_FLOAT;
++    case PSBC_VERTEX_FORMAT_R16G16B16A16_FLOAT: return PIPE_FORMAT_R16G16B16A16_FLOAT;
++    case PSBC_VERTEX_FORMAT_R16G16_SNORM: return PIPE_FORMAT_R16G16_SNORM;
++    case PSBC_VERTEX_FORMAT_R8_UINT: return PIPE_FORMAT_R8_UINT;
++    case PSBC_VERTEX_FORMAT_R8G8_UINT: return PIPE_FORMAT_R8G8_UINT;
++    case PSBC_VERTEX_FORMAT_R8G8B8A8_UINT: return PIPE_FORMAT_R8G8B8A8_UINT;
++    case PSBC_VERTEX_FORMAT_R8G8_UNORM: return PIPE_FORMAT_R8G8_UNORM;
++    case PSBC_VERTEX_FORMAT_R8G8_SNORM: return PIPE_FORMAT_R8G8_SNORM;
 +    case PSBC_VERTEX_FORMAT_R10G10B10A2_UNORM: return PIPE_FORMAT_R10G10B10A2_UNORM;
 +    case PSBC_VERTEX_FORMAT_B10G10R10A2_UNORM: return PIPE_FORMAT_B10G10R10A2_UNORM;
 +    case PSBC_VERTEX_FORMAT_R10G10B10A2_SNORM: return PIPE_FORMAT_R10G10B10A2_SNORM;
@@ -2081,7 +2089,8 @@ index bacbc6a..0902318 100644
 +        gfx->vi.vertex_attribute_bindings[location] = attribute->binding;
 +        gfx->vi.vertex_attribute_offsets[location] = attribute->offset;
 +        gfx->vi.vertex_attribute_strides[location] = attribute->stride;
-+        gfx->vi.vertex_binding_align[attribute->binding] = attribute->alignment;
++        uint32_t *align = &gfx->vi.vertex_binding_align[attribute->binding];
++        *align = *align ? MIN2(*align, attribute->alignment) : attribute->alignment;
 +        if (attribute->instance_divisor) {
 +            gfx->vi.instance_rate_inputs |= BITFIELD_BIT(location);
 +            gfx->vi.instance_rate_divisors[location] = attribute->instance_divisor;
@@ -3040,7 +3049,7 @@ index bacbc6a..0902318 100644
  
      /* Ensure library is initialized */
      psbc_init();
-@@ -959,79 +3300,329 @@ PsbcResult psbc_compile_shader(
+@@ -959,79 +3309,329 @@ PsbcResult psbc_compile_shader(
      setup_target(opts->target, &gfxlevel, &chipfamily, &neo);
  
      /* Construct ac_compiler_info for the target GPU */
@@ -3419,7 +3428,7 @@ index bacbc6a..0902318 100644
  
      /* Determine previous stage for shader args declaration.
       * HS/GS need previous_stage=VERTEX so that the merged-pipeline args
-@@ -1046,19 +3637,40 @@ PsbcResult psbc_compile_shader(
+@@ -1046,19 +3646,40 @@ PsbcResult psbc_compile_shader(
      default:                    previous_stage = MESA_SHADER_NONE;      break;
      }
  
@@ -3465,7 +3474,7 @@ index bacbc6a..0902318 100644
          /* Convert emit_vertex to emit_vertex_with_counter */
          NIR_PASS(_, nir, nir_lower_gs_intrinsics,
                   nir_lower_gs_intrinsics_per_stream);
-@@ -1068,7 +3680,7 @@ PsbcResult psbc_compile_shader(
+@@ -1068,7 +3689,7 @@ PsbcResult psbc_compile_shader(
              .gfx_level = gfxlevel,
              .export_clipdist_mask = 0xff,
              .write_pos_to_clipvertex = true,
@@ -3474,7 +3483,7 @@ index bacbc6a..0902318 100644
              .disable_streamout = true,
          };
          nir_shader* gs_copy = NULL;
-@@ -1080,16 +3692,70 @@ PsbcResult psbc_compile_shader(
+@@ -1080,16 +3701,70 @@ PsbcResult psbc_compile_shader(
              ralloc_free(gs_copy);
      }
  
@@ -3549,7 +3558,7 @@ index bacbc6a..0902318 100644
          psbc_shutdown();
          return PSBC_RESULT_COMPILE_ACO;
      }
-@@ -1098,6 +3764,22 @@ PsbcResult psbc_compile_shader(
+@@ -1098,6 +3773,22 @@ PsbcResult psbc_compile_shader(
      struct radv_shader_binary_legacy* legacy =
          (struct radv_shader_binary_legacy*)binary;
  
@@ -3572,7 +3581,7 @@ index bacbc6a..0902318 100644
      /* The data layout in radv_shader_binary_legacy is:
       * [stats | code | ir | disasm | debug_info]
       * Code starts at offset stats_size. */
-@@ -1107,7 +3789,7 @@ PsbcResult psbc_compile_shader(
+@@ -1107,7 +3798,7 @@ PsbcResult psbc_compile_shader(
      /* Build the PS4/PS5 shader binary */
      const BuildContext buildctx = {
          .rinfo = &binary->info,
@@ -3581,7 +3590,7 @@ index bacbc6a..0902318 100644
          .config = &binary->config,
          .nir = nir,
          .gfx_level = gfxlevel,
-@@ -1116,28 +3798,130 @@ PsbcResult psbc_compile_shader(
+@@ -1116,28 +3807,130 @@ PsbcResult psbc_compile_shader(
          .psbc_stage = opts->stage,
          .spirv_data = spirv,
          .spirv_size = spirv_size,
@@ -3716,7 +3725,7 @@ index bacbc6a..0902318 100644
  }
  
  const char* psbc_result_string(PsbcResult result) {
-@@ -1149,6 +3933,7 @@ const char* psbc_result_string(PsbcResult result) {
+@@ -1149,6 +3942,7 @@ const char* psbc_result_string(PsbcResult result) {
      case PSBC_RESULT_COMPILE_ACO:      return "ACO shader compilation failed";
      case PSBC_RESULT_OUT_OF_MEMORY:    return "out of memory";
      case PSBC_RESULT_INTERNAL_ERROR:   return "internal error";
@@ -3725,7 +3734,7 @@ index bacbc6a..0902318 100644
      }
  }
 diff --git a/libpsbc/psbc_compile.h b/libpsbc/psbc_compile.h
-index 000e7e1..d038c5a 100644
+index 000e7e1..14aec24 100644
 --- a/libpsbc/psbc_compile.h
 +++ b/libpsbc/psbc_compile.h
 @@ -20,6 +20,11 @@
@@ -3740,7 +3749,7 @@ index 000e7e1..d038c5a 100644
  /* === Types === */
  
  typedef enum {
-@@ -49,11 +54,180 @@ typedef enum {
+@@ -49,11 +54,188 @@ typedef enum {
      PSBC_RESULT_COMPILE_ACO,
      PSBC_RESULT_OUT_OF_MEMORY,
      PSBC_RESULT_INTERNAL_ERROR,
@@ -3797,6 +3806,14 @@ index 000e7e1..d038c5a 100644
 +    PSBC_VERTEX_FORMAT_R11G11B10_FLOAT,
 +    PSBC_VERTEX_FORMAT_R8G8B8A8_SNORM,
 +    PSBC_VERTEX_FORMAT_R16G16_UNORM,
++    PSBC_VERTEX_FORMAT_R16G16_FLOAT,
++    PSBC_VERTEX_FORMAT_R16G16B16A16_FLOAT,
++    PSBC_VERTEX_FORMAT_R16G16_SNORM,
++    PSBC_VERTEX_FORMAT_R8_UINT,
++    PSBC_VERTEX_FORMAT_R8G8_UINT,
++    PSBC_VERTEX_FORMAT_R8G8B8A8_UINT,
++    PSBC_VERTEX_FORMAT_R8G8_UNORM,
++    PSBC_VERTEX_FORMAT_R8G8_SNORM,
 +} PsbcVertexFormat;
 +
 +typedef struct {
@@ -3923,7 +3940,7 @@ index 000e7e1..d038c5a 100644
  } PsbcShaderOutput;
  
  typedef struct {
-@@ -61,8 +235,71 @@ typedef struct {
+@@ -61,8 +243,71 @@ typedef struct {
      PsbcStage   stage;
      const char* entrypoint;  /* Default: "main" */
      bool        optimise;    /* Default: true */
@@ -3995,7 +4012,7 @@ index 000e7e1..d038c5a 100644
  /* === API === */
  
  /*
-@@ -77,20 +314,26 @@ void psbc_init(void);
+@@ -77,20 +322,26 @@ void psbc_init(void);
   */
  void psbc_shutdown(void);
  
@@ -4027,7 +4044,7 @@ index 000e7e1..d038c5a 100644
   */
  PsbcResult psbc_compile_shader(
      const uint32_t*       spirv,
-@@ -99,6 +342,55 @@ PsbcResult psbc_compile_shader(
+@@ -99,6 +350,55 @@ PsbcResult psbc_compile_shader(
      PsbcShaderOutput*     out
  );
  

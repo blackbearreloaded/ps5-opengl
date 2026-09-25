@@ -12,7 +12,8 @@ source = (root / 'third_party/mesa-26.2.0/src/gallium/auxiliary/util/u_vbuf.c').
 start = source.index('            struct translate_element *te = &key[type].element[elem_index[type][i]];')
 block = source[start:source.index('            /* elem_index', start)]
 driver = (root / 'src/gallium/ps5/ps5_screen.c').read_text()
-assert 'caps->vertex_input_alignment = PIPE_VERTEX_INPUT_ALIGNMENT_4BYTE;' in driver
+assert 'caps->vertex_input_alignment = PIPE_VERTEX_INPUT_ALIGNMENT_ELEMENT;' in driver
+assert 'attribute->alignment = ps5_vertex_format_alignment(element->src_format);' in driver
 code = r'''
 #include <assert.h>
 #include <stdbool.h>
@@ -42,4 +43,4 @@ with tempfile.TemporaryDirectory() as directory:
     exe = str(Path(directory) / 'check')
     subprocess.run(['clang-18', '-x', 'c', '-std=c11', '-Wall', '-Werror', '-o', exe, '-'], input=code, text=True, check=True)
     subprocess.run([exe], check=True)
-print('PASS: DWORD alignment cap and translated vertex/instance/constant metadata')
+print('PASS: element alignment cap and translated vertex/instance/constant metadata')

@@ -179,6 +179,37 @@ ps5_screen_submit_unlock(struct pipe_screen *base)
 /* Raw invariant-TSC cycles: no per-draw OS clock calls. Phases overlap:
  * 0=draw preparation, 1=descriptor copy, 2=whole deferred draw entry. */
 static uint64_t ps5_prepare_cycles[9], ps5_prepare_calls[9];
+#define PS5_MAP_CALLER_SLOTS 32
+static struct {
+   uintptr_t pc;
+   uint64_t calls, reads, textures;
+} ps5_map_callers[PS5_MAP_CALLER_SLOTS];
+static uint64_t ps5_map_caller_overflow;
+
+static void
+ps5_map_caller_record(uintptr_t pc, unsigned usage, unsigned target)
+{
+   for (unsigned i = 0; i < PS5_MAP_CALLER_SLOTS; ++i) {
+      uintptr_t current = __atomic_load_n(&ps5_map_callers[i].pc, __ATOMIC_RELAXED);
+      if (!current) {
+         uintptr_t empty = 0;
+         if (__atomic_compare_exchange_n(&ps5_map_callers[i].pc, &empty, pc,
+                                         false, __ATOMIC_RELAXED, __ATOMIC_RELAXED))
+            current = pc;
+         else
+            current = empty;
+      }
+      if (current != pc)
+         continue;
+      __atomic_fetch_add(&ps5_map_callers[i].calls, 1, __ATOMIC_RELAXED);
+      if (usage & PIPE_MAP_READ)
+         __atomic_fetch_add(&ps5_map_callers[i].reads, 1, __ATOMIC_RELAXED);
+      if (target != PIPE_BUFFER)
+         __atomic_fetch_add(&ps5_map_callers[i].textures, 1, __ATOMIC_RELAXED);
+      return;
+   }
+   __atomic_fetch_add(&ps5_map_caller_overflow, 1, __ATOMIC_RELAXED);
+}
 static uint64_t ps5_prepare_clock(void)
 {
    uint32_t low, high;
@@ -191,6 +222,18 @@ static void ps5_prepare_report(void)
       printf("[ps5-driver-cycles] phase=%u calls=%" PRIu64 " cycles=%" PRIu64 "\n",
              phase, __atomic_load_n(&ps5_prepare_calls[phase], __ATOMIC_RELAXED),
              __atomic_load_n(&ps5_prepare_cycles[phase], __ATOMIC_RELAXED));
+   printf("[ps5-map-caller-anchor] report=%" PRIxPTR " overflow=%" PRIu64 "\n",
+          (uintptr_t)ps5_prepare_report,
+          __atomic_load_n(&ps5_map_caller_overflow, __ATOMIC_RELAXED));
+   for (unsigned i = 0; i < PS5_MAP_CALLER_SLOTS; ++i) {
+      uintptr_t pc = __atomic_load_n(&ps5_map_callers[i].pc, __ATOMIC_RELAXED);
+      if (pc)
+         printf("[ps5-map-caller] pc=%" PRIxPTR " calls=%" PRIu64
+                " reads=%" PRIu64 " textures=%" PRIu64 "\n", pc,
+                __atomic_load_n(&ps5_map_callers[i].calls, __ATOMIC_RELAXED),
+                __atomic_load_n(&ps5_map_callers[i].reads, __ATOMIC_RELAXED),
+                __atomic_load_n(&ps5_map_callers[i].textures, __ATOMIC_RELAXED));
+   }
 }
 struct ps5_prepare_scope { unsigned phase; uint64_t start; };
 static void ps5_prepare_scope_end(struct ps5_prepare_scope *scope)
@@ -414,6 +457,7 @@ struct ps5_context {
    uint64_t batch_eligible;
    uint64_t batch_reject[7];
 #ifdef PS5_DRAW_PROFILE
+   uint64_t batch_checks;
    struct {
       unsigned key[16];
       uint64_t count;
@@ -1362,6 +1406,14 @@ ps5_packed_vertex_format(enum pipe_format format)
    switch (format) {
    case PIPE_FORMAT_R8G8B8A8_SNORM:
    case PIPE_FORMAT_R16G16_UNORM:
+   case PIPE_FORMAT_R16G16_FLOAT:
+   case PIPE_FORMAT_R16G16B16A16_FLOAT:
+   case PIPE_FORMAT_R16G16_SNORM:
+   case PIPE_FORMAT_R8_UINT:
+   case PIPE_FORMAT_R8G8_UINT:
+   case PIPE_FORMAT_R8G8B8A8_UINT:
+   case PIPE_FORMAT_R8G8_UNORM:
+   case PIPE_FORMAT_R8G8_SNORM:
    case PIPE_FORMAT_R8G8B8A8_UNORM:
    case PIPE_FORMAT_B8G8R8A8_UNORM:
    case PIPE_FORMAT_R10G10B10A2_UNORM:
@@ -6698,6 +6750,8 @@ ps5_transfer_map(struct pipe_context *context, struct pipe_resource *base,
                  struct pipe_transfer **out_transfer)
 {
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+   ps5_map_caller_record((uintptr_t)__builtin_return_address(0), usage,
+                         base ? base->target : UINT_MAX);
    struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
       {6, ps5_prepare_clock()};
 #endif
@@ -10952,6 +11006,18 @@ ps5_batch_eligibility(struct ps5_context *context, unsigned rejects)
       for (unsigned i = 0; i < PS5_BATCH_REJECT_TEXTURE; ++i)
          if (rejects & BITFIELD_BIT(i))
             context->batch_reject[i]++;
+#ifdef PS5_DRAW_PROFILE
+   if (++context->batch_checks % 100000 == 0)
+      printf("[ps5-batch-checks] calls=%" PRIu64 " eligible=%" PRIu64
+             " input=%" PRIu64 " shader=%" PRIu64 " query=%" PRIu64
+             " framebuffer=%" PRIu64 " depth=%" PRIu64
+             " vertex=%" PRIu64 " texture=%" PRIu64 "\n",
+             context->batch_checks, context->batch_eligible,
+             context->batch_reject[0], context->batch_reject[1],
+             context->batch_reject[2], context->batch_reject[3],
+             context->batch_reject[4], context->batch_reject[5],
+             context->batch_reject[6]);
+#endif
    return rejects == 0;
 }
 
@@ -13026,6 +13092,30 @@ ps5_vertex_format(enum pipe_format format, PsbcVertexFormat *out)
    case PIPE_FORMAT_R16G16_UNORM:
       *out = PSBC_VERTEX_FORMAT_R16G16_UNORM;
       return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R16G16_FLOAT:
+      *out = PSBC_VERTEX_FORMAT_R16G16_FLOAT;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R16G16B16A16_FLOAT:
+      *out = PSBC_VERTEX_FORMAT_R16G16B16A16_FLOAT;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R16G16_SNORM:
+      *out = PSBC_VERTEX_FORMAT_R16G16_SNORM;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R8_UINT:
+      *out = PSBC_VERTEX_FORMAT_R8_UINT;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R8G8_UINT:
+      *out = PSBC_VERTEX_FORMAT_R8G8_UINT;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R8G8B8A8_UINT:
+      *out = PSBC_VERTEX_FORMAT_R8G8B8A8_UINT;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R8G8_UNORM:
+      *out = PSBC_VERTEX_FORMAT_R8G8_UNORM;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
+   case PIPE_FORMAT_R8G8_SNORM:
+      *out = PSBC_VERTEX_FORMAT_R8G8_SNORM;
+      return PS5_ENABLE_PACKED_VERTEX_CANDIDATE;
    case PIPE_FORMAT_R32_FLOAT:
       *out = PSBC_VERTEX_FORMAT_R32_FLOAT;
       return true;
@@ -13137,7 +13227,35 @@ ps5_vertex_format_size(enum pipe_format format)
           ps5_integer_vertex_format(format))
          return util_format_get_blocksize(format);
       return PS5_ENABLE_PACKED_VERTEX_CANDIDATE &&
-             ps5_packed_vertex_format(format) ? 4 : 0;
+             ps5_packed_vertex_format(format) ? util_format_get_blocksize(format) : 0;
+   }
+}
+
+static unsigned
+ps5_vertex_format_alignment(enum pipe_format format)
+{
+   switch (format) {
+   case PIPE_FORMAT_R8_UINT:
+   case PIPE_FORMAT_R8G8_UINT:
+   case PIPE_FORMAT_R8G8_UNORM:
+   case PIPE_FORMAT_R8G8_SNORM:
+   case PIPE_FORMAT_R8G8B8A8_UINT:
+   case PIPE_FORMAT_R8G8B8A8_UNORM:
+   case PIPE_FORMAT_R8G8B8A8_SNORM:
+   case PIPE_FORMAT_B8G8R8A8_UNORM:
+      return 1;
+   case PIPE_FORMAT_R16G16_FLOAT:
+   case PIPE_FORMAT_R16G16B16A16_FLOAT:
+   case PIPE_FORMAT_R16G16_SNORM:
+   case PIPE_FORMAT_R16G16_UNORM:
+      return 2;
+   case PIPE_FORMAT_R64_FLOAT:
+   case PIPE_FORMAT_R64G64_FLOAT:
+   case PIPE_FORMAT_R64G64B64_FLOAT:
+   case PIPE_FORMAT_R64G64B64A64_FLOAT:
+      return 8;
+   default:
+      return 4;
    }
 }
 
@@ -13191,11 +13309,7 @@ ps5_vertex_layout_from_state(const struct ps5_shader *shader,
       attribute->binding = element->vertex_buffer_index;
       attribute->offset = element->src_offset;
       attribute->stride = element->src_stride;
-      attribute->alignment =
-         element->src_format == PIPE_FORMAT_R64_FLOAT ||
-         element->src_format == PIPE_FORMAT_R64G64_FLOAT ||
-         element->src_format == PIPE_FORMAT_R64G64B64_FLOAT ||
-         element->src_format == PIPE_FORMAT_R64G64B64A64_FLOAT ? 8 : 4;
+      attribute->alignment = ps5_vertex_format_alignment(element->src_format);
       attribute->instance_divisor = element->instance_divisor;
    }
    /* A shared vertex-element state may contain unused trailing attributes
@@ -16696,8 +16810,8 @@ ps5_screen_create(void)
    caps->vs_instanceid = true;
    caps->start_instance = PS5_ENABLE_GLSL_420_CANDIDATE;
    caps->vertex_element_instance_divisor = true;
-   /* Vertex fetches use DWORD loads; let u_vbuf align byte-packed inputs. */
-   caps->vertex_input_alignment = PIPE_VERTEX_INPUT_ALIGNMENT_4BYTE;
+   /* The compiler lowers narrow fetches with their actual element alignment. */
+   caps->vertex_input_alignment = PIPE_VERTEX_INPUT_ALIGNMENT_ELEMENT;
    caps->texture_swizzle = PS5_ENABLE_TEXTURE_SWIZZLE_CANDIDATE;
    caps->fragment_shader_texture_lod = PS5_ENABLE_SHADER_TEXTURE_LOD_CANDIDATE;
    caps->max_texture_lod_bias =

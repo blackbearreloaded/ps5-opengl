@@ -16,6 +16,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#if defined(PS5_ASYNC_NATIVE_PREP) && \
+    (!defined(PS5_NATIVE_TITLE_RUNTIME) || !defined(PS5_MULTIDRAW_BATCH) || \
+     !defined(AGC_RUNTIME_PACKAGES) || !defined(AGC_TRIANGLE_SUBMIT))
+#error "Async native preparation requires native multidraw package submission"
+#endif
+#ifdef PS5_ASYNC_NATIVE_PREP
+#include <pthread.h>
+#endif
 
 #include <ps5/kernel.h>
 #ifdef PS5_NATIVE_TITLE_RUNTIME
@@ -51,8 +59,8 @@ static unsigned runtime_batch_probe_repeats(void)
 }
 #endif
 
-static uint32_t runtime_ngg_ge_pc_alloc;
-static uint32_t runtime_ngg_ge_pc_alloc_valid;
+static _Thread_local uint32_t runtime_ngg_ge_pc_alloc;
+static _Thread_local uint32_t runtime_ngg_ge_pc_alloc_valid;
 
 int ps5_agc_gate2_set_ngg_control(uint32_t valid, uint32_t ge_pc_alloc)
 {
@@ -65,68 +73,97 @@ int ps5_agc_gate2_set_ngg_control(uint32_t valid, uint32_t ge_pc_alloc)
 }
 
 #if defined(AGC_RUNTIME_PACKAGES)
-static const uint8_t *runtime_vs_package;
-static const uint8_t *runtime_ps_package;
-static unsigned int runtime_vs_package_len;
-static unsigned int runtime_ps_package_len;
-static uint8_t *runtime_framebuffer;
-static size_t runtime_framebuffer_size;
-static uint32_t runtime_vertex_user_data[32];
-static unsigned int runtime_vertex_user_data_count;
-static uint32_t runtime_hull_user_data[32];
-static unsigned int runtime_hull_user_data_count;
-static uint32_t runtime_pixel_user_data[32];
-static unsigned int runtime_pixel_user_data_count;
-static const void *runtime_index_buffer;
-static unsigned int runtime_index_count;
-static unsigned int runtime_index_size = sizeof(uint16_t);
-static uint32_t runtime_primitive_type = 4;
-static unsigned int runtime_draw_count = 3;
-static void *runtime_depth_buffer;
-static size_t runtime_depth_buffer_size;
-static unsigned int runtime_depth_samples = 1;
-static void *runtime_stencil_buffer;
-static size_t runtime_stencil_buffer_size;
-static uint32_t runtime_depth_control;
-static uint32_t runtime_depth_view;
-static uint32_t runtime_stencil_control;
-static uint32_t runtime_stencil_refmask;
-static uint32_t runtime_stencil_refmask_bf;
-static uint32_t runtime_blend_control;
-static uint32_t runtime_target_mask = UINT32_C(0x0000000f);
-static uint32_t runtime_color_control = UINT32_C(0x00cc0010);
-static uint32_t runtime_color_control_valid;
-static uint32_t runtime_blend_color[4];
 #define RUNTIME_MAX_VIEWPORTS 16
-static uint32_t runtime_viewport[RUNTIME_MAX_VIEWPORTS][8] = {{
-    UINT32_C(0x44700000), UINT32_C(0x44700000),
-    UINT32_C(0xc4070000), UINT32_C(0x44070000),
-    UINT32_C(0x3f800000), 0, 0, UINT32_C(0x3f800000),
-}};
-static uint32_t runtime_scissor[RUNTIME_MAX_VIEWPORTS][2] = {{
-    UINT32_C(0x80000000), UINT32_C(0x04380780),
-}};
-static uint32_t runtime_generic_scissor[2] = {
-    UINT32_C(0x80000000), UINT32_C(0x04380780),
+struct runtime_draw_inputs {
+    const uint8_t *vs_package, *ps_package, *hs_package;
+    unsigned vs_package_len, ps_package_len, hs_package_len;
+    uint8_t *framebuffer;
+    size_t framebuffer_size;
+    uint32_t vertex_user_data[32], hull_user_data[32], pixel_user_data[32];
+    unsigned vertex_user_data_count, hull_user_data_count, pixel_user_data_count;
+    const void *index_buffer;
+    unsigned index_count, index_size;
+    uint32_t primitive_type;
+    unsigned draw_count;
+    void *depth_buffer, *stencil_buffer;
+    size_t depth_buffer_size, stencil_buffer_size;
+    unsigned depth_samples;
+    uint32_t depth_control, depth_view, stencil_control;
+    uint32_t stencil_refmask, stencil_refmask_bf;
+    uint32_t blend_control, target_mask, color_control, color_control_valid;
+    uint32_t blend_color[4];
+    uint32_t viewport[RUNTIME_MAX_VIEWPORTS][8];
+    uint32_t scissor[RUNTIME_MAX_VIEWPORTS][2], generic_scissor[2];
+    unsigned viewport_count;
+    uint32_t rasterizer_control, rasterizer_valid;
+    uint32_t point_line[3], point_line_valid;
+    uint32_t interp_control, interp_control_valid, point_coord_input;
+    uint32_t polygon_offset[6], polygon_offset_valid;
+    uint32_t hs_rsrc2, ls_hs_config, tf_param;
+    unsigned patch_vertices;
 };
-static unsigned runtime_viewport_count = 1;
-static uint32_t runtime_rasterizer_control;
-static uint32_t runtime_rasterizer_valid;
-static uint32_t runtime_point_line[3] = {
-    UINT32_C(0x00080008), UINT32_C(0x00080008), UINT32_C(0x00000008),
+static _Thread_local struct runtime_draw_inputs runtime_draw_state = {
+    .index_size = sizeof(uint16_t), .primitive_type = 4, .draw_count = 3,
+    .depth_samples = 1, .target_mask = 0xf,
+    .color_control = 0x00cc0010,
+    .viewport = {{0x44700000, 0x44700000, 0xc4070000, 0x44070000,
+                  0x3f800000, 0, 0, 0x3f800000}},
+    .scissor = {{0x80000000, 0x04380780}},
+    .generic_scissor = {0x80000000, 0x04380780},
+    .viewport_count = 1,
+    .point_line = {0x00080008, 0x00080008, 0x00000008},
 };
-static uint32_t runtime_point_line_valid;
-static uint32_t runtime_interp_control;
-static uint32_t runtime_interp_control_valid;
-static uint32_t runtime_point_coord_input;
-static uint32_t runtime_polygon_offset[6];
-static uint32_t runtime_polygon_offset_valid;
-static const uint8_t *runtime_hs_package;
-static unsigned int runtime_hs_package_len;
-static uint32_t runtime_hs_rsrc2;
-static uint32_t runtime_ls_hs_config;
-static uint32_t runtime_tf_param;
-static unsigned int runtime_patch_vertices;
+#define runtime_vs_package runtime_draw_state.vs_package
+#define runtime_ps_package runtime_draw_state.ps_package
+#define runtime_hs_package runtime_draw_state.hs_package
+#define runtime_vs_package_len runtime_draw_state.vs_package_len
+#define runtime_ps_package_len runtime_draw_state.ps_package_len
+#define runtime_hs_package_len runtime_draw_state.hs_package_len
+#define runtime_framebuffer runtime_draw_state.framebuffer
+#define runtime_framebuffer_size runtime_draw_state.framebuffer_size
+#define runtime_vertex_user_data runtime_draw_state.vertex_user_data
+#define runtime_hull_user_data runtime_draw_state.hull_user_data
+#define runtime_pixel_user_data runtime_draw_state.pixel_user_data
+#define runtime_vertex_user_data_count runtime_draw_state.vertex_user_data_count
+#define runtime_hull_user_data_count runtime_draw_state.hull_user_data_count
+#define runtime_pixel_user_data_count runtime_draw_state.pixel_user_data_count
+#define runtime_index_buffer runtime_draw_state.index_buffer
+#define runtime_index_count runtime_draw_state.index_count
+#define runtime_index_size runtime_draw_state.index_size
+#define runtime_primitive_type runtime_draw_state.primitive_type
+#define runtime_draw_count runtime_draw_state.draw_count
+#define runtime_depth_buffer runtime_draw_state.depth_buffer
+#define runtime_depth_buffer_size runtime_draw_state.depth_buffer_size
+#define runtime_depth_samples runtime_draw_state.depth_samples
+#define runtime_stencil_buffer runtime_draw_state.stencil_buffer
+#define runtime_stencil_buffer_size runtime_draw_state.stencil_buffer_size
+#define runtime_depth_control runtime_draw_state.depth_control
+#define runtime_depth_view runtime_draw_state.depth_view
+#define runtime_stencil_control runtime_draw_state.stencil_control
+#define runtime_stencil_refmask runtime_draw_state.stencil_refmask
+#define runtime_stencil_refmask_bf runtime_draw_state.stencil_refmask_bf
+#define runtime_blend_control runtime_draw_state.blend_control
+#define runtime_target_mask runtime_draw_state.target_mask
+#define runtime_color_control runtime_draw_state.color_control
+#define runtime_color_control_valid runtime_draw_state.color_control_valid
+#define runtime_blend_color runtime_draw_state.blend_color
+#define runtime_viewport runtime_draw_state.viewport
+#define runtime_scissor runtime_draw_state.scissor
+#define runtime_generic_scissor runtime_draw_state.generic_scissor
+#define runtime_viewport_count runtime_draw_state.viewport_count
+#define runtime_rasterizer_control runtime_draw_state.rasterizer_control
+#define runtime_rasterizer_valid runtime_draw_state.rasterizer_valid
+#define runtime_point_line runtime_draw_state.point_line
+#define runtime_point_line_valid runtime_draw_state.point_line_valid
+#define runtime_interp_control runtime_draw_state.interp_control
+#define runtime_interp_control_valid runtime_draw_state.interp_control_valid
+#define runtime_point_coord_input runtime_draw_state.point_coord_input
+#define runtime_polygon_offset runtime_draw_state.polygon_offset
+#define runtime_polygon_offset_valid runtime_draw_state.polygon_offset_valid
+#define runtime_hs_rsrc2 runtime_draw_state.hs_rsrc2
+#define runtime_ls_hs_config runtime_draw_state.ls_hs_config
+#define runtime_tf_param runtime_draw_state.tf_param
+#define runtime_patch_vertices runtime_draw_state.patch_vertices
 
 int ps5_agc_gate2_set_packages(const void *vs, size_t vs_size,
                                const void *ps, size_t ps_size)
@@ -1200,6 +1237,119 @@ static agc_api_t runtime_batch_api;
 static unsigned runtime_batch_count;
 static int runtime_batch_active, runtime_batch_faulted;
 
+#ifdef PS5_ASYNC_NATIVE_PREP
+/* The producer keeps translating GL draws while this worker prepares native
+ * commands. Submission/retirement stays ordered at the existing batch edge. */
+#define RUNTIME_ASYNC_JOBS PS5_MULTIDRAW_BATCH_CAPACITY
+struct runtime_async_job {
+    struct runtime_draw_inputs draw;
+    struct ps5_agc_backend_draw_state backend;
+    uint32_t ngg_valid, ngg_value;
+};
+static struct runtime_async_job runtime_async_jobs[RUNTIME_ASYNC_JOBS];
+static pthread_mutex_t runtime_async_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t runtime_async_cond = PTHREAD_COND_INITIALIZER;
+static pthread_t runtime_async_thread;
+static uint64_t runtime_async_produced, runtime_async_consumed, runtime_async_completed;
+static int runtime_async_started, runtime_async_stop_requested, runtime_async_error;
+
+int ps5_agc_gate2_run_sync(void);
+
+static void *runtime_async_main(void *unused)
+{
+    (void)unused;
+    for (;;) {
+        struct runtime_async_job job;
+        pthread_mutex_lock(&runtime_async_mutex);
+        while (runtime_async_consumed == runtime_async_produced &&
+               !runtime_async_stop_requested)
+            pthread_cond_wait(&runtime_async_cond, &runtime_async_mutex);
+        if (runtime_async_consumed == runtime_async_produced &&
+            runtime_async_stop_requested) {
+            pthread_mutex_unlock(&runtime_async_mutex);
+            return NULL;
+        }
+        job = runtime_async_jobs[runtime_async_consumed++ % RUNTIME_ASYNC_JOBS];
+        pthread_cond_broadcast(&runtime_async_cond);
+        pthread_mutex_unlock(&runtime_async_mutex);
+
+        runtime_draw_state = job.draw;
+        ps5_agc_draw_state = job.backend;
+        runtime_ngg_ge_pc_alloc_valid = job.ngg_valid;
+        runtime_ngg_ge_pc_alloc = job.ngg_value;
+        int result = ps5_agc_gate2_run_sync();
+
+        pthread_mutex_lock(&runtime_async_mutex);
+        if (result && !runtime_async_error)
+            runtime_async_error = result;
+        ++runtime_async_completed;
+        pthread_cond_broadcast(&runtime_async_cond);
+        pthread_mutex_unlock(&runtime_async_mutex);
+    }
+}
+
+int ps5_agc_gate2_run(void)
+{
+    if (!runtime_batch_active)
+        return ps5_agc_gate2_run_sync();
+    if (!runtime_async_started) {
+        pthread_attr_t attr;
+        if (pthread_attr_init(&attr) != 0)
+            return -1;
+        int stack = pthread_attr_setstacksize(&attr, 8u * 1024u * 1024u);
+        int created = stack ? stack :
+            pthread_create(&runtime_async_thread, &attr, runtime_async_main, NULL);
+        pthread_attr_destroy(&attr);
+        if (created)
+            return -1;
+        runtime_async_started = 1;
+    }
+    pthread_mutex_lock(&runtime_async_mutex);
+    while (runtime_async_produced - runtime_async_consumed == RUNTIME_ASYNC_JOBS &&
+           !runtime_async_error)
+        pthread_cond_wait(&runtime_async_cond, &runtime_async_mutex);
+    if (runtime_async_error) {
+        pthread_mutex_unlock(&runtime_async_mutex);
+        return -1;
+    }
+    struct runtime_async_job *job =
+        &runtime_async_jobs[runtime_async_produced++ % RUNTIME_ASYNC_JOBS];
+    job->draw = runtime_draw_state;
+    job->backend = ps5_agc_draw_state;
+    job->ngg_valid = runtime_ngg_ge_pc_alloc_valid;
+    job->ngg_value = runtime_ngg_ge_pc_alloc;
+    pthread_cond_signal(&runtime_async_cond);
+    pthread_mutex_unlock(&runtime_async_mutex);
+    return 0;
+}
+
+static int runtime_async_drain(void)
+{
+    if (!runtime_async_started)
+        return 0;
+    pthread_mutex_lock(&runtime_async_mutex);
+    while (runtime_async_completed != runtime_async_produced)
+        pthread_cond_wait(&runtime_async_cond, &runtime_async_mutex);
+    int result = runtime_async_error;
+    pthread_mutex_unlock(&runtime_async_mutex);
+    return result;
+}
+
+static void runtime_async_stop(void)
+{
+    if (!runtime_async_started)
+        return;
+    pthread_mutex_lock(&runtime_async_mutex);
+    runtime_async_stop_requested = 1;
+    pthread_cond_signal(&runtime_async_cond);
+    pthread_mutex_unlock(&runtime_async_mutex);
+    if (pthread_join(runtime_async_thread, NULL) != 0)
+        abort();
+    runtime_async_started = runtime_async_stop_requested = runtime_async_error = 0;
+    runtime_async_produced = runtime_async_consumed = runtime_async_completed = 0;
+}
+#endif
+
 int ps5_agc_gate2_batch_begin(void)
 {
     if (runtime_batch_active || runtime_batch_count || runtime_batch_faulted)
@@ -1286,6 +1436,12 @@ int ps5_agc_gate2_batch_submit(void)
 #define BATCH_SUBMIT_MARK(i) ticks[i] = os_time_get_nano()
 #else
 #define BATCH_SUBMIT_MARK(i) ((void)0)
+#endif
+#ifdef PS5_ASYNC_NATIVE_PREP
+    if (runtime_async_drain() != 0) {
+        runtime_batch_faulted = 1;
+        return -1;
+    }
 #endif
     if (!runtime_batch_active || runtime_batch_faulted ||
         runtime_pending_batches == PS5_INFLIGHT_BATCH_CAPACITY)
@@ -1787,6 +1943,9 @@ int ps5_agc_gate2_shutdown_present(void)
     if (runtime_batch_faulted || runtime_batch_active || runtime_batch_count ||
         runtime_pending_batches)
         return -1;
+#endif
+#ifdef PS5_ASYNC_NATIVE_PREP
+    runtime_async_stop();
 #endif
 
 #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_MULTIDRAW_BATCH)

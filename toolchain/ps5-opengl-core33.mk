@@ -174,16 +174,22 @@ $(PS5_OPENGL_BUILD)/ps5_agc_package.o: \
 	$(CC) $(PS5_OPENGL_COMMON_CFLAGS) -I$(PS5_OPENGL_PSBC)/libpsbc \
 		-I$(PS5_OPENGL_PLATFORM) -c -o $@ $<
 
+ifeq ($(PS5_ASYNC_NATIVE_PREP),1)
+PS5_AGC_RUN_SYMBOL := ps5_agc_gate2_run_sync
+else
+PS5_AGC_RUN_SYMBOL := ps5_agc_gate2_run
+endif
+
 $(PS5_OPENGL_BUILD)/ps5_agc_runtime_backend.o: \
 	$(PS5_OPENGL_PLATFORM)/ps5_agc_runtime_backend.c \
 	$(PS5_OPENGL_PLATFORM)/ps5_agc_package.h \
 	$(PS5_OPENGL_PSBC)/libpsbc/psbc_compile.h \
 	$(PS5_OPENGL_DRIVER)/ps5_screen.h \
 	$(PS5_OPENGL_PLATFORM)/ps5_agc_native_runtime.c | $(PS5_OPENGL_BUILD)
-	$(CC) $(PS5_OPENGL_COMMON_CFLAGS) -DHAVE_PTHREAD=1 -DHAVE_STRUCT_TIMESPEC=1 \
+	$(CC) $(PS5_OPENGL_COMMON_CFLAGS) -femulated-tls -DHAVE_PTHREAD=1 -DHAVE_STRUCT_TIMESPEC=1 \
 		-I$(PS5_OPENGL_PSBC)/libpsbc -Wno-error=unused-function \
 		$(PS5_OPENGL_RUNTIME_DEFINES) \
-		-Dmain=ps5_agc_gate2_run -DAGC_TRIANGLE_SUBMIT=1 \
+		-Dmain=$(PS5_AGC_RUN_SYMBOL) -DAGC_TRIANGLE_SUBMIT=1 \
 		-DAGC_RUNTIME_PACKAGES=1 -c -o $@ $<
 
 $(PS5_OPENGL_BUILD)/u_framebuffer.o: \
