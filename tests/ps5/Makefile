@@ -2424,3 +2424,9 @@ egl_public_core33_depth_array_glthread.o: egl_public_core33_depth_array_samples.
 
 egl_public_core33_present_concurrent.o: egl_public_core33_present_concurrent.c
 	$(CC) $(CFLAGS) -DGL_GLEXT_PROTOTYPES=1 -c -o $@ $<
+
+egl_public_heap_stress.o: egl_public_heap_stress.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+egl_public_heap_large.o: egl_public_heap_stress.c
+	$(CC) $(CFLAGS) -DPS5_HEAP_LARGE_TEST=1 -c -o $@ $<
