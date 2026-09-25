@@ -255,7 +255,9 @@ main(void)
    glDisable(GL_FRAMEBUFFER_SRGB);
 #endif
    glUseProgram(producer);
-   glDrawArrays(GL_TRIANGLES, 0, 3);
+   /* Cross the 256-draw boundary before the framebuffer becomes a sampler. */
+   for (unsigned draw = 0; draw < 257; ++draw)
+      glDrawArrays(GL_TRIANGLES, 0, 3);
 
 #ifdef PS5_COLOR_BLIT_TEST
    /* This candidate intentionally exercises the driver's bounded CPU

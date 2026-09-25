@@ -44,9 +44,9 @@ print("PASS: production depth state disables writes on intervening color-only pa
 assert "#define PS5_GPU_CLEAR_MIN_PIXELS 16384u" in source
 start = source.index("static bool\nps5_clear_gpu_color(")
 clear_body = source[start:source.index("\nstatic void\nps5_clear(", start)]
-assert clear_body.index("context->deferred_attachment_clear = buffers == PIPE_CLEAR_COLOR0;") < \
+assert clear_body.index("context->deferred_blitter_draw = buffers == PIPE_CLEAR_COLOR0;") < \
        clear_body.index("   util_blitter_clear(") < \
-       clear_body.index("context->deferred_attachment_clear = false;")
+       clear_body.index("context->deferred_blitter_draw = false;")
 prefix = source[start:source.index("   if (!context->blitter)", start)]
 query_start = source.index("static void\nps5_set_active_query_state(")
 query_state = source[query_start:source.index("\n}\n", query_start) + 3]

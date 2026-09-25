@@ -34,7 +34,7 @@ code = r'''
 #include <string.h>
 #include <math.h>
 #define PS5_ENABLE_TEXTURE_MIPMAP_CANDIDATE 1
-#define PS5_GPU_BLIT_MIN_PIXELS (512u * 512u)
+#define PS5_GPU_BLIT_MIN_PIXELS (64u * 64u)
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MAX2(a,b) ((a) > (b) ? (a) : (b))
 enum { PIPE_TEXTURE_2D_ARRAY, PIPE_TEXTURE_3D, PIPE_TEXTURE_2D };
@@ -62,19 +62,20 @@ static const enum pipe_format *util_format_description(enum pipe_format f) {
 }
 static bool util_format_has_depth(const enum pipe_format *f) { return *f != COLOR; }
 static unsigned drains,flushes;
+static bool gpu_pending;
 static size_t cpu_packs;
 static const void *expected_data;
 static size_t expected_size;
-static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { assert(r); ++drains; }
+static void ps5_draw_batch_drain_buffer(struct pipe_resource *r) { assert(r); ++drains; gpu_pending=false; }
 static void ps5_flush_gpu_data(const void *p,size_t n) {
-    assert(p==expected_data && n==expected_size); ++flushes;
+    assert(!gpu_pending); assert(p==expected_data && n==expected_size); ++flushes;
 }
 /* Model Mesa's absent RGBA callbacks for depth as a checked failure. */
 static void util_format_unpack_rgba(enum pipe_format f,float *dst,const void *src,unsigned n) {
-    assert(f==COLOR && n==1); memcpy(dst,src,16);
+    assert(!gpu_pending); assert(f==COLOR && n==1); memcpy(dst,src,16);
 }
 static void util_format_pack_rgba(enum pipe_format f,void *dst,const float *src,unsigned n) {
-    assert(f==COLOR && n==1); memcpy(dst,src,16); ++cpu_packs;
+    assert(!gpu_pending); assert(f==COLOR && n==1); memcpy(dst,src,16); ++cpu_packs;
 }
 enum { GPU_DECLINE, GPU_ACCEPT, GPU_FAIL };
 static unsigned gpu_mode,gpu_calls;
@@ -100,6 +101,7 @@ static bool ps5_blit_gpu_color(struct ps5_context *context,const struct pipe_bli
     for (int y=0;y<blit->dst.box.height;++y) for (int x=0;x<blit->dst.box.width;++x)
         memcpy(r->data+layer*r->layer_stride+r->level_offset[level]+
                y*r->level_stride[level]+x*16,pixel,16);
+    gpu_pending=true;
     return true;
 }
 '''
@@ -198,7 +200,7 @@ static void check_dispatch(unsigned width,unsigned height,unsigned base_level,un
     expected_data=r.data; expected_size=r.size;
     drains=flushes=gpu_calls=0; cpu_packs=0; gpu_mode=mode;
     assert(ps5_generate_mipmap(&context.base,&r.base,format,base_level,last_level,0,1));
-    assert(drains==1);
+    assert(drains==1+(mode==GPU_ACCEPT ? gpu_calls : 0));
     unsigned expected_calls=0;
     size_t expected_packs=0;
     for (unsigned level=base_level+1;level<=last_level;++level) {
@@ -247,16 +249,16 @@ int main(void) {
     for (unsigned f=DEPTH;f<=COLOR;++f) for (unsigned base=0;base<2;++base) {
         check(f,4,4,base); check(f,7,5,base); check(f,7,1,base);
     }
-    check_dispatch(1024,1024,0,3,1u<<1,GPU_ACCEPT,COLOR); /* Inclusive 512x512 floor + CPU tail. */
-    check_dispatch(1024,1024,0,3,1u<<1,GPU_DECLINE,COLOR); /* Preflight decline uses CPU. */
-    check_dispatch(1024,1024,0,3,1u<<1,GPU_FAIL,COLOR); /* Attempt failure does not replay or continue. */
-    check_dispatch(1025,1024,0,2,0,GPU_ACCEPT,COLOR); /* Odd source width, despite large destination. */
-    check_dispatch(1024,1025,0,2,0,GPU_ACCEPT,COLOR); /* Odd source height. */
-    check_dispatch(1026,1024,0,2,1u<<1,GPU_ACCEPT,COLOR); /* Even NPOT is still an exact halving. */
-    check_dispatch(1022,1024,0,2,0,GPU_ACCEPT,COLOR); /* 511x512 is below the floor. */
-    check_dispatch(2048,2048,1,3,1u<<2,GPU_ACCEPT,COLOR); /* Nonzero base mip, correct source dimensions. */
-    check_dispatch(2048,2048,0,3,(1u<<1)|(1u<<2),GPU_ACCEPT,COLOR); /* Two GPU levels, then CPU. */
-    check_dispatch(1024,1024,0,2,0,GPU_ACCEPT,DEPTH); /* Depth never dispatches a color GPU blit. */
+    check_dispatch(128,128,0,3,1u<<1,GPU_ACCEPT,COLOR); /* Inclusive 64x64 floor + CPU tail. */
+    check_dispatch(128,128,0,3,1u<<1,GPU_DECLINE,COLOR); /* Preflight decline uses CPU. */
+    check_dispatch(128,128,0,3,1u<<1,GPU_FAIL,COLOR); /* Attempt failure does not replay or continue. */
+    check_dispatch(129,128,0,2,0,GPU_ACCEPT,COLOR); /* Odd source width, despite large destination. */
+    check_dispatch(128,129,0,2,0,GPU_ACCEPT,COLOR); /* Odd source height. */
+    check_dispatch(130,128,0,2,1u<<1,GPU_ACCEPT,COLOR); /* Even NPOT is still an exact halving. */
+    check_dispatch(126,128,0,2,0,GPU_ACCEPT,COLOR); /* 63x64 is below the floor. */
+    check_dispatch(256,256,1,3,1u<<2,GPU_ACCEPT,COLOR); /* Nonzero base mip, correct source dimensions. */
+    check_dispatch(256,256,0,3,(1u<<1)|(1u<<2),GPU_ACCEPT,COLOR); /* Two GPU levels, then CPU. */
+    check_dispatch(128,128,0,2,0,GPU_ACCEPT,DEPTH); /* Depth never dispatches a color GPU blit. */
 }
 '''
 old = code.replace('depth = util_format_has_depth(util_format_description(format));',
@@ -271,9 +273,13 @@ old_boxes = code.replace(
     '(struct pipe_box){.x = 0, .y = 0, .z = layer,\n               .width = src_width, .height = src_height, .depth = 1}',
     '(struct pipe_box){0, 0, layer, src_width, src_height, 1}')
 assert old_boxes != code
+missing_wait = code.replace('               ps5_draw_batch_drain_buffer(base);', '')
+assert missing_wait != code
+assert '#define PS5_GPU_BLIT_MIN_PIXELS (64u * 64u)' in source
 with tempfile.TemporaryDirectory() as directory:
     executable = str(Path(directory) / 'mipmap')
-    for name, text in (('fixed', code), ('old-rgba-dispatch', old), ('old-box-order', old_boxes)):
+    for name, text in (('fixed', code), ('old-rgba-dispatch', old), ('old-box-order', old_boxes),
+                       ('missing-gpu-wait', missing_wait)):
         subprocess.run(['cc', '-std=c11', '-O1', '-g', '-Wall', '-Wextra',
                         '-Werror', '-Wno-unused-function', '-fsanitize=address,undefined',
                         '-fno-omit-frame-pointer', '-fno-sanitize-recover=all', '-no-pie', '-x', 'c', '-', '-lm',
@@ -283,6 +289,8 @@ with tempfile.TemporaryDirectory() as directory:
             assert run.returncode == 0, run.stderr
         elif name == 'old-rgba-dispatch':
             assert run.returncode != 0 and 'f==COLOR' in run.stderr, run.stderr
+        elif name == 'missing-gpu-wait':
+            assert run.returncode != 0 and '!gpu_pending' in run.stderr, run.stderr
         else:
             assert run.returncode != 0 and 'src.box.z==' in run.stderr, run.stderr
 print('PASS: real mip filter/Mesa depth converters; D32/D32S8/color, odd/1D extents, '

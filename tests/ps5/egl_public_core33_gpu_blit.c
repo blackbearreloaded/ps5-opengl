@@ -157,6 +157,29 @@ static int run_case(int w, int h, int inset, GLuint sample_texture)
    copy(w,h,inset); glFinish();
    glBindFramebuffer(GL_READ_FRAMEBUFFER,fbos[1]);
    if (!oracle(pixels,w,h,inset,0,1)) goto cleanup;
+   /* No finish, readback or status query between producer, copy and consumer.
+    * Delete the temporary objects before the sole CPU completion boundary. */
+   glBindFramebuffer(GL_DRAW_FRAMEBUFFER,fbos[0]);
+   glClearColor(0,0,1,1); glClear(GL_COLOR_BUFFER_BIT);
+   glBindFramebuffer(GL_READ_FRAMEBUFFER,fbos[0]);
+   glBindFramebuffer(GL_DRAW_FRAMEBUFFER,fbos[1]);
+   copy(w,h,inset);
+   glBindFramebuffer(GL_FRAMEBUFFER,0);
+   glDeleteFramebuffers(2,fbos); fbos[0]=fbos[1]=0;
+   glDeleteTextures(1,&textures[0]); textures[0]=0;
+   glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D,textures[1]);
+   glViewport(0,0,8,8); glDrawArrays(GL_TRIANGLES,0,3);
+   glDeleteTextures(1,&textures[1]); textures[1]=0;
+   glReadPixels(0,0,8,8,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
+   for (unsigned i=0; i<64; ++i) {
+      if (pixels[i*4] || pixels[i*4+1] || pixels[i*4+2]<127 || pixels[i*4+2]>128) {
+         printf(TAG " chained-consumer mismatch pixel=%u rgb=%u/%u/%u\n",
+                i,pixels[i*4],pixels[i*4+1],pixels[i*4+2]);
+         goto cleanup;
+      }
+   }
+   if (!healthy()) goto cleanup;
+   printf(TAG " chained-consumer size=%dx%d pixels=64 deleted-before-read=1 PASS\n",w,h);
    printf(TAG " size=%dx%d copy=%dx%d copies=%u elapsed_ns=%llu ms_per_copy=%.3f MiB_per_s=%.2f gpu_draws=%u pixels=%llu result=0\n",
           w,h,w-2*inset,h-2*inset,copies,(unsigned long long)elapsed,
           (double)elapsed/copies/1e6,
@@ -211,7 +234,7 @@ int main(void)
    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,color);
    if (!healthy()) goto done;
-   /* Includes a tiny CPU-preferred copy, threshold crossing and two large
+   /* Includes a small copy, a medium copy and two large
     * offscreen footprints. All run in one 4K window, not separate HDMI modes. */
    const int sizes[][3]={{96,96,8},{544,544,16},{1920,1080,8},{3840,2160,8}};
    for (unsigned i=0; i<sizeof(sizes)/sizeof(sizes[0]); ++i)

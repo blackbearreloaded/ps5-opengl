@@ -172,6 +172,39 @@ main(void)
       glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
    }
 
+   /* A disjoint upload may proceed, but an overlapping upload must preserve
+    * the old draw in both pending and submitted batches. No fence before it. */
+   for (unsigned submitted = 0; submitted < 2; ++submitted) {
+      const float moved[] = {-.32f,.15f, .32f,.15f, 0,.85f};
+      const float tail = -.625f;
+      float readback = 0;
+      unsigned char old_pixel[4], new_pixel[4];
+      glNamedBufferData(vbo, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+      glClear(GL_COLOR_BUFFER_BIT);
+      glUniform1f(offset_location, -.6f);
+      glUniform3f(tint_location, 1,0,0);
+      for (unsigned i = 0; i < (submitted ? 256u : 1u); ++i) {
+         glDrawArrays(GL_TRIANGLES, 0, 3);
+         if (submitted && (i & 15u) == 15u)
+            glFlush();
+      }
+      glNamedBufferSubData(vbo, sizeof(vertices)-sizeof(tail), sizeof(tail), &tail);
+      glNamedBufferSubData(vbo, 0, sizeof(moved), moved);
+      glUniform1f(offset_location, .6f);
+      glUniform3f(tint_location, 0,1,0);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+      glReadPixels(384,477,1,1,GL_RGBA,GL_UNSIGNED_BYTE,old_pixel);
+      glReadPixels(1536,747,1,1,GL_RGBA,GL_UNSIGNED_BYTE,new_pixel);
+      glGetNamedBufferSubData(vbo,sizeof(vertices)-sizeof(tail),sizeof(tail),&readback);
+      if (glGetError()!=GL_NO_ERROR || readback!=tail ||
+          old_pixel[0]<180 || old_pixel[1]>70 || new_pixel[1]<180 || new_pixel[0]>70) {
+         printf("[ps5-egl-visible] vertex-range failed submitted=%u old=%u,%u new=%u,%u tail=%f\n",
+                submitted,old_pixel[0],old_pixel[1],new_pixel[0],new_pixel[1],readback);
+         return 1;
+      }
+      printf("[ps5-egl-visible] vertex-range submitted=%u disjoint/overlap/pixels passed\n",submitted);
+   }
+
    /* Index fetching uses PFP, unlike vertex shader loads. Exercise a queued
     * update, a second update, deletion while retained, and upload-only flip. */
    {

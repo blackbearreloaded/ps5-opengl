@@ -94,7 +94,7 @@ _Static_assert(PIPE_LOGICOP_CLEAR == 0 && PIPE_LOGICOP_COPY == 12 &&
 #define PS5_GPU_CLEAR_MIN_PIXELS 16384u
 #endif
 #ifndef PS5_GPU_BLIT_MIN_PIXELS
-#define PS5_GPU_BLIT_MIN_PIXELS (512u * 512u)
+#define PS5_GPU_BLIT_MIN_PIXELS (64u * 64u)
 #endif
 #define PS5_RENDER_TARGET_BYTES PS5_SCANOUT_BYTES
 #ifndef PS5_RENDER_ARENA_BYTES
@@ -362,7 +362,7 @@ struct ps5_context {
 
 
    struct blitter_context *blitter;
-   bool deferred_attachment_clear;
+   bool deferred_blitter_draw;
    int last_draw_status;
    unsigned draw_calls;
    bool reported_large_color_fallback;
@@ -7674,7 +7674,7 @@ ps5_replicate_depth_stencil_msaa4(struct pipe_context *context,
 static bool
 ps5_blit_gpu_color(struct ps5_context *context, const struct pipe_blit_info *info)
 {
-   /* ponytail: large plain-color copies using existing sampler layouts and
+   /* ponytail: plain-color copies using existing sampler layouts and
     * directly renderable views. Keep the measured floor and other fallbacks. */
    if (!PS5_ENABLE_RENDER_TO_TEXTURE_CANDIDATE || !PS5_ENABLE_MRT_CANDIDATE ||
        !PS5_ENABLE_UBO_CANDIDATE || !context || !info ||
@@ -7816,13 +7816,16 @@ ps5_blit_gpu_color(struct ps5_context *context, const struct pipe_blit_info *inf
    util_blitter_save_framebuffer(blitter, &context->framebuffer);
    util_blitter_save_fragment_sampler_states(blitter, PS5_MAX_TEXTURE_UNITS, context->samplers[1]);
    util_blitter_save_fragment_sampler_views(blitter, PS5_MAX_TEXTURE_UNITS, context->sampler_views[1]);
-   /* The caller drained prior work; blitter copies use the synchronous draw
-    * path, not the special deferred-clear exception. No CPU replay on failure. */
+   /* Framebuffer changes submit prior producers. The deferred draw retains
+    * both textures and uploader storage, and its normal GPU barriers order
+    * sampling after those producers. CPU fallbacks still drain below. */
+   context->deferred_blitter_draw = true;
    util_blitter_blit_generic(blitter, &surface, &info->dst.box, view, &info->src.box,
                              info->src.resource->width0, info->src.resource->height0,
                              info->mask, info->filter,
                              info->scissor_enable ? &info->scissor : NULL,
                              false, false, 0, NULL);
+   context->deferred_blitter_draw = false;
    pipe_sampler_view_reference(&view, NULL);
    context->viewport_valid = viewport_valid;
    context->scissor_valid = scissor_valid;
@@ -7856,10 +7859,10 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    bool direct_tiled_dst;
    unsigned min_x, min_y, max_x, max_y;
 
-   ps5_draw_batch_drain_buffer(info ? info->src.resource : NULL);
-   ps5_draw_batch_drain_buffer(info ? info->dst.resource : NULL);
    if (ps5_blit_gpu_color(ps5, info))
       return;
+   ps5_draw_batch_drain_buffer(info ? info->src.resource : NULL);
+   ps5_draw_batch_drain_buffer(info ? info->dst.resource : NULL);
    if (PS5_ENABLE_MSAA4_CANDIDATE && info && info->src.resource &&
        info->src.resource->nr_samples == 4) {
       if (info->mask & PIPE_MASK_ZS)
@@ -8388,6 +8391,8 @@ ps5_generate_mipmap(struct pipe_context *context,
             if (ps5_blit_gpu_color((struct ps5_context *)context, &blit)) {
                if (((struct ps5_context *)context)->last_draw_status)
                   return true; /* Attempted GPU failure must not replay another path. */
+               /* A later mip can fall back to CPU filtering of this output. */
+               ps5_draw_batch_drain_buffer(base);
                ps5_flush_gpu_data(resource->data, resource->size);
                continue;
             }
@@ -10975,6 +10980,7 @@ ps5_draw_vbo_without_adjacency(
 
 #ifdef PS5_MULTIDRAW_BATCH
 int ps5_agc_gate2_batch_begin(void) __attribute__((weak));
+int ps5_agc_gate2_batch_begin_framebuffer(void) __attribute__((weak));
 int ps5_agc_gate2_batch_end(void) __attribute__((weak));
 int ps5_agc_gate2_batch_submit(void) __attribute__((weak));
 int ps5_agc_gate2_batch_retire(int wait) __attribute__((weak));
@@ -11045,7 +11051,7 @@ ps5_multidraw_eligible(struct ps5_context *context,
 
    if (!info || !draws || !num_draws || indirect ||
        (info->mode != MESA_PRIM_TRIANGLES &&
-        !(context->deferred_attachment_clear && context->blitter && context->blitter->running &&
+        !(context->deferred_blitter_draw && context->blitter && context->blitter->running &&
           info->mode == MESA_PRIM_TRIANGLE_FAN && num_draws == 1 &&
           !info->index_size && info->instance_count == 1 && !info->start_instance &&
           draws[0].start == 0 && draws[0].count == 4)) || !info->instance_count ||
@@ -11315,7 +11321,8 @@ ps5_try_multi_draw_batch(struct pipe_context *base,
    context->last_draw_status = 0;
    for (unsigned first = 0; first < num_draws;) {
       struct ps5_batch_flush_cache flush_cache = {0};
-      if (ps5_agc_gate2_batch_begin() != 0) {
+      if ((ps5_agc_gate2_batch_begin_framebuffer ? ps5_agc_gate2_batch_begin_framebuffer() :
+           ps5_agc_gate2_batch_begin()) != 0) {
          context->last_draw_status = -30;
          break;
       }
@@ -11730,7 +11737,7 @@ ps5_try_deferred_draw(struct pipe_context *base,
    if (ps5_deferred.owner && ps5_deferred.owner != context)
       ps5_draw_batch_flush_locked();
    if (!ps5_agc_gate2_batch_begin || !ps5_agc_gate2_batch_end || num_draws != 1 ||
-       (context->blitter && context->blitter->running && !context->deferred_attachment_clear) ||
+       (context->blitter && context->blitter->running && !context->deferred_blitter_draw) ||
        !ps5_multidraw_eligible(context, info, indirect, draws, num_draws)) {
       ps5_draw_batch_flush_locked();
       goto out;
@@ -11753,7 +11760,8 @@ ps5_try_deferred_draw(struct pipe_context *base,
       }
    }
    if (!ps5_deferred.owner) {
-      if (ps5_agc_gate2_batch_begin() != 0) {
+      if ((ps5_agc_gate2_batch_begin_framebuffer ? ps5_agc_gate2_batch_begin_framebuffer() :
+           ps5_agc_gate2_batch_begin()) != 0) {
          context->last_draw_status = -30;
          handled = true;
          goto out;
@@ -12140,6 +12148,10 @@ ps5_set_framebuffer_state(struct pipe_context *base,
       }
    }
 
+   /* A fixed-framebuffer batch publishes color/depth at its group tail. Close
+    * that producer before changing attachments, so later sampling stays ordered. */
+   if (!framebuffer || !util_framebuffer_state_equal(&context->framebuffer, framebuffer))
+      ps5_draw_batch_submit();
    util_copy_framebuffer_state(&context->framebuffer, framebuffer);
    context->framebuffer_valid = framebuffer && colors_valid &&
       (has_color || has_depth ||
@@ -12418,7 +12430,7 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        * that disabled accounting after query state is restored.
        * Only this validated color operation may defer its internal fan. The
        * caller has already completed any CPU depth/stencil part of a mixed clear. */
-      context->deferred_attachment_clear = buffers == PIPE_CLEAR_COLOR0;
+      context->deferred_blitter_draw = buffers == PIPE_CLEAR_COLOR0;
       if (selected_target) {
          struct pipe_surface selected = *surface;
          selected.first_layer = selected.last_layer = layer;
@@ -12428,7 +12440,7 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
          util_blitter_clear(blitter, context->framebuffer.width, context->framebuffer.height,
                             1, PIPE_CLEAR_COLOR0, &quantized, 0, 0, false);
       }
-      context->deferred_attachment_clear = false;
+      context->deferred_blitter_draw = false;
       context->viewport_valid = viewport_valid;
       context->framebuffer_valid = framebuffer_valid;
       context->queries_enabled = queries_enabled;
@@ -12516,10 +12528,10 @@ ps5_clear_gpu_depth_stencil(struct ps5_context *context, unsigned buffers,
       util_blitter_save_viewport(blitter, &context->viewport[0]);
       util_blitter_save_sample_mask(blitter, context->sample_mask, 1);
       util_blitter_save_framebuffer(blitter, &context->framebuffer);
-      context->deferred_attachment_clear = true;
+      context->deferred_blitter_draw = true;
       util_blitter_clear_depth_stencil(blitter, &surface, buffers, depth, stencil,
                                         left, bottom, right - left, top - bottom);
-      context->deferred_attachment_clear = false;
+      context->deferred_blitter_draw = false;
       context->viewport_valid = viewport_valid;
       context->framebuffer_valid = framebuffer_valid;
       context->queries_enabled = queries_enabled;

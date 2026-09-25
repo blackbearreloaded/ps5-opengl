@@ -462,7 +462,7 @@ struct test_elements { unsigned count; struct { unsigned vertex_buffer_index; } 
 struct ps5_context {
     struct pipe_context base;
     struct { bool running; } *blitter;
-    bool deferred_attachment_clear;
+    bool deferred_blitter_draw;
     struct { struct pipe_surface cbufs[PS5_MAX_RENDER_TARGETS], zsbuf; unsigned nr_cbufs; } framebuffer;
     bool framebuffer_valid; struct ps5_shader *vs, *fs, *gs, *tcs, *tes;
     struct test_elements *vertex_elements;
@@ -592,6 +592,7 @@ static int end(void) {
     return 0;
 }
 static int (*ps5_agc_gate2_batch_begin)(void)=begin;
+static int (*ps5_agc_gate2_batch_begin_framebuffer)(void)=begin;
 static int (*ps5_agc_gate2_batch_end)(void)=end;
 static int (*ps5_agc_gate2_batch_submit)(void) __attribute__((unused));
 static int (*ps5_agc_gate2_batch_retire)(int) __attribute__((unused));
@@ -892,14 +893,14 @@ int main(void) {
     struct pipe_draw_info fan={.mode=MESA_PRIM_TRIANGLE_FAN,.instance_count=1};
     struct pipe_draw_start_count_bias quad={0,4,0};
     assert(!ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
-    context.deferred_attachment_clear=true;
+    context.deferred_blitter_draw=true;
     assert(!ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
     __typeof__(*context.blitter) blitter={.running=true};
     context.blitter=&blitter;
     for (unsigned invalid=0;invalid<7;++invalid) {
         struct pipe_draw_info f=fan;
         struct pipe_draw_start_count_bias q=quad;
-        if (invalid==0) context.deferred_attachment_clear=false;
+        if (invalid==0) context.deferred_blitter_draw=false;
         if (invalid==1) f.index_size=2;
         if (invalid==2) f.instance_count=2;
         if (invalid==3) f.start_instance=1;
@@ -907,10 +908,10 @@ int main(void) {
         if (invalid==5) q.start=1;
         if (invalid==6) blitter.running=false;
         assert(!ps5_try_deferred_draw(&context.base,&f,20,NULL,&q,1));
-        context.deferred_attachment_clear=true; blitter.running=true;
+        context.deferred_blitter_draw=true; blitter.running=true;
     }
     assert(ps5_try_deferred_draw(&context.base,&fan,20,NULL,&quad,1));
-    context.deferred_attachment_clear=false; blitter.running=false;
+    context.deferred_blitter_draw=false; blitter.running=false;
     assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
     assert(staged==2 && !ended); /* Internal clear and ordinary draw share one retirement. */
 #ifdef PS5_GPU_PRESENT_BATCH

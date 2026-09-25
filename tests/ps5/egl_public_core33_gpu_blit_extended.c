@@ -268,7 +268,7 @@ cleanup:
           t->name,t->w,t->h,t->src[0],t->src[1],t->src[2],t->src[3],
           t->dst[0],t->dst[1],t->dst[2],t->dst[3],t->clip[0],t->clip[1],t->clip[2],t->clip[3],
           t->filter==GL_LINEAR ? "linear":"nearest",t->samples,effective_pixels(t),
-          effective_pixels(t)>=512u*512u ? "met":"below",copies,(unsigned long long)elapsed,
+          effective_pixels(t)>=64u*64u ? "met":"below",copies,(unsigned long long)elapsed,
           copies ? (double)elapsed/copies/1e6 : 0,status,after-before,total-initial,
           (unsigned long long)checks*t->w*t->h,state,passed ? 0:1);
    return passed;

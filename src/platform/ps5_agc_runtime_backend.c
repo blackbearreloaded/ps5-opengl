@@ -142,6 +142,8 @@ static _Thread_local struct ps5_agc_backend_draw_state ps5_agc_draw_state = {
 #define ps5_agc_depth_width ps5_agc_draw_state.depth_width
 #define ps5_agc_depth_height ps5_agc_draw_state.depth_height
 #define ps5_agc_border_color_table ps5_agc_draw_state.border_color_table
+static _Thread_local uint32_t ps5_agc_post_draw_barrier_words;
+#define PS5_AGC_POST_DRAW_BARRIER_WORDS ps5_agc_post_draw_barrier_words
 
 static bool
 ps5_agc_streamout_enabled(void)
@@ -572,6 +574,7 @@ ps5_agc_draw_auto_instanced(void *command, uint32_t count, uint64_t modifier)
 {
    struct ps5_agc_command_buffer *buffer = command;
    uint32_t *result;
+   ps5_agc_post_draw_barrier_words = 0;
 
    if (ps5_agc_instance_count == 1 && !ps5_agc_streamout_enabled() &&
        !ps5_agc_occlusion_query && !ps5_agc_color_to_texture_barrier &&
@@ -598,10 +601,12 @@ ps5_agc_draw_auto_instanced(void *command, uint32_t count, uint64_t modifier)
       result = NULL;
    if (!ps5_agc_emit_streamout_end(command))
       result = NULL;
-   if (!ps5_agc_emit_texture_barrier(buffer))
-      result = NULL;
    if (ps5_agc_instance_count != 1)
       ps5_agc_set_instances(command, 1);
+   uint32_t *barrier = buffer->up;
+   if (!ps5_agc_emit_texture_barrier(buffer))
+      result = NULL;
+   ps5_agc_post_draw_barrier_words = (uint32_t)(buffer->up - barrier);
    return result;
 }
 
@@ -611,6 +616,7 @@ ps5_agc_draw_index_instanced(void *command, uint32_t count, void *indices,
 {
    struct ps5_agc_command_buffer *buffer = command;
    uint32_t *result;
+   ps5_agc_post_draw_barrier_words = 0;
 
    if (ps5_agc_instance_count == 1 && !ps5_agc_streamout_enabled() &&
        !ps5_agc_occlusion_query && !ps5_agc_color_to_texture_barrier &&
@@ -637,10 +643,12 @@ ps5_agc_draw_index_instanced(void *command, uint32_t count, void *indices,
       result = NULL;
    if (!ps5_agc_emit_streamout_end(command))
       result = NULL;
-   if (!ps5_agc_emit_texture_barrier(buffer))
-      result = NULL;
    if (ps5_agc_instance_count != 1)
       ps5_agc_set_instances(command, 1);
+   uint32_t *barrier = buffer->up;
+   if (!ps5_agc_emit_texture_barrier(buffer))
+      result = NULL;
+   ps5_agc_post_draw_barrier_words = (uint32_t)(buffer->up - barrier);
    return result;
 }
 

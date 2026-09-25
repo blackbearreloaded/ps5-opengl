@@ -44,7 +44,7 @@ code = r'''
 #define PS5_ENABLE_UBO_CANDIDATE 1
 #define PS5_ENABLE_MSAA4_CANDIDATE 1
 #define PS5_ENABLE_DYNAMIC_COLOR_TARGET_CANDIDATE 1
-#define PS5_GPU_BLIT_MIN_PIXELS (512u * 512u)
+#define PS5_GPU_BLIT_MIN_PIXELS (64u * 64u)
 #define PS5_MAX_COLOR_WIDTH PS5_MAX_RENDER_SIZE
 #define PS5_MAX_COLOR_HEIGHT PS5_MAX_RENDER_SIZE
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
@@ -82,7 +82,7 @@ struct ps5_context { struct pipe_context base; unsigned render_condition_query,
     stream_output_target_count,active_occlusion_query,active_primitives_generated_query,
     active_primitives_emitted_query,draw_calls; int last_draw_status;
     struct blitter_context *blitter;
-    bool viewport_valid,scissor_valid,framebuffer_valid,queries_enabled; };
+    bool viewport_valid,scissor_valid,framebuffer_valid,queries_enabled,deferred_blitter_draw; };
 static bool ps5_any_primitive_query(const struct ps5_context *c)
 { return c->active_primitives_generated_query || c->active_primitives_emitted_query; }
 static bool linear;
@@ -143,6 +143,7 @@ static void util_blitter_blit_generic(struct blitter_context *b,const struct pip
     assert(mask==expected.mask && filter==expected.filter && !alpha && !sample0 && !sample && !override);
     assert((scissor!=NULL)==expected.scissor_enable);
     struct ps5_context *c=(struct ps5_context *)b->pipe;
+    assert(c->deferred_blitter_draw);
     c->viewport_valid=!c->viewport_valid; c->scissor_valid=!c->scissor_valid;
     c->framebuffer_valid=!c->framebuffer_valid; c->queries_enabled=!c->queries_enabled;
     ++attempts; if (!no_draw) ++c->draw_calls; c->last_draw_status=draw_status;
@@ -153,7 +154,7 @@ code += '\n' + '\n'.join(function(name) for name in (
     'ps5_surface_layer_count', 'ps5_linear_color_pitch', 'ps5_blit_gpu_color'))
 # Execute the actual top-level dispatch decision; the CPU implementation is an
 # observed fallback boundary, not a second implementation of the GPU helper.
-dispatch_start = source.index('   ps5_draw_batch_drain_buffer(', source.index('static void\nps5_blit('))
+dispatch_start = source.index('   if (ps5_blit_gpu_color(', source.index('static void\nps5_blit('))
 dispatch_end = source.index('   if (PS5_ENABLE_MSAA4_CANDIDATE', dispatch_start)
 resolve_start = source.index('   if (info->mask', source.index('ps5_resolve_color_msaa4('))
 resolve_end = source.index('      printf("[ps5-gallium] msaa4-resolve rejected', resolve_start)
@@ -219,10 +220,12 @@ int main(void) {
     scaled.scissor_enable=true;
     scaled.scissor.maxx=513; scaled.scissor.maxy=514;
     assert(ps5_blit_gpu_color(&c,&scaled));
-    scaled.scissor.minx=2; assert(!ps5_blit_gpu_color(&c,&scaled));
+    scaled.scissor.minx=506; assert(!ps5_blit_gpu_color(&c,&scaled));
     scaled.scissor.minx=UINT_MAX; assert(!ps5_blit_gpu_color(&c,&scaled));
-    b.src.box.width=b.dst.box.width=511; assert(!ps5_blit_gpu_color(&c,&b));
-    b.src.box.width=b.dst.box.width=512;
+    b.src.box.height=b.dst.box.height=64;
+    b.src.box.width=b.dst.box.width=63; assert(!ps5_blit_gpu_color(&c,&b));
+    b.src.box.width=b.dst.box.width=64; assert(ps5_blit_gpu_color(&c,&b));
+    b.src.box.width=b.dst.box.width=b.src.box.height=b.dst.box.height=512;
 #define BAD_RESOURCE(field,value) do { struct ps5_resource old=r; r.field=value; \
     assert(!ps5_blit_gpu_color(&c,&b)); r=old; } while (0)
     BAD_RESOURCE(base.target,3); BAD_RESOURCE(base.last_level,1); BAD_RESOURCE(base.depth0,2);
@@ -305,19 +308,23 @@ int main(void) {
         assert(!ps5_blit_gpu_color(&c,&mip)); t.level_stride[1]=stride;
         t.size=t.allocation_size+1; assert(!ps5_blit_gpu_color(&c,&mip));
     }
+    dispatch(&c,&b);
+    assert(!drains && !cpu_replays && !live_views && !c.deferred_blitter_draw);
     /* Attempt failures consume the blit: no CPU replay, even with zero draws. */
     unsigned saved_attempts=attempts, saved_releases=releases;
     no_draw=true; dispatch(&c,&b); no_draw=false;
     assert(c.last_draw_status==-30 && attempts==saved_attempts+1 && !cpu_replays);
     draw_status=-77; dispatch(&c,&b); draw_status=0;
     assert(c.last_draw_status==-77 && attempts==saved_attempts+2 && !cpu_replays);
-    assert(releases==saved_releases+2 && !live_views && drains==4);
-    assert(drained[0]==b.src.resource && drained[1]==b.dst.resource);
-    assert(drained[2]==b.src.resource && drained[3]==b.dst.resource);
+    assert(releases==saved_releases+2 && !live_views && !drains);
+    assert(!c.deferred_blitter_draw);
     assert(c.viewport_valid && !c.scissor_valid && !c.framebuffer_valid && c.queries_enabled);
     view_failure=true; dispatch(&c,&b); view_failure=false;
     unsupported=true; dispatch(&c,&b); unsupported=false;
     assert(attempts==saved_attempts+2 && cpu_replays==2 && !live_views);
+    assert(drains==4 && !c.deferred_blitter_draw);
+    assert(drained[0]==b.src.resource && drained[1]==b.dst.resource);
+    assert(drained[2]==b.src.resource && drained[3]==b.dst.resource);
     return 0;
 }
 '''
@@ -330,6 +337,7 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run([exe], check=True, timeout=30)
 
 # Pin integration ordering and state coverage; the native test verifies effects.
+assert '#define PS5_GPU_BLIT_MIN_PIXELS (64u * 64u)' in source
 for state in states:
     assert f"util_blitter_save_{state}(" in body, state
 for flag in ("viewport_valid", "scissor_valid", "framebuffer_valid", "queries_enabled"):
@@ -337,12 +345,12 @@ for flag in ("viewport_valid", "scissor_valid", "framebuffer_valid", "queries_en
 attempt = body[body.index("   util_blitter_blit_generic("):]
 assert "return false" not in attempt and "return true;" in attempt
 assert "context->draw_calls == draws_before" in attempt
-assert "deferred_attachment_clear =" not in body
+assert body.index("context->deferred_blitter_draw = true;") < body.index("   util_blitter_blit_generic(") < body.index("context->deferred_blitter_draw = false;")
 assert 'target_pitches[i] = ps5_linear_color_pitch(surface);' in source
 assert '!ps5_linear_color_pitch(surface) &&\n             !ps5_stage_color_surface(surface, false)' in source
 assert 'context->framebuffer.nr_cbufs != 1 || !ps5_linear_color_pitch(surface)' not in source
 assert body.index("   if (!view)") < body.index("   util_blitter_save_vertex_buffers(")
 dispatch = source[source.index("static void\nps5_blit("):]
-assert dispatch.index("ps5_draw_batch_drain_buffer(info ? info->src.resource : NULL);") < dispatch.index("ps5_draw_batch_drain_buffer(info ? info->dst.resource : NULL);") < dispatch.index("if (ps5_blit_gpu_color(ps5, info))")
+assert dispatch.index("if (ps5_blit_gpu_color(ps5, info))") < dispatch.index("ps5_draw_batch_drain_buffer(info ? info->src.resource : NULL);") < dispatch.index("ps5_draw_batch_drain_buffer(info ? info->dst.resource : NULL);")
 print("PASS: actual GPU-blit/pitch guards, four formats, same-allocation mip/layer aliases, "
       "source views/base dimensions, state flags/view cleanup, attempted-failure no-replay dispatch (ASan/UBSan)")

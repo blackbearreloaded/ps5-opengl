@@ -10,7 +10,8 @@ start = source.index("static struct runtime_batch_entry {")
 body = source[start:source.index("\n#endif\n\n#ifdef PS5_DRAW_PROFILE", start)]
 tail_start = source.index('    failure_phase = "release";', source.index('    draw_words ='))
 tail = source[tail_start:source.index('    final_words =', tail_start)]
-assert tail.index('release_mem(&command, 45, 12') < tail.index('completion_offset =') < tail.index('runtime_release_completion(&agc, &command, completion_marker,')
+assert tail.index('completion_offset = draw_words - PS5_AGC_POST_DRAW_BARRIER_WORDS') < tail.index('release_mem(&command, 45, 12')
+assert tail.index('release_mem(&command, 45, 12') < tail.index('if (!completion_offset)') < tail.index('runtime_release_completion(&agc, &command, completion_marker,')
 assert 'if (command.down >= command.up && command.down <= command.top)' in source
 assert 'entry->command_capacity = (uint32_t)(command.down - words);' in source
 code = r'''
@@ -91,6 +92,11 @@ static void reset(unsigned count) {
     }
 }
 int main(void) {
+    assert(!ps5_agc_gate2_batch_begin_framebuffer() && runtime_batch_fixed_framebuffer);
+    assert(ps5_agc_gate2_batch_begin_framebuffer()!=0);
+    assert(!ps5_agc_gate2_batch_end());
+    assert(!ps5_agc_gate2_batch_begin() && !runtime_batch_fixed_framebuffer);
+    assert(!ps5_agc_gate2_batch_end());
     for (unsigned n=1;n<=PS5_MULTIDRAW_BATCH_CAPACITY;++n) {
         reset(n);
         assert(!ps5_agc_gate2_batch_submit());
@@ -142,3 +148,51 @@ with tempfile.TemporaryDirectory() as tmp:
                    input=code, text=True, check=True)
     subprocess.run([str(exe)], check=True, stdout=subprocess.DEVNULL)
 print("PASS: command groups preserve bodies/barriers, bound capacity, retire all allocations from tail markers, and fail-stop before cleanup")
+
+# Execute the actual tail selection for opt-in and conservative streams. The
+# former drops only the post-draw release/wait, never the draw/query/state body.
+tail_code = r'''
+#include <assert.h>
+#include <stdint.h>
+#include <stddef.h>
+#define AGC_TRIANGLE_SUBMIT 1
+#define AGC_RUNTIME_PACKAGES 1
+#define PS5_MULTIDRAW_BATCH 1
+#define PS5_AGC_POST_DRAW_BARRIER_WORDS barrier_words
+struct command { uint32_t *up; };
+static uint32_t *release(void *p, ...) { struct command *c=p; *c->up++=45; return c->up; }
+static const struct { uint32_t *(*release_mem)(void *, ...); } agc={release};
+static uint32_t *runtime_release_completion(const void *a, struct command *c,
+                                           void *marker, uint32_t expected) {
+    assert(a && marker && expected==101); *c->up++=101; return c->up;
+}
+static unsigned check(int active, int fixed, unsigned barrier_words) {
+    uint32_t words[64]={0}, draw_words=32, completion_offset=0;
+    struct command command={words+draw_words};
+    int runtime_batch_active=active, runtime_batch_fixed_framebuffer=fixed;
+    const char *failure_phase;
+    uint64_t marker=0, render_marker=101;
+    void *completion_marker=&marker;
+''' + tail + r'''
+receipt:
+    (void)failure_phase;
+    assert(command.up==words+34 && words[32]==45 && words[33]==101);
+    return completion_offset;
+}
+int main(void) {
+    assert(check(1,1,15)==17); /* Draw/query/reset body ends before barrier. */
+    assert(check(1,1,0)==32);  /* Coalesce unconditional color release too. */
+    assert(check(0,1,15)==33 && check(1,0,15)==33);
+    assert(check(1,1,32)==33); /* Invalid tail metadata retains old behavior. */
+}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    exe = Path(tmp) / 'fixed-framebuffer-tail'
+    subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-x', 'c',
+                    '-o', str(exe), '-'], input=tail_code, text=True, check=True)
+    subprocess.run([str(exe)], check=True)
+driver = (root / 'src/gallium/ps5/ps5_screen.c').read_text()
+framebuffer = driver[driver.index('static void\nps5_set_framebuffer_state('):]
+assert framebuffer.index('ps5_draw_batch_submit();') < framebuffer.index('util_copy_framebuffer_state(')
+assert 'util_framebuffer_state_equal(&context->framebuffer, framebuffer)' in framebuffer
+print('PASS: fixed-framebuffer tail preserves final releases and conservative fallback; framebuffer switches split batches')

@@ -1259,6 +1259,7 @@ static unsigned runtime_pending_head, runtime_pending_batches, runtime_pending_p
 static agc_api_t runtime_batch_api;
 static unsigned runtime_batch_count;
 static int runtime_batch_active, runtime_batch_faulted;
+static int runtime_batch_fixed_framebuffer;
 
 #ifdef PS5_ASYNC_NATIVE_PREP
 /* The producer keeps translating GL draws while this worker prepares native
@@ -1419,7 +1420,18 @@ int ps5_agc_gate2_batch_begin(void)
     if (runtime_batch_active || runtime_batch_count || runtime_batch_faulted)
         return -1;
     runtime_batch_active = 1;
+    runtime_batch_fixed_framebuffer = 0;
     return 0;
+}
+
+/* Opt-in contract: no attachment changes or attachment sampling within a batch.
+ * Gallium splits at framebuffer changes and rejects attachment feedback. */
+int ps5_agc_gate2_batch_begin_framebuffer(void)
+{
+    int result = ps5_agc_gate2_batch_begin();
+    if (!result)
+        runtime_batch_fixed_framebuffer = 1;
+    return result;
 }
 
 static int runtime_batch_queue(const agc_api_t *api,
@@ -1443,9 +1455,9 @@ static int runtime_batch_queue(const agc_api_t *api,
     return 0; /* Ownership transfers only on success. No GPU work yet. */
 }
 
-/* Only native draw streams opt in. Keep draw bodies, color releases and
- * explicit texture/depth dependency barriers. Completion release/cache tails
- * move to the group boundary. No allocation is freed here. */
+/* Keep draw bodies and their dependency barriers. Fixed-framebuffer batches
+ * may also move their post-draw color/depth releases to the group boundary;
+ * all other batches retain those releases per draw. No allocation is freed. */
 static unsigned runtime_batch_combine(void)
 {
     unsigned groups = 0;
@@ -4374,11 +4386,17 @@ int main(void)
 
 #ifdef AGC_TRIANGLE_SUBMIT
 #ifdef AGC_RUNTIME_PACKAGES
+#if defined(PS5_MULTIDRAW_BATCH) && defined(PS5_AGC_POST_DRAW_BARRIER_WORDS) && !defined(PS5_DRAW_GPU_TIMESTAMPS)
+    if (runtime_batch_active && runtime_batch_fixed_framebuffer &&
+        PS5_AGC_POST_DRAW_BARRIER_WORDS < draw_words)
+        completion_offset = draw_words - PS5_AGC_POST_DRAW_BARRIER_WORDS;
+#endif
     if (!agc.release_mem(&command, 45, 12, 1, 0, NULL, 0, 0,
                          0, 1, 0, 0))
         goto receipt;
 #ifdef PS5_MULTIDRAW_BATCH
-    completion_offset = (uint32_t)(command.up - words);
+    if (!completion_offset)
+        completion_offset = (uint32_t)(command.up - words);
 #endif
     if (!runtime_release_completion(&agc, &command, completion_marker,
                                      (uint32_t)render_marker))

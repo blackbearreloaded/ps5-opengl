@@ -423,6 +423,11 @@ main(void)
    glClear(GL_DEPTH_BUFFER_BIT);
 #endif
    glUseProgram(producer);
+   /* Keep earlier values distinguishable from the final draw across a full
+    * deferred batch. Sampling below must observe the last depth value. */
+   glUniform1f(producer_depth, 0.0f);
+   for (unsigned draw = 0; draw < 256; ++draw)
+      glDrawArrays(GL_TRIANGLES, 0, 3);
    glUniform1f(producer_depth, -0.5f);
    glDrawArrays(GL_TRIANGLES, 0, 3);
 
