@@ -99,3 +99,8 @@ local compiler changes. Source reproducibility is distinct from byte-identical
 executables: compiler versions, debug paths and packaging can change hashes.
 A fresh executable needs its own hardware receipt. Published results belong to
 the frozen identities in [the validation report](validation.md).
+
+## Native preparation workers
+
+See [Native preparation and rendering updates](native-preparation-updates.md#build-configuration)
+for opt-in asynchronous preparation, worker counts, and profiling restrictions.

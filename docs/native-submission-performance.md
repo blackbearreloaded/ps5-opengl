@@ -5,6 +5,10 @@ completion, allocating transient storage and repeatedly publishing unchanged
 resources. The native driver now batches eligible command streams, retains
 their resources until confirmed completion and scopes CPU waits to hazards.
 
+See [Native preparation and rendering updates](native-preparation-updates.md)
+for subsequent worker, descriptor, multisample, and lifetime improvements.
+The artifact hashes below identify the earlier qualification only.
+
 ## Changes
 
 - Direct packed-float and sRGB rendering for validated layouts, with guarded
