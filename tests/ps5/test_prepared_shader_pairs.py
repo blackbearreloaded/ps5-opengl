@@ -8,7 +8,9 @@ a = s.index('static struct runtime_shader_pair {')
 b = s.index('\nstatic int runtime_work_take', a)
 code = r'''
 #include <assert.h>
+#include <inttypes.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -74,7 +76,7 @@ int main(void) {
     for(unsigned i=0;i<34*8;++i) assert(draw[0x5000+i]==4);
     for(unsigned i=0;i<3*8;++i) assert(draw[0x6000+i]==0x5a);
     assert(draw[0x6000+3*8]==0);
-    assert(GET()==first && creates==2 && flushes==1);
+    assert(GET()==first && creates==2 && flushes==1 && runtime_pair_hot_hits==1);
     vs[127]=3; /* Same address and size, different bytecode must miss. */
     struct runtime_shader_pair *second=GET();
     assert(second && second!=first && creates==4);
@@ -87,12 +89,13 @@ int main(void) {
     assert(!GET() && releases==2 && unmaps==1);
     fail_map=0;
     size_t saved=runtime_shader_pair_bytes;
-    runtime_shader_pair_bytes=64u*1024u*1024u;
+    runtime_shader_pair_bytes=256u*1024u*1024u;
     assert(!GET()); runtime_shader_pair_bytes=saved;
-    for(unsigned i=6;i<515;++i) { runtime_primitive_type=i; assert(GET()); }
-    runtime_primitive_type=999;
-    assert(runtime_shader_pair_count==512 && !GET());
+    for(unsigned i=6;i<2051;++i) { runtime_primitive_type=i; assert(GET()); }
+    runtime_primitive_type=9999;
+    assert(runtime_shader_pair_count==2048 && !GET() && runtime_pair_full==2);
     assert(runtime_shader_pair_clear()==0 && !runtime_shader_pair_count && !runtime_shader_pair_bytes);
+    for(unsigned i=0;i<4096;++i) assert(!runtime_shader_pair_hot[i]);
     assert(allocations==releases && maps==unmaps);
     assert(runtime_shader_pair_clear()==0);
     int old_creates=creates, old_links=links;

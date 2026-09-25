@@ -1072,7 +1072,8 @@ static struct runtime_shader_pair {
     uint8_t *source, *memory;
     int64_t direct;
     void *vertex, *pixel;
-} runtime_shader_pairs[512];
+} runtime_shader_pairs[2048];
+static struct runtime_shader_pair *runtime_shader_pair_hot[4096];
 static unsigned runtime_shader_pair_count;
 static size_t runtime_shader_pair_bytes;
 #ifdef PS5_ASYNC_NATIVE_PREP
@@ -1083,6 +1084,8 @@ static pthread_mutex_t runtime_shader_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define RUNTIME_SHADER_LOCK() ((void)0)
 #define RUNTIME_SHADER_UNLOCK() ((void)0)
 #endif
+static uint64_t runtime_pair_lookups, runtime_pair_hot_hits;
+static uint64_t runtime_pair_scan_hits, runtime_pair_full;
 
 /* Prepared draws write every emitted command and own only these mutable state
  * pages. Shader code lives in the pair allocation; unused command capacity is
@@ -1113,18 +1116,44 @@ static struct runtime_shader_pair *runtime_shader_pair_get_unlocked(
     const uint8_t *ps_header, size_t ps_header_size,
     const uint8_t *ps_code, size_t ps_code_size)
 {
-    const size_t limit = 64u * 1024u * 1024u;
+    const size_t limit = 256u * 1024u * 1024u;
+    uintptr_t key = ((uintptr_t)runtime_vs_package >> 4) ^
+                    (((uintptr_t)runtime_ps_package >> 4) * UINT64_C(0x9e3779b185ebca87)) ^
+                    ((uintptr_t)runtime_primitive_type * UINT64_C(0xc2b2ae3d27d4eb4f));
+    unsigned slot = (unsigned)((key ^ (key >> 17) ^ (key >> 31)) & 4095u);
+    struct runtime_shader_pair *hot = runtime_shader_pair_hot[slot];
+    if (++runtime_pair_lookups % 100000 == 0)
+        printf("[ps5-pair-cache] lookups=%" PRIu64 " hot=%" PRIu64
+               " scanned=%" PRIu64 " full=%" PRIu64 " entries=%u bytes=%zu\n",
+               runtime_pair_lookups, runtime_pair_hot_hits,
+               runtime_pair_scan_hits, runtime_pair_full,
+               runtime_shader_pair_count, runtime_shader_pair_bytes);
+    if (hot && hot->vs_key == runtime_vs_package &&
+        hot->ps_key == runtime_ps_package &&
+        hot->vs_size == runtime_vs_package_len &&
+        hot->ps_size == runtime_ps_package_len &&
+        hot->primitive == runtime_primitive_type &&
+        !memcmp(hot->source, runtime_vs_package, hot->vs_size) &&
+        !memcmp(hot->source + hot->vs_size, runtime_ps_package, hot->ps_size)) {
+        ++runtime_pair_hot_hits;
+        return hot;
+    }
     for (unsigned i = 0; i < runtime_shader_pair_count; ++i) {
         struct runtime_shader_pair *p = &runtime_shader_pairs[i];
         if (p->vs_key == runtime_vs_package && p->ps_key == runtime_ps_package &&
             p->vs_size == runtime_vs_package_len && p->ps_size == runtime_ps_package_len &&
             p->primitive == runtime_primitive_type &&
             !memcmp(p->source, runtime_vs_package, p->vs_size) &&
-            !memcmp(p->source + p->vs_size, runtime_ps_package, p->ps_size))
+            !memcmp(p->source + p->vs_size, runtime_ps_package, p->ps_size)) {
+            runtime_shader_pair_hot[slot] = p;
+            ++runtime_pair_scan_hits;
             return p; /* Byte comparison also covers freed/reused package addresses. */
+        }
     }
-    if (runtime_shader_pair_count == sizeof(runtime_shader_pairs) / sizeof(runtime_shader_pairs[0]))
+    if (runtime_shader_pair_count == sizeof(runtime_shader_pairs) / sizeof(runtime_shader_pairs[0])) {
+        ++runtime_pair_full;
         return NULL;
+    }
     const size_t vs_header_at = 0x2000;
     const size_t vs_code_at = (vs_header_at + vs_header_size + 0xfffu) & ~(size_t)0xfffu;
     const size_t ps_header_at = (vs_code_at + vs_code_size + 0xfffu) & ~(size_t)0xfffu;
@@ -1132,8 +1161,10 @@ static struct runtime_shader_pair *runtime_shader_pair_get_unlocked(
     const size_t bytes = (ps_code_at + ps_code_size + 0x3fffu) & ~(size_t)0x3fffu;
     const size_t source_bytes = (size_t)runtime_vs_package_len + runtime_ps_package_len;
     if (bytes > limit || source_bytes > limit - bytes ||
-        runtime_shader_pair_bytes > limit - bytes - source_bytes)
+        runtime_shader_pair_bytes > limit - bytes - source_bytes) {
+        ++runtime_pair_full;
         return NULL;
+    }
     struct runtime_shader_pair p = {.vs_key = runtime_vs_package, .ps_key = runtime_ps_package,
         .vs_size = runtime_vs_package_len, .ps_size = runtime_ps_package_len,
         .bytes = bytes, .primitive = runtime_primitive_type, .direct = -1};
@@ -1162,6 +1193,7 @@ static struct runtime_shader_pair *runtime_shader_pair_get_unlocked(
     flush_gpu_data(p.memory, bytes);
     runtime_shader_pair_bytes += bytes + source_bytes;
     runtime_shader_pairs[runtime_shader_pair_count] = p;
+    runtime_shader_pair_hot[slot] = &runtime_shader_pairs[runtime_shader_pair_count];
     return &runtime_shader_pairs[runtime_shader_pair_count++];
 fail:
     if (p.memory && munmap(p.memory, bytes) != 0)
@@ -1198,6 +1230,7 @@ static int runtime_shader_pair_clear(void)
         --runtime_shader_pair_count;
     }
     runtime_shader_pair_bytes = 0;
+    memset(runtime_shader_pair_hot, 0, sizeof(runtime_shader_pair_hot));
     return 0;
 }
 

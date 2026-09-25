@@ -292,7 +292,8 @@ ps5_agc_emit_texture_barrier(struct ps5_agc_command_buffer *command)
 }
 
 static uint32_t *
-ps5_agc_set_cx_mrt(void *command, const void *table, uint32_t count)
+ps5_agc_set_cx_mrt_uncached(void *command, const void *table, uint32_t count,
+                             uint32_t *output_count)
 {
    static const uint16_t target0_offsets[16] = {
       0x318, 0x31b, 0x31c, 0x31d, 0x31e, 0x31f, 0x321, 0x323,
@@ -557,7 +558,45 @@ ps5_agc_set_cx_mrt(void *command, const void *table, uint32_t count)
          records[depth_size].value = (ps5_agc_depth_width - 1u) |
                                      ((ps5_agc_depth_height - 1u) << 16);
    }
+   *output_count = count;
    return ps5_agc_set_cx(command, records, count);
+}
+
+static uint32_t *
+ps5_agc_set_cx_mrt(void *command, const void *table, uint32_t count)
+{
+   /* Cache only full graphics tables. Small dynamic overrides must not evict
+    * them. Key all input bytes and backend state: no pointer-identity shortcut. */
+   static _Thread_local struct {
+      bool valid;
+      uint32_t input_count, output_count;
+      struct ps5_agc_backend_draw_state state;
+      struct ps5_agc_register input[PS5_AGC_CX_RECORD_CAPACITY];
+      struct ps5_agc_register output[PS5_AGC_CX_RECORD_CAPACITY];
+   } cache;
+   const bool eligible = table && count <= PS5_AGC_CX_RECORD_CAPACITY &&
+      ps5_agc_find_register(table, count, 0x0318u) >= 0 &&
+      ps5_agc_find_register(table, count, 0x02d5u) >= 0;
+   uint32_t output_count = 0;
+   if (!eligible)
+      return ps5_agc_set_cx_mrt_uncached(command, table, count, &output_count);
+   if (cache.valid && cache.input_count == count &&
+       !memcmp(&cache.state, &ps5_agc_draw_state, sizeof(cache.state)) &&
+       !memcmp(cache.input, table, count * sizeof(cache.input[0]))) {
+      memcpy((void *)table, cache.output, cache.output_count * sizeof(cache.output[0]));
+      return ps5_agc_set_cx(command, table, cache.output_count);
+   }
+   cache.valid = false;
+   cache.input_count = count;
+   cache.state = ps5_agc_draw_state;
+   memcpy(cache.input, table, count * sizeof(cache.input[0]));
+   uint32_t *result = ps5_agc_set_cx_mrt_uncached(command, table, count, &output_count);
+   if (result && output_count <= PS5_AGC_CX_RECORD_CAPACITY) {
+      memcpy(cache.output, table, output_count * sizeof(cache.output[0]));
+      cache.output_count = output_count;
+      cache.valid = true;
+   }
+   return result;
 }
 
 int

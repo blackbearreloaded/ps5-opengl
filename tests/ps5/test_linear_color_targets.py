@@ -48,7 +48,7 @@ static int ps5_agc_gate2_set_framebuffer(void *target, size_t size)
 '''
 code += "\n".join(function(name) for name in (
     "ps5_agc_replace_or_append_register", "ps5_agc_find_register",
-    "ps5_agc_set_cx_mrt", "ps5_agc_linear_color_bytes",
+    "ps5_agc_set_cx_mrt_uncached", "ps5_agc_set_cx_mrt", "ps5_agc_linear_color_bytes",
     "ps5_agc_color_target_extent", "ps5_agc_color_info_valid",
     "ps5_agc_gate2_set_multisample_state", "ps5_agc_gate2_set_scanout",
     "ps5_agc_gate2_set_framebuffers", "ps5_agc_gate2_set_color_target_layouts",
