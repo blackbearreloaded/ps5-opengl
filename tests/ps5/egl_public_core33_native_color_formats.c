@@ -327,6 +327,26 @@ int main(void)
                     programs[0],tint,programs[1],extent,timed)) goto done;
       ++cases;
    }
+   /* Delete each program while its last draw can still be in native preparation. */
+   glBindFramebuffer(GL_FRAMEBUFFER,0);
+   glViewport(0,0,32,32);
+   glDisable(GL_SCISSOR_TEST);
+   glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+   for (unsigned i=0; i<16; ++i) {
+      GLuint temporary=make_program(0);
+      if (!temporary) goto done;
+      glUseProgram(temporary);
+      glUniform4f(glGetUniformLocation(temporary,"tint"),0.25f,0.5f,0.75f,1.0f);
+      glDrawArrays(GL_TRIANGLES,0,3);
+      glUseProgram(0);
+      glDeleteProgram(temporary);
+      unsigned char pixel[4]={0};
+      glReadPixels(8,8,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
+      if (abs((int)pixel[0]-64)>2 || abs((int)pixel[1]-128)>2 ||
+          abs((int)pixel[2]-191)>2 || pixel[3]!=255 ||
+          !healthy("delete-after-draw",NULL)) goto done;
+   }
+   printf(TAG " delete-after-draw=16/16 result=0\n");
    passed=1;
 done:
    if (current) {

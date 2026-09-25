@@ -16328,6 +16328,8 @@ ps5_delete_shader_state(struct pipe_context *base, void *state)
 
    if (!shader)
       return;
+   /* Native workers still borrow variant packages until the batch drains. */
+   ps5_draw_batch_drain();
    printf("[ps5-gallium] delete-shader stage=%u state=%p\n",
           shader->stage, (void *)shader);
    if (context->vs == shader)
