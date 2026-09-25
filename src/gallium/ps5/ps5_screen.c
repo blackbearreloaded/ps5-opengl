@@ -318,6 +318,8 @@ struct ps5_sampler_state {
    struct pipe_sampler_state base;
    uint16_t border_color_ptr;
    uint8_t border_color_type;
+   bool words_valid;
+   uint32_t words[3];
 };
 
 struct ps5_constant_state {
@@ -2497,6 +2499,17 @@ ps5_flush_gpu_data(const void *address, size_t bytes)
 #define ps5_flush_gpu_data(address, bytes) PS5_CACHE_MEASURE(ps5_flush_gpu_data, address, bytes)
 #endif
 
+/* A draw may publish the completed private table after its last writer.
+ * Resource-data publication is separate and must never be deferred here. */
+static void
+ps5_publish_descriptor_prefix(const void *data, size_t bytes, size_t *pending)
+{
+   if (pending)
+      *pending = MAX2(*pending, bytes);
+   else
+      ps5_flush_gpu_data(data, bytes);
+}
+
 static bool
 ps5_texel_buffer_descriptor(const struct pipe_sampler_view *view,
                             uint32_t address32_hi, uint32_t descriptor[4])
@@ -3325,7 +3338,8 @@ static bool
 ps5_prepare_constant(struct ps5_context *context,
                      const struct ps5_shader *shader, unsigned slot,
                      uint32_t *user_data, unsigned user_data_count,
-                     const PsbcShaderMetadata *metadata_override)
+                     const PsbcShaderMetadata *metadata_override,
+                     size_t *pending_descriptor_bytes)
 {
    const PsbcShaderMetadata *metadata;
    struct ps5_resource *storage;
@@ -3513,7 +3527,8 @@ ps5_prepare_constant(struct ps5_context *context,
       return false;
    user_data[metadata->descriptor_set0_user_data_dword] =
       (uint32_t)descriptor_address;
-   ps5_flush_gpu_data(storage->data, ps5_descriptor_snapshot_size(context, slot));
+   ps5_publish_descriptor_prefix(storage->data,
+      ps5_descriptor_snapshot_size(context, slot), pending_descriptor_bytes);
    return true;
 }
 
@@ -3723,11 +3738,54 @@ ps5_prepare_tessellation_buffers(struct ps5_context *context,
 }
 
 static bool
+ps5_encode_sampler_words(const struct pipe_sampler_state *sampler, uint32_t words[3])
+{
+   uint32_t wrap[3], filter[2], mip_filter;
+   uint32_t min_lod, max_lod, lod_bias, anisotropy;
+   if (sampler->unnormalized_coords ||
+       sampler->max_anisotropy > 16 ||
+       !ps5_float_is_finite(sampler->min_lod) ||
+       !ps5_float_is_finite(sampler->max_lod) ||
+       !ps5_float_is_finite(sampler->lod_bias) ||
+       !ps5_texture_descriptor_wrap(sampler->wrap_s, &wrap[0]) ||
+       !ps5_texture_descriptor_wrap(sampler->wrap_t, &wrap[1]) ||
+       !ps5_texture_descriptor_wrap(sampler->wrap_r, &wrap[2]) ||
+       !ps5_texture_descriptor_filter(sampler->min_img_filter,
+                                      sampler->max_anisotropy,
+                                      &filter[0]) ||
+       !ps5_texture_descriptor_filter(sampler->mag_img_filter,
+                                      sampler->max_anisotropy,
+                                      &filter[1]) ||
+       !ps5_texture_descriptor_mip_filter(sampler->min_mip_filter,
+                                          &mip_filter))
+      return false;
+   min_lod = ps5_texture_descriptor_unsigned_lod(sampler->min_lod);
+   max_lod = ps5_texture_descriptor_unsigned_lod(sampler->max_lod);
+   lod_bias = ps5_texture_descriptor_lod_bias(sampler->lod_bias);
+   anisotropy = ps5_texture_descriptor_anisotropy(
+      sampler->max_anisotropy);
+   words[0] = wrap[0] | (wrap[1] << 3) | (wrap[2] << 6) |
+                   (anisotropy << 9) | ((anisotropy >> 1) << 16) |
+                   (anisotropy << 21) |
+                   (sampler->compare_mode ?
+                      sampler->compare_func << 12 : 0) |
+                   ((PS5_ENABLE_SEAMLESS_CUBE_CANDIDATE &&
+                     !sampler->seamless_cube_map) << 28);
+   words[1] = min_lod | (max_lod << 12) |
+                   ((anisotropy ? anisotropy + 6u : 0u) << 24);
+   words[2] = lod_bias | (filter[1] << 20) | (filter[0] << 22) |
+                    (mip_filter << 26) |
+                    (anisotropy ? 1u << 29 : 0u);
+   return true;
+}
+
+static bool
 ps5_prepare_texture(struct ps5_context *context,
                     const struct ps5_shader *shader, unsigned slot,
                     uint32_t *user_data, unsigned user_data_count,
                     const PsbcShaderMetadata *metadata_override,
-                    struct ps5_batch_flush_cache *flush_cache)
+                    struct ps5_batch_flush_cache *flush_cache,
+                    size_t *pending_descriptor_bytes)
 {
    const PsbcShaderMetadata *metadata;
    struct ps5_resource *table;
@@ -3823,13 +3881,6 @@ ps5_prepare_texture(struct ps5_context *context,
       uint32_t *descriptor;
       uint32_t format_word;
       uint32_t swizzle[4];
-      uint32_t wrap[3];
-      uint32_t filter[2];
-      uint32_t mip_filter;
-      uint32_t min_lod;
-      uint32_t max_lod;
-      uint32_t lod_bias;
-      uint32_t anisotropy;
       unsigned format_size;
       unsigned descriptor_format_size;
       unsigned descriptor_stride;
@@ -4026,22 +4077,7 @@ ps5_prepare_texture(struct ps5_context *context,
           (sampler->compare_mode &&
            (!depth_texture || stencil_texture ||
             sampler->compare_func > PIPE_FUNC_ALWAYS)) ||
-          sampler->unnormalized_coords ||
-          sampler->max_anisotropy > 16 ||
-          !ps5_float_is_finite(sampler->min_lod) ||
-          !ps5_float_is_finite(sampler->max_lod) ||
-          !ps5_float_is_finite(sampler->lod_bias) ||
-          !ps5_texture_descriptor_wrap(sampler->wrap_s, &wrap[0]) ||
-          !ps5_texture_descriptor_wrap(sampler->wrap_t, &wrap[1]) ||
-          !ps5_texture_descriptor_wrap(sampler->wrap_r, &wrap[2]) ||
-          !ps5_texture_descriptor_filter(sampler->min_img_filter,
-                                         sampler->max_anisotropy,
-                                         &filter[0]) ||
-          !ps5_texture_descriptor_filter(sampler->mag_img_filter,
-                                         sampler->max_anisotropy,
-                                         &filter[1]) ||
-          !ps5_texture_descriptor_mip_filter(sampler->min_mip_filter,
-                                             &mip_filter) ||
+          !sampler_state->words_valid ||
           !ps5_texture_descriptor_format(view->format, &format_word) ||
           !ps5_texture_descriptor_swizzle(view->swizzle_r, view->format, &swizzle[0]) ||
           !ps5_texture_descriptor_swizzle(view->swizzle_g, view->format, &swizzle[1]) ||
@@ -4086,12 +4122,6 @@ ps5_prepare_texture(struct ps5_context *context,
                  !tiled_depth_target) {
          format_word = gfx10_format_table[view->format].img_format << 20;
       }
-
-      min_lod = ps5_texture_descriptor_unsigned_lod(sampler->min_lod);
-      max_lod = ps5_texture_descriptor_unsigned_lod(sampler->max_lod);
-      lod_bias = ps5_texture_descriptor_lod_bias(sampler->lod_bias);
-      anisotropy = ps5_texture_descriptor_anisotropy(
-         sampler->max_anisotropy);
 
       descriptor_target = texture->base.target;
       if (ps5_cube_texture_target(view->target))
@@ -4183,18 +4213,7 @@ ps5_prepare_texture(struct ps5_context *context,
       }
       descriptor[5] = UINT32_C(0x00400000) |
                       ((multisampled ? 2u : descriptor_last_level) << 4);
-      descriptor[8] = wrap[0] | (wrap[1] << 3) | (wrap[2] << 6) |
-                      (anisotropy << 9) | ((anisotropy >> 1) << 16) |
-                      (anisotropy << 21) |
-                      (sampler->compare_mode ?
-                         sampler->compare_func << 12 : 0) |
-                      ((PS5_ENABLE_SEAMLESS_CUBE_CANDIDATE &&
-                        !sampler->seamless_cube_map) << 28);
-      descriptor[9] = min_lod | (max_lod << 12) |
-                      ((anisotropy ? anisotropy + 6u : 0u) << 24);
-      descriptor[10] = lod_bias | (filter[1] << 20) | (filter[0] << 22) |
-                       (mip_filter << 26) |
-                       (anisotropy ? 1u << 29 : 0u);
+      memcpy(&descriptor[8], sampler_state->words, sizeof(sampler_state->words));
       descriptor[11] = sampler_state->border_color_ptr |
                        ((uint32_t)sampler_state->border_color_type << 30);
 #ifdef AGC_RUNTIME_DIAGNOSTICS
@@ -4257,7 +4276,7 @@ ps5_prepare_texture(struct ps5_context *context,
    }
    user_data[metadata->descriptor_set0_user_data_dword] =
       (uint32_t)table_address;
-   ps5_flush_gpu_data(table->data, flush_size);
+   ps5_publish_descriptor_prefix(table->data, flush_size, pending_descriptor_bytes);
    return true;
 }
 
@@ -9546,6 +9565,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
    uint32_t hull_user_data[32] = {0};
    uint32_t *input_user_data;
    uint32_t pixel_user_data[32] = {0};
+   size_t descriptor_bytes[2] = {0};
    unsigned point_coord_input = 0;
    struct ps5_vertex_layout vertex_layout;
    struct ps5_vertex_layout fragment_layout = {0};
@@ -10149,17 +10169,22 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       return;
    }
    if (!tessellation_active && !ps5_prepare_constant(context, context->vs, 0, input_user_data,
-                             input_user_data_count, input_metadata)) {
+                             input_user_data_count, input_metadata,
+                             context->gs ? NULL : &descriptor_bytes[0])) {
       printf("[ps5-gallium] resource-prepare reject=vertex-constants\n");
       context->last_draw_status = -15;
       return;
    }
    if (!tessellation_active && !ps5_prepare_texture(context, context->vs, 0, input_user_data,
-                            input_user_data_count, input_metadata, NULL)) {
+                            input_user_data_count, input_metadata, NULL,
+                            context->gs ? NULL : &descriptor_bytes[0])) {
       printf("[ps5-gallium] resource-prepare reject=vertex-textures\n");
       context->last_draw_status = -15;
       return;
    }
+   if (descriptor_bytes[0])
+      ps5_flush_gpu_data(((struct ps5_resource *)context->descriptor_storage[0])->data,
+                         descriptor_bytes[0]);
    if (!tessellation_active &&
        !ps5_prepare_vertex_storage(context, input_metadata, input_user_data,
                                    input_user_data_count)) {
@@ -10177,9 +10202,9 @@ ps5_draw_vbo_locked(struct pipe_context *base,
    }
    if (tessellation_active &&
        (!ps5_prepare_texture(context, context->vs, 0, input_user_data,
-                             input_user_data_count, input_metadata, NULL) ||
+                             input_user_data_count, input_metadata, NULL, NULL) ||
         !ps5_prepare_texture(context, context->vs, 0, user_data,
-                             user_data_count, vertex_metadata, NULL))) {
+                             user_data_count, vertex_metadata, NULL, NULL))) {
       printf("[ps5-gallium] resource-prepare reject=tessellation-textures\n");
       context->last_draw_status = -15;
       return;
@@ -10204,17 +10229,20 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       return;
    }
    if (!ps5_prepare_constant(context, context->fs, 1, pixel_user_data,
-                             pixel_user_data_count, NULL)) {
+                             pixel_user_data_count, NULL, &descriptor_bytes[1])) {
       printf("[ps5-gallium] resource-prepare reject=fragment-constants\n");
       context->last_draw_status = -15;
       return;
    }
    if (!ps5_prepare_texture(context, context->fs, 1, pixel_user_data,
-                            pixel_user_data_count, NULL, flush_cache)) {
+                            pixel_user_data_count, NULL, flush_cache, &descriptor_bytes[1])) {
       printf("[ps5-gallium] resource-prepare reject=fragment-textures\n");
       context->last_draw_status = -15;
       return;
    }
+   if (descriptor_bytes[1])
+      ps5_flush_gpu_data(((struct ps5_resource *)context->descriptor_storage[1])->data,
+                         descriptor_bytes[1]);
    if (streamout_active &&
        !ps5_prepare_streamout(
           context, vertex_metadata, descriptor_resource, user_data,
@@ -15753,6 +15781,7 @@ ps5_create_sampler_state(struct pipe_context *base,
    if (!copy)
       return NULL;
    copy->base = *state;
+   copy->words_valid = ps5_encode_sampler_words(state, copy->words);
    if (!PS5_ENABLE_BORDER_COLOR_CANDIDATE)
       return copy;
 
