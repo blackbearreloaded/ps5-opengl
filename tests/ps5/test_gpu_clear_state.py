@@ -57,6 +57,7 @@ code = r'''
 #include <stdlib.h>
 #include <string.h>
 #define PS5_ENABLE_MRT_CANDIDATE 1
+#define PS5_ENABLE_MSAA4_CANDIDATE 1
 #define PS5_ENABLE_UBO_CANDIDATE 1
 #define PS5_MAX_CONSTANT_BUFFER_SIZE 65536
 #define PS5_GPU_CLEAR_MIN_PIXELS 16384u
@@ -77,6 +78,7 @@ code = r'''
 #define PIPE_FORMAT_R32G32B32A32_UINT 10
 #define PIPE_FORMAT_R8G8B8A8_SNORM 11
 #define PIPE_FORMAT_B8G8R8A8_UNORM 12
+#define PIPE_FORMAT_R16G16_FLOAT 13
 union pipe_color_union { uint32_t ui[4]; float f[4]; };
 struct pipe_scissor_state { unsigned minx,miny,maxx,maxy; };
 struct resource { unsigned target, nr_samples, nr_storage_samples, format, array_size; };
@@ -98,6 +100,7 @@ static __attribute__((unused)) bool ps5_any_primitive_query(const struct ps5_con
 static unsigned target_width = 128, target_height = 128;
 static unsigned linear_pitch;
 static bool sampled_linear;
+static bool ps5_msaa4_color_format(unsigned format) { return format == PIPE_FORMAT_R8G8B8A8_UNORM; }
 static bool ps5_linear_sampled_layout(const struct resource *r) { (void)r; return sampled_linear; }
 static unsigned ps5_linear_color_pitch(const struct pipe_surface *s) { (void)s; return linear_pitch; }
 static unsigned ps5_surface_width(const struct pipe_surface *s) { (void)s; return target_width; }
@@ -194,7 +197,7 @@ int main(void) {
      * must retain the CPU fallback, including incompatible sRGB views. */
     target.base.target=PIPE_TEXTURE_2D_ARRAY;
     target.render_staging_size=4096;
-    for (unsigned format=1;format<=12;++format) {
+    for (unsigned format=1;format<=13;++format) {
         target.base.format=good.framebuffer.cbufs[0].format=format;
         linear_pitch=0;
         assert(!ps5_clear_gpu_color(&good,4,15,NULL,&color));
@@ -397,6 +400,7 @@ code = r'''
 #include <stdint.h>
 #include <math.h>
 #define PS5_ENABLE_MRT_CANDIDATE 1
+#define PS5_ENABLE_MSAA4_CANDIDATE 1
 #define PS5_GPU_CLEAR_MIN_PIXELS 16384u
 #define PS5_MAX_DEPTH_WIDTH 8192
 #define PS5_MAX_DEPTH_HEIGHT 8192
