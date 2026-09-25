@@ -57,8 +57,8 @@ code += "\n".join(function(name) for name in (
 ))
 code += r'''
 static const uint32_t formats[] = {0x8028, 0x8004, 0x800c, 0x60730, 0x8628, 0x60718,
-                                 0x8024, 0x60708, 0x60710, 0x70438, 0x8128};
-static const unsigned bpps[] = {4, 1, 2, 8, 4, 4, 4, 2, 4, 16, 4};
+                                 0x8024, 0x60708, 0x60710, 0x70438, 0x8128, 0x60714};
+static const unsigned bpps[] = {4, 1, 2, 8, 4, 4, 4, 2, 4, 16, 4, 4};
 static unsigned rejections;
 struct layout {
    void *targets[8];
@@ -175,7 +175,7 @@ static void check_registers(const struct layout *c)
       assert(reg(0x31c + 15 * i) == c->infos[i]);
       bool no_alpha = c->infos[i] == 0x8004 || c->infos[i] == 0x800c ||
                       c->infos[i] == 0x60708 || c->infos[i] == 0x60710 ||
-                      c->infos[i] == 0x60718;
+                      c->infos[i] == 0x60718 || c->infos[i] == 0x60714;
       uint32_t alpha = c->pitches[i] ? (no_alpha ? 1u << 17 : 0) : template_alpha;
       assert(reg(0x31d + 15 * i) == (alpha |
              (ps5_agc_mrt_samples == 4 ? 0x12000u : 0)));
@@ -353,8 +353,8 @@ int main(void)
 
    /* The shared extent helper retains the original tile geometry at both
     * sample counts, including a tile boundary in each dimension. */
-   const unsigned tile_widths[] = {128, 256, 256, 128, 128, 128, 128, 256, 128, 64, 128};
-   const unsigned tile_heights[] = {128, 256, 128, 64, 128, 128, 128, 128, 128, 64, 128};
+   const unsigned tile_widths[] = {128, 256, 256, 128, 128, 128, 128, 256, 128, 64, 128, 128};
+   const unsigned tile_heights[] = {128, 256, 128, 64, 128, 128, 128, 128, 128, 64, 128, 128};
    for (unsigned samples = 1; samples <= 4; samples += 3) {
       assert(ps5_agc_gate2_set_multisample_state(samples, 0xffff, 1, 0, 0, 0) == 0);
       for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); ++f) {

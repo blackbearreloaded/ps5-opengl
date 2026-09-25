@@ -100,21 +100,21 @@ static GLuint make_program(int sampling)
 
 static float value(const struct format_case *t, unsigned id, unsigned c)
 {
-   return t->storage==GL_RGBA16F ? float_colors[id][c] : byte_colors[id][c];
+   return (t->storage==GL_RGBA16F || t->storage==GL_RG16F) ? float_colors[id][c] : byte_colors[id][c];
 }
 
 static void uniform_color(const struct format_case *t, GLint tint, unsigned id)
 {
    float color[4];
    for (unsigned c=0; c<4; ++c)
-      color[c]=value(t,id,c)/(t->storage==GL_RGBA16F ? 1.0f : 255.0f);
+      color[c]=value(t,id,c)/((t->storage==GL_RGBA16F || t->storage==GL_RG16F) ? 1.0f : 255.0f);
    glUniform4fv(tint,1,color);
 }
 
 static float upload_value(const struct format_case *t, int x, int y, unsigned c)
 {
    int n=x*(3+(int)c)+y*(7+(int)c)+(int)c*53;
-   return t->storage==GL_RGBA16F ? ((n%65)-32)*.125f : (uint8_t)n;
+   return (t->storage==GL_RGBA16F || t->storage==GL_RG16F) ? ((n%65)-32)*.125f : (uint8_t)n;
 }
 
 static int inside(int x, int y, int rx, int ry, int rw, int rh)
@@ -125,7 +125,7 @@ static int inside(int x, int y, int rx, int ry, int rw, int rh)
 static float expected_source(const struct format_case *t, int w, int h,
                              enum phase phase, int x, int y, unsigned c)
 {
-   if (c>=t->channels) return c==3 ? 255.0f : 0.0f;
+   if (c>=t->channels) return c==3 ? ((t->storage==GL_RGBA16F || t->storage==GL_RG16F) ? 1.0f : 255.0f) : 0.0f;
    if (phase==TIMED) return value(t,TIMING_COLOR,c);
    float expected=upload_value(t,x,y,c);
    if (phase>=DRAWN) {
@@ -146,7 +146,7 @@ static float expected_source(const struct format_case *t, int w, int h,
 static int oracle(const struct format_case *t, int w, int h, enum phase phase,
                   int sampled, const char *stage, void *pixels)
 {
-   int floating=t->storage==GL_RGBA16F;
+   int floating=(t->storage==GL_RGBA16F || t->storage==GL_RG16F);
    unsigned calls=0;
    glReadPixels(0,0,w,h,GL_RGBA,floating ? GL_FLOAT : GL_UNSIGNED_BYTE,pixels);
    if (!healthy(stage,&calls)) return 0;
@@ -182,7 +182,7 @@ static int run_case(const struct format_case *t, int w, int h,
                     GLuint render, GLint tint, GLuint sampling, GLint extent, int timed)
 {
    GLuint textures[2]={0}, fbos[2]={0};
-   int passed=0, floating=t->storage==GL_RGBA16F;
+   int passed=0, floating=(t->storage==GL_RGBA16F || t->storage==GL_RG16F);
    void *pixels=malloc((size_t)w*h*4*(floating ? sizeof(float) : sizeof(uint8_t)));
    unsigned initial=0, before=0, after=0, total=0;
    if (!pixels) { printf(TAG " format=%s allocation failed result=1\n",t->name); return 0; }
@@ -280,7 +280,7 @@ int main(void)
    const EGLint context_attrs[]={EGL_CONTEXT_MAJOR_VERSION_KHR,3,EGL_CONTEXT_MINOR_VERSION_KHR,3,
       EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR,EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR,EGL_NONE};
    static const struct format_case formats[]={
-      {"R8",GL_R8,GL_RED,1}, {"RG8",GL_RG8,GL_RG,2}, {"RGBA16F",GL_RGBA16F,GL_RGBA,4}
+      {"R8",GL_R8,GL_RED,1}, {"RG8",GL_RG8,GL_RG,2}, {"RGBA16F",GL_RGBA16F,GL_RGBA,4}, {"RG16F",GL_RG16F,GL_RG,2}
    };
    EGLDisplay display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
    EGLSurface surface=EGL_NO_SURFACE; EGLContext context=EGL_NO_CONTEXT;
@@ -339,7 +339,7 @@ done:
    if (surface!=EGL_NO_SURFACE) cleanup &= eglDestroySurface(display,surface);
    if (initialized) cleanup &= eglTerminate(display);
    EGLint error=eglGetError(); cleanup &= error==EGL_SUCCESS;
-   printf(TAG " batch=%u/6 egl_error=%x\n",cases,error);
+   printf(TAG " batch=%u/8 egl_error=%x\n",cases,error);
    printf(TAG " cleanup=%u result=%d\n",cleanup,passed && cleanup ? 0:1);
    return passed && cleanup ? 0:1;
 }

@@ -1235,6 +1235,7 @@ ps5_agc_linear_color_bytes(uint32_t info)
    case UINT32_C(0x00008024): return 4; /* RGB10_A2_UNORM */
    case UINT32_C(0x00060708): return 2; /* R16F */
    case UINT32_C(0x00060710): return 4; /* R32F */
+   case UINT32_C(0x00060714): return 4; /* RG16F */
    case UINT32_C(0x00070438): return 16; /* RGBA32UI */
    default: return 0;
    }

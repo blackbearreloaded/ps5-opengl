@@ -6445,7 +6445,8 @@ ps5_linear_color_pitch(const struct pipe_surface *surface)
         surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
         surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB &&
         surface->format != PIPE_FORMAT_R10G10B10A2_UNORM && surface->format != PIPE_FORMAT_R16_FLOAT &&
-        surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R32G32B32A32_UINT))
+        surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R16G16_FLOAT &&
+        surface->format != PIPE_FORMAT_R32G32B32A32_UINT))
       return 0;
    unsigned width = ps5_surface_width(surface), height = ps5_surface_height(surface);
    unsigned stride = r->level_stride[surface->level];
@@ -12400,7 +12401,8 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
         surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
         surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB &&
         surface->format != PIPE_FORMAT_R10G10B10A2_UNORM && surface->format != PIPE_FORMAT_R16_FLOAT &&
-        surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R32G32B32A32_UINT) ||
+        surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R16G16_FLOAT &&
+        surface->format != PIPE_FORMAT_R32G32B32A32_UINT) ||
        context->framebuffer.width != ps5_surface_width(surface) ||
        context->framebuffer.height != ps5_surface_height(surface))
       return false;
