@@ -12,9 +12,11 @@ queue = source[start:end]
 fixture = r'''
 #define _POSIX_C_SOURCE 200809L
 #define PS5_ASYNC_NATIVE_PREP 1
+#define PS5_ASYNC_HOST_TEST 1
 #define PS5_MULTIDRAW_BATCH_CAPACITY 256
 #include <assert.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>

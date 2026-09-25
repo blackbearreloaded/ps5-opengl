@@ -198,8 +198,10 @@ code = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <setjmp.h>
+#include <inttypes.h>
 #include <string.h>
 #include "ps5_screen.h"
+#include <inttypes.h>
 typedef struct { void *words; uint32_t word_count; uint8_t flag, padding[3]; } agc_submit_description_t;
 typedef struct { int (*submit)(void *); int (*suspend_point)(void); } agc_api_t;
 static uint64_t markers[PS5_MULTIDRAW_BATCH_CAPACITY];
@@ -417,6 +419,7 @@ flush_cache_type = source[cache_start:source.index("\n};", cache_start) + 3]
 start = source.index("enum ps5_batch_eligibility {")
 body = source[start:source.index("\n#endif\n\n#ifdef PS5_DEFERRED_DRAW_BATCH", start)]
 code = r'''
+#include <inttypes.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -475,7 +478,7 @@ struct ps5_context {
     struct pipe_sampler_view *sampler_views[2][PS5_MAX_TEXTURE_UNITS];
     const struct pipe_depth_stencil_alpha_state *depth_stencil_alpha;
     int last_draw_status;
-    uint64_t batch_eligible, batch_reject[7];
+    uint64_t batch_checks, batch_eligible, batch_reject[7];
     struct { unsigned key[16]; uint64_t count; } framebuffer_fallbacks[32];
     uint64_t framebuffer_fallback_overflow;
 };
@@ -1311,6 +1314,18 @@ int main(void) {
         assert(!ps5_inflight_count && !in_flight && ps5_completed_sequence==last);
         assert(ps5_draw_batch_fence_finish(first,0)); // Old fence survives slot reuse.
         idle();
+    }
+    // An older buffer hazard must leave younger unrelated batches in flight.
+    for (unsigned pass=0;pass<PS5_INFLIGHT_BATCH_CAPACITY+1;++pass) {
+        for (unsigned i=0;i<3;++i) {
+            assert(ps5_try_deferred_draw(&context.base,&info,20,NULL,&draw,1));
+            ps5_draw_batch_fence_submit();
+        }
+        struct pipe_resource *old_storage=ps5_inflight[ps5_inflight_head].slots[0].storage[0];
+        unsigned waits_before=blocking_waits;
+        ps5_draw_batch_drain_buffer(old_storage);
+        assert(blocking_waits==waits_before+1 && ps5_inflight_count==2);
+        drain(); idle();
     }
     // CPU writes must find retained resources even in a non-head FIFO slot.
     for (unsigned i=0;i<3;++i) {

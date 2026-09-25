@@ -13,6 +13,10 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GL/gl.h>
+#ifdef PS5_GLTHREAD_TEST
+#include <sys/param.h>
+#include <sys/cpuset.h>
+#endif
 
 enum { BANDS = 9, WIDTH = BANDS * 8, HEIGHT = 32, DRAWS = BANDS + 2 };
 struct vertex {
@@ -133,7 +137,7 @@ static int check_pixels(unsigned green, int band0_black)
 int main(void)
 {
 #ifdef PS5_GLTHREAD_TEST
-   if (setenv("PS5_GLTHREAD", "1", 1) != 0) return 1;
+   if (setenv("PS5_GLTHREAD", "1", 1)) return 1;
 #endif
    const EGLint ca[] = {EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
       EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
@@ -149,7 +153,7 @@ int main(void)
    EGLSurface surface = EGL_NO_SURFACE;
    EGLConfig config;
    EGLint count = 0;
-   GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, ebo = 0;
+   GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, ebo = 0, upload_buffer = 0;
    GLuint query = 0;
 #ifdef PS5_DEFERRED_DRAW_TEST
    GLuint unrelated_buffer = 0;
@@ -176,6 +180,27 @@ int main(void)
    if (context == EGL_NO_CONTEXT || surface == EGL_NO_SURFACE ||
        !eglMakeCurrent(display, surface, surface, context)) goto cleanup;
    current = 1;
+#ifdef PS5_GLTHREAD_TEST
+   cpuset_t producer = {0}, verified = {0};
+   CPU_SET(12, &producer);
+   if (cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 8, &producer) ||
+       cpuset_getaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 8, &verified) ||
+       memcmp(&producer, &verified, 8)) goto cleanup;
+   printf("[ps5-glthread] role=producer cpu=12 verified=1\n");
+#endif
+   {
+      uint8_t source[20480], readback[20480];
+      for (unsigned i = 0; i < sizeof(source); ++i) source[i] = (uint8_t)(i * 37u);
+      glGenBuffers(1, &upload_buffer);
+      glBindBuffer(GL_COPY_WRITE_BUFFER, upload_buffer);
+      glBufferData(GL_COPY_WRITE_BUFFER, sizeof(source), NULL, GL_DYNAMIC_DRAW);
+      glNamedBufferSubData(upload_buffer, 0, 16384, source);
+      glNamedBufferSubData(upload_buffer, 16384, 4096, source + 16384);
+      glGetNamedBufferSubData(upload_buffer, 0, sizeof(readback), readback);
+      if (memcmp(source, readback, sizeof(source)) || glGetError() != GL_NO_ERROR)
+         goto cleanup;
+      printf("[ps5-glthread-upload] named-subdata offset0=16384 offset16384=4096 PASS\n");
+   }
 #ifdef PS5_MULTIDRAW_HOST_REFERENCE
    glDrawBuffer(GL_FRONT); glReadBuffer(GL_FRONT);
 #endif
@@ -396,7 +421,10 @@ int main(void)
       glBufferSubData(GL_ARRAY_BUFFER, at, sizeof(changed), vertices + BANDS * 6);
    }
    /* A fence must retire pending ordinary calls, not merely report success. */
-   for (unsigned i = 0; i < DRAWS; ++i) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
+   for (unsigned i = 0; i < DRAWS / 2; ++i) glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
+   glMemoryBarrier(GL_ALL_BARRIER_BITS);
+   for (unsigned i = DRAWS / 2; i < DRAWS; ++i)
+      glDrawArrays(GL_TRIANGLES, first[i], counts[i]);
    fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
    if (!fence) goto cleanup;
    GLenum pending_wait = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
@@ -434,6 +462,7 @@ int main(void)
    passed = 1;
 cleanup:
    if (current) {
+      if (upload_buffer) glDeleteBuffers(1, &upload_buffer);
 #ifdef PS5_DEFERRED_DRAW_TEST
       if (unrelated_buffer) glDeleteBuffers(1, &unrelated_buffer);
 #endif

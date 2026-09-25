@@ -12,7 +12,7 @@ root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
 assert source.count("runtime_video_framebuffer_size >= framebuffer_size") == 2
 start = source.index("int ps5_agc_gate2_batch_present(")
-body = source[start:source.index("\n#endif", start)]
+body = source[start:source.index("\n#endif\n\n#if defined(PS5_DRAW_PROFILE)", start)]
 start = source.index("int ps5_agc_gate2_present(unsigned buffer_index, unsigned swap_interval)")
 present = source[start:source.index("\n#endif", source.index("    return result;", start))]
 screen_source = (root / "src/gallium/ps5/ps5_screen.c").read_text()

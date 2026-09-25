@@ -62,6 +62,10 @@ ps5_runtime_printf(const char *format, ...)
 #include "util/u_cpu_detect.h"
 #include "ps5_shader_cache.h"
 
+#if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
+__attribute__((weak)) void ps5_opengl_register_gl_consumer(void) {}
+#endif
+
 /* This driver passes Mesa-owned NIR directly into the standalone backend. */
 _Static_assert(sizeof(nir_instr_type) == 1, "NIR enums must be packed");
 _Static_assert(sizeof(nir_intrinsic_op) == 4, "unexpected NIR intrinsic enum size");
@@ -179,6 +183,7 @@ ps5_screen_submit_unlock(struct pipe_screen *base)
 /* Raw invariant-TSC cycles: no per-draw OS clock calls. Phases overlap:
  * 0=draw preparation, 1=descriptor copy, 2=whole deferred draw entry. */
 static uint64_t ps5_prepare_cycles[9], ps5_prepare_calls[9];
+static uint64_t ps5_draw_first_cycle;
 #define PS5_MAP_CALLER_SLOTS 32
 static struct {
    uintptr_t pc;
@@ -241,8 +246,16 @@ static void ps5_prepare_scope_end(struct ps5_prepare_scope *scope)
    uint64_t elapsed = ps5_prepare_clock() - scope->start;
    __atomic_fetch_add(&ps5_prepare_cycles[scope->phase], elapsed, __ATOMIC_RELAXED);
    uint64_t calls = __atomic_add_fetch(&ps5_prepare_calls[scope->phase], 1, __ATOMIC_RELAXED);
-   if (scope->phase == 0 && calls % 10000 == 0)
-      ps5_prepare_report();
+   if (scope->phase == 0) {
+      if (calls == 1)
+         ps5_draw_first_cycle = scope->start;
+      if (calls % 10000 == 0) {
+         ps5_opengl_register_gl_consumer();
+         printf("[ps5-driver-elapsed] calls=%" PRIu64 " cycles=%" PRIu64 "\n",
+                calls, ps5_prepare_clock() - ps5_draw_first_cycle);
+         ps5_prepare_report();
+      }
+   }
 }
 #endif
 
@@ -8884,12 +8897,9 @@ ps5_memory_barrier(struct pipe_context *context, unsigned flags)
     * need that boundary, not a CPU completion wait. */
    if (flags & ~PIPE_BARRIER_ALL)
       ps5_draw_batch_drain();
-   else if (flags & PIPE_BARRIER_MAPPED_BUFFER) {
-      /* Persistent mappings are excluded from publication reuse. Preserve the
-       * CPU/GPU wait without invalidating unrelated, unchanged textures. */
-      ps5_screen_submit_lock(context->screen);
-      ps5_screen_submit_unlock(context->screen);
-   } else if (flags)
+   /* Client access still requires its fence/finish; visibility does not require
+    * retiring unrelated GPU work on this CPU thread. */
+   else if (flags)
       ps5_draw_batch_submit();
    (void)context;
 }
@@ -11672,11 +11682,16 @@ ps5_draw_batch_drain_buffer(struct pipe_resource *base)
       ps5_draw_batch_flush_locked();
       ps5_draw_batch_retire_locked(true);
    } else {
-      for (unsigned i = 0; i < ps5_inflight_count; ++i) {
+      /* Find the youngest dependent batch. Newer unrelated work must stay in
+       * flight; retiring the entire FIFO turns a small upload into a finish. */
+      for (unsigned i = ps5_inflight_count; i-- > 0;) {
          if (ps5_deferred_batch_overlaps(
                &ps5_inflight[(ps5_inflight_head + i) % PS5_INFLIGHT_BATCH_CAPACITY], buffer)) {
             /* Do not submit unrelated queued work for a CPU access. */
-            ps5_draw_batch_retire_locked(true);
+            const uint64_t sequence =
+               ps5_inflight[(ps5_inflight_head + i) % PS5_INFLIGHT_BATCH_CAPACITY].sequence;
+            while (ps5_completed_sequence < sequence &&
+                   ps5_draw_batch_retire_one_locked(true)) {}
             break;
          }
       }

@@ -23,6 +23,10 @@
 #endif
 #ifdef PS5_ASYNC_NATIVE_PREP
 #include <pthread.h>
+#include <sched.h>
+#include <stdatomic.h>
+#include <sys/param.h>
+#include <sys/cpuset.h>
 #endif
 
 #include <ps5/kernel.h>
@@ -1037,7 +1041,20 @@ static void runtime_draw_gpu_timing(void *memory, size_t bytes)
 /* The caller holds the queue lock and retains descriptors/resources until
  * the matching FIFO retirement. Queue-full rejection never transfers ownership. */
 #ifdef PS5_NATIVE_TITLE_RUNTIME
-/* Queue-lock protected. Only confirmed-retired work may enter this cache. */
+/* The draw worker takes allocations while the producer retires older batches. */
+#ifdef PS5_ASYNC_NATIVE_PREP
+static atomic_flag runtime_work_lock = ATOMIC_FLAG_INIT;
+#define RUNTIME_WORK_LOCK() do { \
+    while (atomic_flag_test_and_set_explicit(&runtime_work_lock, memory_order_acquire)) \
+        __builtin_ia32_pause(); \
+} while (0)
+#define RUNTIME_WORK_UNLOCK() \
+    atomic_flag_clear_explicit(&runtime_work_lock, memory_order_release)
+#else
+#define RUNTIME_WORK_LOCK() ((void)0)
+#define RUNTIME_WORK_UNLOCK() ((void)0)
+#endif
+/* Only confirmed-retired work may enter this cache. */
 static struct runtime_work_allocation {
     void *memory;
     int64_t direct;
@@ -1163,6 +1180,7 @@ static int runtime_shader_pair_clear(void)
 
 static int runtime_work_take(size_t bytes, void **memory, int64_t *direct)
 {
+    RUNTIME_WORK_LOCK();
     for (unsigned i = 0; i < runtime_work_free_count; ++i) {
         if (runtime_work_free[i].bytes != bytes)
             continue;
@@ -1170,21 +1188,26 @@ static int runtime_work_take(size_t bytes, void **memory, int64_t *direct)
         *direct = runtime_work_free[i].direct;
         runtime_work_free_bytes -= bytes;
         runtime_work_free[i] = runtime_work_free[--runtime_work_free_count];
+        RUNTIME_WORK_UNLOCK();
         return 1;
     }
+    RUNTIME_WORK_UNLOCK();
     return 0;
 }
 
 static int runtime_work_put(void *memory, int64_t direct, size_t bytes)
 {
     const size_t limit = 64u * 1024u * 1024u;
+    RUNTIME_WORK_LOCK();
     if (runtime_work_free_count < sizeof(runtime_work_free) / sizeof(runtime_work_free[0]) &&
         bytes <= limit && runtime_work_free_bytes <= limit - bytes) {
         runtime_work_free[runtime_work_free_count++] =
             (struct runtime_work_allocation){memory, direct, bytes};
         runtime_work_free_bytes += bytes;
+        RUNTIME_WORK_UNLOCK();
         return 0;
     }
+    RUNTIME_WORK_UNLOCK();
     return munmap(memory, bytes) != 0 ||
            sceKernelReleaseDirectMemory(direct, bytes) != 0 ? -1 : 0;
 }
@@ -1247,44 +1270,73 @@ struct runtime_async_job {
     uint32_t ngg_valid, ngg_value;
 };
 static struct runtime_async_job runtime_async_jobs[RUNTIME_ASYNC_JOBS];
-static pthread_mutex_t runtime_async_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t runtime_async_cond = PTHREAD_COND_INITIALIZER;
 static pthread_t runtime_async_thread;
-static uint64_t runtime_async_produced, runtime_async_consumed, runtime_async_completed;
-static int runtime_async_started, runtime_async_stop_requested, runtime_async_error;
+static _Atomic uint64_t runtime_async_produced, runtime_async_consumed, runtime_async_completed;
+static _Atomic int runtime_async_stop_requested, runtime_async_error, runtime_async_ready;
+static int runtime_async_started;
 
 int ps5_agc_gate2_run_sync(void);
+
+static int runtime_async_pin(void)
+{
+#ifdef PS5_ASYNC_HOST_TEST
+    return 0;
+#else
+    /* GPU translation is pinned to CPU 8 in this development profile; CPU 10
+     * is the measured spare physical core. Fail closed if this differs. */
+    cpuset_t one = {0}, verified = {0};
+    CPU_SET(10, &one);
+    if (cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 8, &one) ||
+        cpuset_getaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 8, &verified) ||
+        memcmp(&one, &verified, 8))
+        return -1;
+    printf("[ps5-async-prep] cpu=10 verified=1\n");
+    return 0;
+#endif
+}
 
 static void *runtime_async_main(void *unused)
 {
     (void)unused;
+#ifdef PS5_DRAW_PROFILE
+    int64_t first_job_ns = 0;
+#endif
+    int pin = runtime_async_pin();
+    atomic_store_explicit(&runtime_async_ready, pin ? -1 : 1, memory_order_release);
+    if (pin)
+        return NULL;
     for (;;) {
         struct runtime_async_job job;
-        pthread_mutex_lock(&runtime_async_mutex);
-        while (runtime_async_consumed == runtime_async_produced &&
-               !runtime_async_stop_requested)
-            pthread_cond_wait(&runtime_async_cond, &runtime_async_mutex);
-        if (runtime_async_consumed == runtime_async_produced &&
-            runtime_async_stop_requested) {
-            pthread_mutex_unlock(&runtime_async_mutex);
-            return NULL;
+        uint64_t consumed = atomic_load_explicit(&runtime_async_consumed, memory_order_relaxed);
+        if (consumed == atomic_load_explicit(&runtime_async_produced, memory_order_acquire)) {
+            if (atomic_load_explicit(&runtime_async_stop_requested, memory_order_acquire))
+                return NULL;
+            /* ponytail: this development worker busy-spins on a spare core;
+             * add an idle event only if the lock-free path proves useful. */
+            __builtin_ia32_pause();
+            continue;
         }
-        job = runtime_async_jobs[runtime_async_consumed++ % RUNTIME_ASYNC_JOBS];
-        pthread_cond_broadcast(&runtime_async_cond);
-        pthread_mutex_unlock(&runtime_async_mutex);
+        job = runtime_async_jobs[consumed % RUNTIME_ASYNC_JOBS];
+        atomic_store_explicit(&runtime_async_consumed, consumed + 1, memory_order_release);
 
         runtime_draw_state = job.draw;
         ps5_agc_draw_state = job.backend;
         runtime_ngg_ge_pc_alloc_valid = job.ngg_valid;
         runtime_ngg_ge_pc_alloc = job.ngg_value;
+#ifdef PS5_DRAW_PROFILE
+        if (!first_job_ns)
+            first_job_ns = os_time_get_nano();
+#endif
         int result = ps5_agc_gate2_run_sync();
 
-        pthread_mutex_lock(&runtime_async_mutex);
-        if (result && !runtime_async_error)
-            runtime_async_error = result;
-        ++runtime_async_completed;
-        pthread_cond_broadcast(&runtime_async_cond);
-        pthread_mutex_unlock(&runtime_async_mutex);
+        if (result && !atomic_load_explicit(&runtime_async_error, memory_order_relaxed))
+            atomic_store_explicit(&runtime_async_error, result, memory_order_relaxed);
+        atomic_store_explicit(&runtime_async_completed, consumed + 1, memory_order_release);
+#ifdef PS5_DRAW_PROFILE
+        if ((consumed + 1) % 100000 == 0)
+            printf("[ps5-async-elapsed] completed=%" PRIu64 " elapsed_ns=%" PRId64 "\n",
+                   consumed + 1, os_time_get_nano() - first_job_ns);
+#endif
     }
 }
 
@@ -1302,24 +1354,36 @@ int ps5_agc_gate2_run(void)
         pthread_attr_destroy(&attr);
         if (created)
             return -1;
+        int ready;
+        unsigned spins = 0;
+        while (!(ready = atomic_load_explicit(&runtime_async_ready, memory_order_acquire))) {
+            if ((++spins & 1023u) == 0)
+                sched_yield();
+            else
+                __builtin_ia32_pause();
+        }
+        if (ready < 0) {
+            if (pthread_join(runtime_async_thread, NULL) != 0)
+                abort();
+            atomic_store(&runtime_async_ready, 0);
+            return -1;
+        }
         runtime_async_started = 1;
     }
-    pthread_mutex_lock(&runtime_async_mutex);
-    while (runtime_async_produced - runtime_async_consumed == RUNTIME_ASYNC_JOBS &&
-           !runtime_async_error)
-        pthread_cond_wait(&runtime_async_cond, &runtime_async_mutex);
-    if (runtime_async_error) {
-        pthread_mutex_unlock(&runtime_async_mutex);
+    uint64_t produced = atomic_load_explicit(&runtime_async_produced, memory_order_relaxed);
+    while (produced - atomic_load_explicit(&runtime_async_consumed, memory_order_acquire)
+           == RUNTIME_ASYNC_JOBS &&
+           !atomic_load_explicit(&runtime_async_error, memory_order_relaxed))
+        __builtin_ia32_pause();
+    if (atomic_load_explicit(&runtime_async_error, memory_order_acquire))
         return -1;
-    }
     struct runtime_async_job *job =
-        &runtime_async_jobs[runtime_async_produced++ % RUNTIME_ASYNC_JOBS];
+        &runtime_async_jobs[produced % RUNTIME_ASYNC_JOBS];
     job->draw = runtime_draw_state;
     job->backend = ps5_agc_draw_state;
     job->ngg_valid = runtime_ngg_ge_pc_alloc_valid;
     job->ngg_value = runtime_ngg_ge_pc_alloc;
-    pthread_cond_signal(&runtime_async_cond);
-    pthread_mutex_unlock(&runtime_async_mutex);
+    atomic_store_explicit(&runtime_async_produced, produced + 1, memory_order_release);
     return 0;
 }
 
@@ -1327,26 +1391,26 @@ static int runtime_async_drain(void)
 {
     if (!runtime_async_started)
         return 0;
-    pthread_mutex_lock(&runtime_async_mutex);
-    while (runtime_async_completed != runtime_async_produced)
-        pthread_cond_wait(&runtime_async_cond, &runtime_async_mutex);
-    int result = runtime_async_error;
-    pthread_mutex_unlock(&runtime_async_mutex);
-    return result;
+    uint64_t target = atomic_load_explicit(&runtime_async_produced, memory_order_relaxed);
+    while (atomic_load_explicit(&runtime_async_completed, memory_order_acquire) != target)
+        __builtin_ia32_pause();
+    return atomic_load_explicit(&runtime_async_error, memory_order_acquire);
 }
 
 static void runtime_async_stop(void)
 {
     if (!runtime_async_started)
         return;
-    pthread_mutex_lock(&runtime_async_mutex);
-    runtime_async_stop_requested = 1;
-    pthread_cond_signal(&runtime_async_cond);
-    pthread_mutex_unlock(&runtime_async_mutex);
+    atomic_store_explicit(&runtime_async_stop_requested, 1, memory_order_release);
     if (pthread_join(runtime_async_thread, NULL) != 0)
         abort();
-    runtime_async_started = runtime_async_stop_requested = runtime_async_error = 0;
-    runtime_async_produced = runtime_async_consumed = runtime_async_completed = 0;
+    runtime_async_started = 0;
+    atomic_store(&runtime_async_stop_requested, 0);
+    atomic_store(&runtime_async_error, 0);
+    atomic_store(&runtime_async_ready, 0);
+    atomic_store(&runtime_async_produced, 0);
+    atomic_store(&runtime_async_consumed, 0);
+    atomic_store(&runtime_async_completed, 0);
 }
 #endif
 
@@ -1766,6 +1830,11 @@ static int runtime_video_wait_idle(void);
 int ps5_agc_gate2_wait_present(void);
 int ps5_agc_gate2_batch_present(unsigned buffer_index)
 {
+#ifdef PS5_ASYNC_NATIVE_PREP
+    /* The flip patches the final entry, so its producer must finish first. */
+    if (runtime_async_drain() != 0)
+        return -1;
+#endif
     if (ps5_agc_gate2_wait_present() != 0 ||
         buffer_index > 1 || runtime_gpu_present_buffer >= 0 ||
         !runtime_video_registered || runtime_video_handle < 0 ||
