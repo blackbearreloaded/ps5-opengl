@@ -15,7 +15,11 @@
 #define SIZE 64
 #define EXPECTED_PIXEL UINT32_C(0xff00ff00)
 #define SAMPLERS 16
+#ifdef PS5_GEOMETRY_RELINK_STRESS
+#define PHASES 32
+#else
 #define PHASES 6
+#endif
 
 /* GLSL 3.30 requires constant sampler-array indices. Keep every slot live. */
 #define CHECK_TEXTURE(SAMPLER, BASE, INDEX) \
@@ -142,6 +146,9 @@ main(void)
    GLuint shaders[3] = {0, 0, 0};
    GLuint program = 0, vertex_array = 0, vertex_buffer = 0;
    GLuint textures[2 * SAMPLERS] = {0};
+#ifdef PS5_GEOMETRY_RELINK_STRESS
+   GLuint query = 0;
+#endif
    GLint linked = GL_FALSE, sampler = -1, vertex_sampler = -1;
    GLint expected_location = -1, vertex_expected_location = -1;
    GLint max_geometry_units = 0, max_vertex_units = 0, max_combined_units = 0;
@@ -238,7 +245,20 @@ main(void)
 
    glViewport(0, 0, WIDTH, HEIGHT);
    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+#ifdef PS5_GEOMETRY_RELINK_STRESS
+   glGenQueries(1, &query);
+#endif
    for (unsigned phase = 0; phase < PHASES; ++phase) {
+#ifdef PS5_GEOMETRY_RELINK_STRESS
+      glLinkProgram(program);
+      glGetProgramiv(program, GL_LINK_STATUS, &linked);
+      if (!linked) { passed=0; goto cleanup; }
+      glUseProgram(program);
+      sampler=glGetUniformLocation(program,"u_texture");
+      vertex_sampler=glGetUniformLocation(program,"u_vertex_texture");
+      expected_location=glGetUniformLocation(program,"u_expected");
+      vertex_expected_location=glGetUniformLocation(program,"u_vertex_expected");
+#endif
       /* Rebind both arrays/default UBOs without relinking. Deliberately alias
        * each stage's highest slot, then restore it to prove recovery. */
       const unsigned geometry_bank = phase ? 1 : 0;
@@ -260,7 +280,16 @@ main(void)
       glUniform4f(expected_location, g[0], g[1], g[2], g[3]);
       glUniform4f(vertex_expected_location, v[0], v[1], v[2], v[3]);
       glClear(GL_COLOR_BUFFER_BIT);
+#ifdef PS5_GEOMETRY_RELINK_STRESS
+      glBeginQuery(GL_PRIMITIVES_GENERATED,query);
+#endif
       glDrawArrays(GL_TRIANGLES, 0, 3);
+#ifdef PS5_GEOMETRY_RELINK_STRESS
+      glEndQuery(GL_PRIMITIVES_GENERATED);
+      GLuint generated=0;
+      glGetQueryObjectuiv(query,GL_QUERY_RESULT,&generated);
+      if(generated!=1) { printf("geometry stress query=%u\n",generated); passed=0; goto cleanup; }
+#endif
 #ifndef PS5_GEOMETRY_HOST_REFERENCE
       draw_status = ps5_egl_current_draw_status(&draw_calls);
 #else
@@ -277,7 +306,14 @@ main(void)
          matching += pixels[i] == expected_pixel;
       }
       passed = egl_major == 1 && egl_minor >= 4 && max_geometry_units >= 16 &&
-               draw_status == 0 && draw_calls == phase + 1 &&
+               draw_status == 0 &&
+#ifdef PS5_GEOMETRY_RELINK_STRESS
+               /* Primitive queries may replay a draw internally. Query output
+                * and pixels below validate the public operation. */
+               draw_calls >= phase + 1 &&
+#else
+               draw_calls == phase + 1 &&
+#endif
                matching == SIZE * SIZE &&
                hash32(pixels, sizeof(pixels)) == hash32(expected, sizeof(expected)) &&
                error == GL_NO_ERROR;
@@ -294,6 +330,9 @@ main(void)
 
 cleanup:
    if (made_current) {
+#ifdef PS5_GEOMETRY_RELINK_STRESS
+      glDeleteQueries(1,&query);
+#endif
       glDeleteTextures(2 * SAMPLERS, textures);
       if (vertex_buffer)
          glDeleteBuffers(1, &vertex_buffer);

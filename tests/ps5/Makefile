@@ -2430,3 +2430,6 @@ egl_public_heap_stress.o: egl_public_heap_stress.c
 
 egl_public_heap_large.o: egl_public_heap_stress.c
 	$(CC) $(CFLAGS) -DPS5_HEAP_LARGE_TEST=1 -c -o $@ $<
+
+egl_public_geometry_relink_stress.o: egl_public_core33_geometry_texture.c
+	$(CC) $(CFLAGS) -DPS5_GEOMETRY_RELINK_STRESS=1 -c -o $@ $<
