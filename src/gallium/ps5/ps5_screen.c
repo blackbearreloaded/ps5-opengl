@@ -2996,11 +2996,9 @@ ps5_texture_used(const struct ps5_context *context,
 static unsigned
 ps5_shader_texture_count(const struct ps5_shader *shader)
 {
-   unsigned count = 0;
-
-   for (unsigned unit = 0; unit < PS5_MAX_TEXTURE_UNITS; ++unit)
-      count += BITSET_TEST(shader->nir->info.textures_used, unit);
-   return count;
+   /* Only the first 16 units belong to one stage's descriptor bank. */
+   STATIC_ASSERT(PS5_MAX_TEXTURE_UNITS == 16);
+   return shader ? util_bitcount(shader->nir->info.textures_used[0] & 0xffffu) : 0;
 }
 
 static unsigned
@@ -3008,13 +3006,14 @@ ps5_texture_count(const struct ps5_context *context,
                   const struct ps5_shader *shader,
                   const PsbcShaderMetadata *metadata)
 {
-   unsigned count = 0;
-
-   const unsigned limit = ps5_uses_tessellation_metadata(context, metadata)
-      ? PS5_TESSELLATION_TEXTURE_BINDING + 4u * PS5_MAX_TEXTURE_UNITS : PS5_MERGED_TEXTURE_UNITS;
-   for (unsigned unit = 0; unit < limit; ++unit)
-      count += ps5_texture_used(context, shader, metadata, unit);
-   return count;
+   if (ps5_uses_tessellation_metadata(context, metadata))
+      return ps5_shader_texture_count(context->vs) +
+             ps5_shader_texture_count(context->tcs) +
+             ps5_shader_texture_count(context->tes) +
+             ps5_shader_texture_count(context->gs);
+   return ps5_shader_texture_count(shader) +
+      (ps5_uses_merged_geometry_metadata(context, shader, metadata)
+         ? ps5_shader_texture_count(context->gs) : 0);
 }
 
 static unsigned
