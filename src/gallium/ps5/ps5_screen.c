@@ -11254,7 +11254,24 @@ ps5_batch_copy_descriptors(struct pipe_context *base,
       if (!copy || !copy->data || copy->size != templ.width0 ||
           (uintptr_t)copy->data >> 32 != (uintptr_t)source->data >> 32)
          return false;
-      memcpy(copy->data, source->data, live_bytes);
+      /* Ordinary draws regenerate every vertex descriptor they can fetch before
+       * enqueue. Keep private storage and its lifetime, but not stale contents.
+       * Merged stages and stream output retain the conservative snapshot. */
+      const struct ps5_context *context = (const struct ps5_context *)base;
+      if (stage || context->gs || context->tcs || context->tes ||
+          context->stream_output_target_count) {
+         size_t begin = 0;
+         const struct ps5_shader *shader = stage == 1 ? context->vs : context->fs;
+         /* Constant preparation clears this prefix before any consumer. Keep
+          * inline constants above it and retain layouts that do not clear it. */
+         if (stage && !context->gs && !context->tcs && !context->tes &&
+             shader && shader->nir->info.num_ubos && !ps5_shader_uses_storage(shader))
+            begin = PS5_CONSTANT_DATA_OFFSET;
+         if (begin > live_bytes)
+            return false;
+         if (live_bytes > begin)
+            memcpy(copy->data + begin, source->data + begin, live_bytes - begin);
+      }
    }
    return true;
 }
