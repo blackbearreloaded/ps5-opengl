@@ -2766,18 +2766,38 @@ static int append_target_state(agc_register_t *cx, uint32_t *cx_count,
 
     if (!blocks || !blocks[0])
         return -1;
-    for (index = 0; index < 16; ++index) {
-        uint32_t candidate;
+    for (index = 0; index < 16; ++index)
         cx[index] = (agc_register_t){target_offsets[index], 0, 0};
-        for (candidate = 0; candidate < default_count; ++candidate) {
-            if (blocks[0][candidate].offset == target_offsets[index]) {
-                cx[index].value = blocks[0][candidate].value;
-                break;
-            }
+    /* Read each default once instead of rescanning the table for every target
+     * register. Keep the first occurrence, matching the original lookup. */
+    uint32_t found = 0;
+    for (uint32_t candidate = 0; candidate < default_count && found != 0xffffu; ++candidate) {
+        switch (blocks[0][candidate].offset) {
+        case 0x318: index = 0; break;
+        case 0x31b: index = 1; break;
+        case 0x31c: index = 2; break;
+        case 0x31d: index = 3; break;
+        case 0x31e: index = 4; break;
+        case 0x31f: index = 5; break;
+        case 0x321: index = 6; break;
+        case 0x323: index = 7; break;
+        case 0x324: index = 8; break;
+        case 0x325: index = 9; break;
+        case 0x390: index = 10; break;
+        case 0x398: index = 11; break;
+        case 0x3a0: index = 12; break;
+        case 0x3a8: index = 13; break;
+        case 0x3b0: index = 14; break;
+        case 0x3b8: index = 15; break;
+        default: continue;
         }
-        if (candidate == default_count)
-            return -1;
+        if (!(found & (1u << index))) {
+            cx[index].value = blocks[0][candidate].value;
+            found |= 1u << index;
+        }
     }
+    if (found != 0xffffu)
+        return -1;
 
     cx[0].value = (uint32_t)((uintptr_t)target >> 8);
     cx[1].value &= 0xfc001fffu;
