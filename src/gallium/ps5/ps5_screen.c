@@ -14404,10 +14404,12 @@ ps5_select_geometry_pipeline(struct ps5_context *context,
       }
       package_nir = carrier_nir;
    }
+   const uint64_t compile_start = os_time_get_nano();
    result = psbc_compile_nir_geometry_pipeline(
       context->vs->nir, package_nir, &options, &output);
+   const uint64_t compile_ns = os_time_get_nano() - compile_start;
    ralloc_free(carrier_nir);
-   printf("[ps5-gallium] compile-geometry result=%d bytes=%zu hash=%08x user-sgprs=%u textures=%u/%u/%u ubos=%u/%u descriptors=%u set0=%u/%u address32=%08x\n",
+   printf("[ps5-gallium] compile-geometry result=%d bytes=%zu hash=%08x user-sgprs=%u textures=%u/%u/%u ubos=%u/%u descriptors=%u set0=%u/%u address32=%08x compile_ns=%llu\n",
           result, output.machine_code_size,
           ps5_hash32(output.machine_code, output.machine_code_size),
           output.metadata.user_sgpr_count,
@@ -14417,7 +14419,7 @@ ps5_select_geometry_pipeline(struct ps5_context *context,
           output.metadata.descriptor_binding_count,
           output.metadata.descriptor_set0_valid,
           output.metadata.descriptor_set0_user_data_dword,
-          output.metadata.address32_hi);
+          output.metadata.address32_hi, (unsigned long long)compile_ns);
    if (result != PSBC_RESULT_OK ||
        !ps5_geometry_ring_itemsize(&output.metadata, &ring_itemsize) ||
        ps5_agc_package_build(&output, ring_itemsize, &package,
