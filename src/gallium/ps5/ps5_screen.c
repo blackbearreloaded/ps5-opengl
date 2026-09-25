@@ -13055,6 +13055,7 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
                    context->blitter ? context->blitter->running : 0, x0, y0, x1, y1);
          }
       }
+#if !defined(PS5_NATIVE_TITLE_RUNTIME) || defined(AGC_RUNTIME_DIAGNOSTICS)
          printf("[ps5-gallium] clear-mrt-color targets=%u mask=%08x scissor=%u"
              " buffers=%x format=%u target=%u width=%u height=%u query=%u\n",
              context->framebuffer.nr_cbufs, color_clear_mask,
@@ -13064,6 +13065,7 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
                 ? context->framebuffer.cbufs[0].texture->target : 0,
              context->framebuffer.width, context->framebuffer.height,
              context->active_occlusion_query != NULL);
+#endif
 #ifdef PS5_DRAW_PROFILE
       const struct pipe_surface *first = &context->framebuffer.cbufs[0];
       printf("[ps5-clear-cpu] color_ns=%" PRIi64 " resource=%ux%u mip=%u layers=%u-%u condition=%u streamout=%u\n",

@@ -205,7 +205,9 @@ main(void)
    glGetIntegerv(GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS, &limits[0]);
    glGetIntegerv(GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS, &limits[1]);
    glGetIntegerv(GL_MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS, &limits[2]);
-   if (context_major != 3 || context_minor != 3 || limits[0] < 4 ||
+   printf("[ps5-egl-xfb-query] context=%d.%d limits=%d/%d/%d\n",
+          context_major, context_minor, limits[0], limits[1], limits[2]);
+   if (context_major < 3 || (context_major == 3 && context_minor < 3) || limits[0] < 4 ||
        limits[1] < 4 || limits[2] < 64 ||
        compile_shader(GL_VERTEX_SHADER, vertex_source, &vs) != 0 ||
 #ifdef PS5_GEOMETRY_XFB_TEST

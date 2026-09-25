@@ -154,7 +154,7 @@ int main(void)
    EGLConfig config;
    EGLint count = 0;
    GLuint vs = 0, fs = 0, program = 0, vao = 0, vbo = 0, ebo = 0, upload_buffer = 0;
-   GLuint query = 0;
+   GLuint query = 0, next_query = 0;
 #ifdef PS5_DEFERRED_DRAW_TEST
    GLuint unrelated_buffer = 0;
 #endif
@@ -441,9 +441,24 @@ int main(void)
    glBeginQuery(GL_SAMPLES_PASSED, query);
    glMultiDrawArrays(GL_TRIANGLES, first, counts, DRAWS);
    glEndQuery(GL_SAMPLES_PASSED);
+   /* Reading an ended query must not require ending the next same-target
+    * query. Both draw groups must remain part of that next query. */
+   glGenQueries(1, &next_query);
+   glBeginQuery(GL_SAMPLES_PASSED, next_query);
+   glMultiDrawArrays(GL_TRIANGLES, first, counts, DRAWS);
    GLuint samples = 0;
    glGetQueryObjectuiv(query, GL_QUERY_RESULT, &samples);
+   GLuint cached_samples = 0;
+   glGetQueryObjectuiv(query, GL_QUERY_RESULT, &cached_samples);
+   glMultiDrawArrays(GL_TRIANGLES, first, counts, DRAWS);
+   glEndQuery(GL_SAMPLES_PASSED);
+   GLuint next_samples = 0;
+   glGetQueryObjectuiv(next_query, GL_QUERY_RESULT, &next_samples);
+   if (cached_samples != samples || next_samples != 2 * (WIDTH + 8) * HEIGHT ||
+       glGetError() != GL_NO_ERROR) goto cleanup;
    if (samples != (WIDTH + 8) * HEIGHT || !check_pixels(1, 0)) goto cleanup;
+   printf("[ps5-query-overlap] older=%u cached=%u active-total=%u PASS\n",
+          samples, cached_samples, next_samples);
    fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
    if (!fence) goto cleanup;
    GLenum waited = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
@@ -468,6 +483,7 @@ cleanup:
 #endif
       if (fence) glDeleteSync(fence);
       if (query) glDeleteQueries(1, &query);
+      if (next_query) glDeleteQueries(1, &next_query);
 #ifdef PS5_MULTIDRAW_TEXTURE_TEST
       glDeleteTextures(2, textures);
 #endif
