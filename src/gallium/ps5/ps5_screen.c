@@ -7701,8 +7701,7 @@ ps5_blit_gpu_color(struct ps5_context *context, const struct pipe_blit_info *inf
        (info->filter != PIPE_TEX_FILTER_NEAREST && info->filter != PIPE_TEX_FILTER_LINEAR) ||
        info->num_window_rectangles || info->alpha_blend || info->swizzle_enable ||
        info->sample0_only || info->dst_sample || context->render_condition_query ||
-       context->stream_output_target_count || context->active_occlusion_query ||
-       ps5_any_primitive_query(context) ||
+       context->stream_output_target_count ||
        !info->src.box.width || !info->src.box.height ||
        info->src.box.width == INT_MIN || info->src.box.height == INT_MIN ||
        info->dst.box.width <= 0 || info->dst.box.height <= 0)
@@ -7781,9 +7780,11 @@ ps5_blit_gpu_color(struct ps5_context *context, const struct pipe_blit_info *inf
          spans[i] = (size_t)(height - 1u) * pitch +
                     (size_t)width * ps5_texture_format_size(r->base.format);
       } else {
-         if (r->base.target != PIPE_TEXTURE_2D || r->base.last_level || b->z ||
+         if ((r->base.target != PIPE_TEXTURE_2D && !(resolve && !i)) ||
+             r->base.last_level || (!resolve && b->z) ||
              ps5_linear_sampled_layout(&r->base) || r->render_staging_size)
             return false;
+         offset = (size_t)b->z * r->layer_stride;
          spans[i] = resolve && !i ? ps5_tiled_color_msaa4_surface_size(
              r->base.format, r->base.width0, r->base.height0) :
              ps5_tiled_color_surface_size(r->base.format, r->base.width0,
@@ -7877,6 +7878,7 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
    bool direct_tiled_dst;
    unsigned min_x, min_y, max_x, max_y;
 
+   /* u_blitter suspends query accounting; deferred slots retain that state. */
    if (ps5_blit_gpu_color(ps5, info))
       return;
    ps5_draw_batch_drain_buffer(info ? info->src.resource : NULL);
@@ -12386,7 +12388,10 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        target->base.format == PIPE_FORMAT_R8G8B8A8_SRGB);
    if (!target || (target->base.target != PIPE_TEXTURE_2D &&
                    target->base.target != PIPE_TEXTURE_2D_ARRAY) ||
-       target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
+       ((target->base.nr_samples > 1 || target->base.nr_storage_samples > 1) &&
+        !(PS5_ENABLE_MSAA4_CANDIDATE && target->base.nr_samples == 4 &&
+          target->base.nr_storage_samples == 4 && !target->render_staging_size &&
+          ps5_msaa4_color_format(surface->format))) ||
        surface->level || surface->first_layer > surface->last_layer ||
        surface->last_layer >= ps5_surface_layer_count(surface) || surface->last_layer > 2047 ||
        (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM &&

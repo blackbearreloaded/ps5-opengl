@@ -188,11 +188,11 @@ static int run_case(const struct blit_case *t, GLuint sample_texture, GLint tint
    glGenTextures(2,textures); glGenFramebuffers(2,fbos);
    glActiveTexture(GL_TEXTURE0);
    for (unsigned i=0; i<2; ++i) {
-      GLenum target=!i && t->samples ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+      GLenum target=!i && t->samples ? GL_TEXTURE_2D_MULTISAMPLE_ARRAY : GL_TEXTURE_2D;
       glBindTexture(target,textures[i]);
-      if (target==GL_TEXTURE_2D_MULTISAMPLE) {
+      if (target==GL_TEXTURE_2D_MULTISAMPLE_ARRAY) {
          GLint samples=0;
-         glTexImage2DMultisample(target,4,GL_RGBA8,t->w,t->h,GL_TRUE);
+         glTexImage3DMultisample(target,4,GL_RGBA8,t->w,t->h,2,GL_TRUE);
          glGetTexLevelParameteriv(target,0,GL_TEXTURE_SAMPLES,&samples);
          if (samples!=4) { printf(TAG " case=%s samples=%d expected=4\n",t->name,samples); goto cleanup; }
       } else {
@@ -204,7 +204,10 @@ static int run_case(const struct blit_case *t, GLuint sample_texture, GLint tint
          glTexImage2D(target,0,GL_RGBA8,t->w,t->h,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
       }
       glBindFramebuffer(GL_FRAMEBUFFER,fbos[i]);
-      glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,target,textures[i],0);
+      if (target==GL_TEXTURE_2D_MULTISAMPLE_ARRAY)
+         glFramebufferTextureLayer(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,textures[i],0,1);
+      else
+         glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,target,textures[i],0);
       GLenum status=glCheckFramebufferStatus(GL_FRAMEBUFFER);
       if (status!=GL_FRAMEBUFFER_COMPLETE) {
          printf(TAG " case=%s fbo=%u status=%x\n",t->name,i,status); goto cleanup;
@@ -214,6 +217,28 @@ static int run_case(const struct blit_case *t, GLuint sample_texture, GLint tint
    if (t->samples) {
       glBindFramebuffer(GL_FRAMEBUFFER,fbos[0]);
       glViewport(0,0,t->w,t->h);
+      /* A clear affects every sample even when the application sample mask is
+       * empty. Verify the GPU clear before the following draws overwrite it. */
+      glEnable(GL_SAMPLE_MASK); glSampleMaski(0,0);
+      glClearColor(32/255.0f,64/255.0f,96/255.0f,128/255.0f);
+      glClear(GL_COLOR_BUFFER_BIT);
+      glBindFramebuffer(GL_DRAW_FRAMEBUFFER,fbos[1]);
+      glBlitFramebuffer(0,0,t->w,t->h,0,0,t->w,t->h,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+      glBindFramebuffer(GL_READ_FRAMEBUFFER,fbos[1]);
+      glReadPixels(0,0,t->w,t->h,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
+      if (!healthy()) goto cleanup;
+      for (size_t p=0; p<(size_t)t->w*t->h; ++p)
+         for (unsigned c=0; c<4; ++c)
+            if (abs((int)pixels[p*4+c] - (int)(32*(c+1))) > 1) {
+               printf(TAG " msaa-clear mismatch pixel=%zu channel=%u value=%u\n",p,c,pixels[p*4+c]);
+               goto cleanup;
+            }
+      /* Restore the destination's untouched border for the existing oracle. */
+      glBindFramebuffer(GL_FRAMEBUFFER,fbos[1]);
+      glClearColor(165/255.0f,165/255.0f,165/255.0f,165/255.0f);
+      glClear(GL_COLOR_BUFFER_BIT);
+      glBindFramebuffer(GL_FRAMEBUFFER,fbos[0]);
+      glDisable(GL_SAMPLE_MASK); glSampleMaski(0,~0u);
       glClearColor(0,0,0,0); glClear(GL_COLOR_BUFFER_BIT);
       glEnable(GL_SAMPLE_MASK);
       for (unsigned s=0; s<4; ++s) {
@@ -236,8 +261,19 @@ static int run_case(const struct blit_case *t, GLuint sample_texture, GLint tint
     * case, so the first oracle still expects an entirely untouched border. */
    glDrawArrays(GL_TRIANGLES,0,3);
    glBindFramebuffer(GL_READ_FRAMEBUFFER,fbos[0]);
+   GLuint queries[2];
+   const GLenum query_targets[2]={GL_SAMPLES_PASSED,GL_PRIMITIVES_GENERATED};
+   glGenQueries(2,queries);
+   for (unsigned i=0;i<2;++i) glBeginQuery(query_targets[i],queries[i]);
    blit(t); glFinish();
-   if (!healthy()) goto cleanup;
+   for (unsigned i=0;i<2;++i) glEndQuery(query_targets[i]);
+   unsigned query_bad=0;
+   for (unsigned i=0;i<2;++i) {
+      GLuint result=~0u; glGetQueryObjectuiv(queries[i],GL_QUERY_RESULT,&result);
+      if (result) { printf(TAG " internal blit counted query=%x result=%u\n",query_targets[i],result); query_bad=1; }
+   }
+   glDeleteQueries(2,queries);
+   if (!healthy() || query_bad) goto cleanup;
    glBindFramebuffer(GL_READ_FRAMEBUFFER,fbos[1]);
    if (!oracle(t,pixels,0)) goto cleanup;
    ++checks;
