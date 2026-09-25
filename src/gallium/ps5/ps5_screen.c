@@ -7983,6 +7983,27 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
          ps5_flush_gpu_data(source->data, source_depth_size);
       if (info->mask & PIPE_MASK_S)
          ps5_flush_gpu_data(source->stencil_data, source_stencil_size);
+      /* Full, identically tiled slices need no per-pixel address conversion.
+       * Equal layer indices also preserve the hardware's layer XOR. */
+      const bool copy_planes = !source->depth_staging_size &&
+         !destination->depth_staging_size &&
+         info->src.box.z == info->dst.box.z &&
+         !info->src.box.x && !info->src.box.y &&
+         !info->dst.box.x && !info->dst.box.y &&
+         info->src.box.width == (int)source_width &&
+         info->src.box.height == (int)source_height &&
+         info->dst.box.width == (int)source_width &&
+         info->dst.box.height == (int)source_height &&
+         source_width == destination_width && source_height == destination_height &&
+         !min_x && !min_y && max_x >= source_width && max_y >= source_height &&
+         source_depth_size == destination_depth_size &&
+         source_stencil_size == destination_stencil_size;
+      if (copy_planes) {
+         if (info->mask & PIPE_MASK_Z)
+            memmove(destination->data, source->data, source_depth_size);
+         if (info->mask & PIPE_MASK_S)
+            memmove(destination->stencil_data, source->stencil_data, source_stencil_size);
+      } else
       for (unsigned y = 0; y < (unsigned)info->dst.box.height; ++y) {
          unsigned sy = (unsigned)(((UINT64_C(2) * y + 1u) *
                                    source_box_height) /
@@ -8044,9 +8065,9 @@ ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
       if (info->mask & PIPE_MASK_S)
          ps5_flush_gpu_data(destination->stencil_data,
                             destination_stencil_size);
-      printf("[ps5-gallium] software-blit depth-stencil=%ux%u->%dx%d mask=%x\n",
+      printf("[ps5-gallium] software-blit depth-stencil=%ux%u->%dx%d mask=%x bulk=%u\n",
              source_box_width, source_box_height, info->dst.box.width,
-             info->dst.box.height, info->mask);
+             info->dst.box.height, info->mask, copy_planes);
       return;
    }
 

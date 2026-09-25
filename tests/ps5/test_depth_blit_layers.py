@@ -145,7 +145,12 @@ static void run(unsigned mode,unsigned mask,unsigned source_layer,unsigned dest_
     if (variant==1) { info.scissor_enable=true; info.scissor=(typeof(info.scissor)){10,11,16,15}; }
     if (variant==2 && mode!=2) { info.src.box.x=12; info.src.box.width=-8; }
     if (variant==3 && mode==0) { info.dst.box.width=12; info.dst.box.height=10; }
-    bool valid=variant<4;
+    bool valid=variant<4 || variant>=14;
+    if (variant>=14) {
+        info.src.box=(struct pipe_box){0,0,(int)source_layer,W,W,1};
+        info.dst.box=(struct pipe_box){0,0,(int)dest_layer,W,W,1};
+        if (variant==15) { info.scissor_enable=true; info.scissor=(typeof(info.scissor)){10,11,16,15}; }
+    }
     if (variant==4) info.src.box.z=-1;
     if (variant==5) info.dst.box.z=LAYERS;
     if (variant==6) src.allocation_size=layout&1 ? 1 : source_layer*65536u+65535u;
@@ -159,11 +164,11 @@ static void run(unsigned mode,unsigned mask,unsigned source_layer,unsigned dest_
     if (variant==12) { if (layout&1) src.layer_stride=SIZE_MAX; else info.src.box.width=INT_MIN; }
     if (variant==13) { if (layout&2) dst.level_offset[info.dst.level]=SIZE_MAX; else info.dst.box.x=INT_MAX; }
     if (valid) for (unsigned y=0;y<(unsigned)info.dst.box.height;++y) for (unsigned x=0;x<(unsigned)info.dst.box.width;++x) {
-        unsigned dx=9+x,dy=10+y;
+        unsigned dx=info.dst.box.x+x,dy=info.dst.box.y+y;
         if (info.scissor_enable && (dx<10 || dx>=16 || dy<11 || dy>=15)) continue;
-        unsigned sx=4+(unsigned)(((2*x+1)*8)/(2*info.dst.box.width));
-        unsigned sy=5+(unsigned)(((2*y+1)*6)/(2*info.dst.box.height));
-        if (info.src.box.width<0) sx=15-sx;
+        unsigned sx=(unsigned)(((2*x+1)*abs(info.src.box.width))/(2*info.dst.box.width));
+        unsigned sy=info.src.box.y+(unsigned)(((2*y+1)*info.src.box.height)/(2*info.dst.box.height));
+        sx=info.src.box.width<0 ? info.src.box.x-1-sx : info.src.box.x+sx;
         for (unsigned sample=0;sample<dst_samples;++sample) {
             if (mask & PIPE_MASK_Z) memcpy(expected[2]+64+pixel(&dst,info.dst.level,0,dx,dy,sample,dest_layer),
                 spans[0].p+pixel(&src,info.src.level,0,sx,sy,0,source_layer),4);
@@ -189,7 +194,7 @@ int main(void) {
     for (unsigned mask=1;mask<=(packed ? 3u : 1u);++mask)
     for (unsigned source=0;source<3;source+=2) for (unsigned dest=0;dest<4;dest+=3)
     for (unsigned layout=0;layout<4;++layout) for (unsigned level=0;level<(layout?2u:1u);++level)
-    for (unsigned variant=0;variant<14;++variant) run(mode,mask,source,dest,variant,packed,layout,level);
+    for (unsigned variant=0;variant<16;++variant) run(mode,mask,source,dest,variant,packed,layout,level);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
@@ -201,8 +206,9 @@ with tempfile.TemporaryDirectory() as directory:
         'missing-slice-xor': code.replace('info->src.box.z,', '0,').replace('info->dst.box.z,', '0,'),
         'reject-mip-chain': code.replace('if (resource->depth_staging_size) {',
                                           'if (resource->depth_staging_size) return false; if (resource->depth_staging_size) {'),
+        'bulk-with-wrong-layer-xor': code.replace('info->src.box.z == info->dst.box.z &&', 'true &&'),
     }
-    assert len(set(variants.values())) == 4
+    assert len(set(variants.values())) == 5
     for label, text in variants.items():
         subprocess.run(['cc', '-std=gnu11', '-O1', '-Wall', '-Wextra', '-Werror',
                         '-fsanitize=address,undefined', '-no-pie', '-x', 'c', '-',

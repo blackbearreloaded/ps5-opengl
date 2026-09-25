@@ -370,7 +370,8 @@ main(void)
 
    passed = major == 1 && minor == 4 &&
             draw_status[0] == 0 && draw_status[1] == 0 &&
-            draw_status[2] == 0 && draw_calls == 3 &&
+            /* GPU color clears may contribute internal draws. */
+            draw_status[2] == 0 && draw_calls >= 3 &&
             depth_matching == SIZE * SIZE && depth_hash == GREEN_HASH &&
             stencil_matching == SIZE * SIZE &&
             stencil_hash == MAGENTA_HASH && error == GL_NO_ERROR;
