@@ -149,6 +149,7 @@ test-imgui:
 test-compiler:
 	python3 tests/ps5/test_shader_cache.py
 	python3 tools/fetch-sources.py --verify-psbc
+	python3 tests/ps5/test_legacy_varying_semantics.py
 	python3 tests/ps5/test_fragment_exports.py
 	python3 tests/ps5/test_shader_ballot.py
 	python3 tests/ps5/test_meta_vertex_inputs.py
