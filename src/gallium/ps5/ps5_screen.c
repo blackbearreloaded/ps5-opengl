@@ -9834,9 +9834,11 @@ ps5_draw_vbo_locked(struct pipe_context *base,
       context->last_draw_status = 0;
       return;
    }
+   /* Mesa can leave has_user_indices set after lowering a client-indexed draw
+    * to a non-indexed draw.  There are no indices to upload in that case. */
    if (indirect || num_draws != 1 ||
        (info->index_size && info->index_size != 2 && info->index_size != 4) ||
-       info->primitive_restart || info->has_user_indices ||
+       info->primitive_restart || (info->index_size && info->has_user_indices) ||
        !info->instance_count ||
        !ps5_draw_primitive(info->mode, draws[0].count, &primitive_type)) {
       context->last_draw_status = -2;
