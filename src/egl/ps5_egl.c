@@ -14,6 +14,7 @@
 
 #include "frontend/api.h"
 #include "glapi/glapi/glapi.h"
+#include "hud/hud_context.h"
 #include "main/context.h"
 #include "main/glthread.h"
 #include "pipe/p_screen.h"
@@ -71,6 +72,7 @@ _Static_assert(offsetof(struct ps5_egl_surface, drawable) == 0,
 struct ps5_egl_context {
    uint32_t magic;
    struct st_context *st;
+   struct hud_context *hud;
    EGLint config_id;
    int major;
    int minor;
@@ -893,6 +895,10 @@ eglCreateContext(EGLDisplay display, EGLConfig config, EGLContext share,
                     EGL_BAD_ALLOC : EGL_BAD_MATCH);
       return EGL_NO_CONTEXT;
    }
+   if (context->st->cso_context) {
+      context->hud = hud_create(context->st->cso_context, NULL, context->st,
+                                st_context_invalidate_state);
+   }
    const char *threaded = getenv("PS5_GLTHREAD");
    if (threaded && !strcmp(threaded, "1")) {
       _mesa_glthread_init(context->st->ctx);
@@ -1034,6 +1040,10 @@ eglSwapBuffers(EGLDisplay display, EGLSurface surface_handle)
       return EGL_FALSE;
    }
    _mesa_glthread_finish(ps5_current_context->st->ctx);
+   if (surface->window && ps5_current_context->hud) {
+      hud_run(ps5_current_context->hud, NULL,
+              surface->targets[surface->buffer_index]);
+   }
    st_context_flush(ps5_current_context->st,
                     ST_FLUSH_FRONT | ST_FLUSH_END_OF_FRAME |
                        ((!surface->window || surface->swap_interval) ?
@@ -1112,6 +1122,9 @@ eglDestroyContext(EGLDisplay display, EGLContext context_handle)
       return EGL_FALSE;
    }
    context->magic = 0;
+   if (context->hud) {
+      hud_destroy(context->hud, context->st->cso_context);
+   }
    st_destroy_context(context->st);
    struct ps5_egl_context **link = &ps5_contexts;
 
