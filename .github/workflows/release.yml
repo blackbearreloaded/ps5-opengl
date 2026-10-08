@@ -25,6 +25,11 @@ jobs:
   sdk:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    # id-token and attestations are for the "Attest the release files" step only.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       LLVM_CONFIG: /usr/bin/llvm-config-21
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -158,6 +163,16 @@ jobs:
               assert not wrong, f"entries not stored as 0777: {wrong[:3]}"
               print(f"{sys.argv[1]}: {len(names)} entries, all 0777")
           PY
+      # Signed provenance: these files were built by this workflow from this commit. Anyone can check
+      # a downloaded copy with `gh attestation verify <file> -R <owner>/<repo>`. Not for pull requests
+      # (a fork's run cannot sign), and not in a private repository (the plan does not include it).
+      - name: Attest the release files
+        if: github.event_name != 'pull_request' && !github.event.repository.private
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release/ps5-opengl-sdk-${{ env.SDK_VERSION }}.tar.gz
+            ${{ runner.temp }}/release/ps5-opengl-showcase-${{ env.SDK_VERSION }}-PPSA99005.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ps5-opengl-4.6-sdk

@@ -29,6 +29,10 @@ class DisplayProfileTests(unittest.TestCase):
         self.assertIn('run: make sdk-gl46', workflow)
         self.assertIn('build/sdk/ps5-opengl-gl46', workflow)
         self.assertIn('name: ps5-opengl-4.6-sdk', workflow)
+        # The SDK archive and the showcase app ZIP are signed (build provenance) by a pinned action.
+        self.assertIn('uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2', workflow)
+        self.assertLess(workflow.index('- name: Attest the release files'),
+                        workflow.index('name: ps5-opengl-4.6-sdk'))
         self.assertIn('commands=657', verifier)
 
     def test_native_metadata_uses_sdk_rate_and_preserves_other_fields(self):

@@ -106,6 +106,10 @@ stores every entry with permissions 0777 (`tools/zip-open-modes.py`), because th
 console only starts an app whose files are open to all; the build fails otherwise.
 The SDK archive keeps its ordinary permissions.
 
+The SDK archive and the showcase app ZIP built by the workflow can be checked with
+`gh attestation verify <file> -R blackbearreloaded/ps5-opengl` (GitHub CLI); this
+covers releases built by GitHub Actions from now on, not earlier ones.
+
 Manual runs only create Actions artifacts (seven-day retention); they do not
 create tags or releases. Tag builds attach the archive and checksum to the published release.
 Existing releases/assets are never overwritten. Repository visibility is not
