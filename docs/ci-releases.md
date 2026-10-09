@@ -93,8 +93,8 @@ console qualification.
    links, archive checksums and the recorded build configuration.
 3. When ready, push a new version tag beginning with `v`. The same workflow builds
    from that tag and publishes the release, marked Latest. If a release for the
-   tag already exists (for example one published from a local build of the same
-   tag), the workflow leaves it unchanged.
+   tag already exists (notes written ahead, or a draft), the workflow adds the
+   files it does not have yet and leaves its title, notes and files as they are.
 4. If console validation is performed, retain receipts for these exact bytes and
    identify that scope explicitly. Do not attach an older SDK's acceptance to a
    rebuild.
@@ -111,8 +111,12 @@ The SDK archive and the showcase app ZIP built by the workflow can be checked wi
 covers releases built by GitHub Actions from now on, not earlier ones.
 
 Manual runs only create Actions artifacts (seven-day retention); they do not
-create tags or releases. Tag builds attach the archive and checksum to the published release.
-Existing releases/assets are never overwritten. Repository visibility is not
+create tags or releases. A release's files are the ones the workflow run for its
+tag built and attested: the SDK archive, the showcase app ZIP and their checksum
+files; none is attached by hand. Existing releases/assets are never overwritten:
+a file a release already has is neither replaced nor removed, and the run prints
+a warning that it did not come from this run and may have no attestation, then
+ends green. Repository visibility is not
 changed by this workflow. Access follows the repository's permissions.
 
 The build uses pinned public source revisions, the hash-verified payload SDK

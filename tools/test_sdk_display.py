@@ -35,6 +35,18 @@ class DisplayProfileTests(unittest.TestCase):
                         workflow.index('name: ps5-opengl-4.6-sdk'))
         self.assertIn('commands=657', verifier)
 
+    def test_release_never_replaces_or_removes_a_file(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        for forbidden in ('--clobber', 'delete-asset', 'release delete', 'release edit'):
+            self.assertNotIn(forbidden, workflow)
+        publish = workflow[workflow.index('- name: Publish OpenGL 4.6 release'):]
+        # No release for the tag: created as before. One exists: missing files only, with a warning for the rest.
+        self.assertIn('gh release create "$GITHUB_REF_NAME" ./*.tar.gz ./*.tar.gz.sha256 ./*.zip ./*.zip.sha256 \\\n'
+                      '            --repo "$GITHUB_REPOSITORY" --verify-tag --latest \\\n', publish)
+        self.assertIn("--json assets --jq '.assets[].name'", publish)
+        self.assertIn('gh release upload "$TAG" "$file" --repo "$GITHUB_REPOSITORY"\n', publish)
+        self.assertIn('::warning title=Release file not from this run::A release for $TAG already has $1;', publish)
+
     def test_native_metadata_uses_sdk_rate_and_preserves_other_fields(self):
         original = dict(titleId="PPSA99005", attribute3=8, attribute2=17)
         high = METADATA.with_display_profile(original, 120)

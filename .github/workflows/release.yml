@@ -213,11 +213,28 @@ jobs:
         run: |
           cd release
           sha256sum --check ./*.tar.gz.sha256 ./*.zip.sha256
-          # A release published for this tag already (e.g. from a local build)
-          # keeps its SDK; only the showcase demo app is added or refreshed.
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" ./*.zip ./*.zip.sha256 --clobber \
-              --repo "$GITHUB_REPOSITORY"
+          TAG=$GITHUB_REF_NAME
+          # A release that already exists for this tag (notes written ahead, or a draft) keeps
+          # its title and notes, and a file it already has is never replaced or removed. Only
+          # missing files are added.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            existing=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+            has() { grep -Fxq -- "$1" <<< "$existing"; }
+            kept() { echo "::warning title=Release file not from this run::A release for $TAG already has $1; it was not replaced. It was not published by this run and may have no attestation."; }
+            for file in *.tar.gz *.zip; do
+              if has "$file"; then
+                kept "$file"
+                # This run's checksum file describes this run's build, not the file the release keeps.
+                if has "$file.sha256"; then kept "$file.sha256"; fi
+                continue
+              fi
+              gh release upload "$TAG" "$file" --repo "$GITHUB_REPOSITORY"
+              if has "$file.sha256"; then
+                kept "$file.sha256"
+              else
+                gh release upload "$TAG" "$file.sha256" --repo "$GITHUB_REPOSITORY"
+              fi
+            done
             exit 0
           fi
           gh release create "$GITHUB_REF_NAME" ./*.tar.gz ./*.tar.gz.sha256 ./*.zip ./*.zip.sha256 \
