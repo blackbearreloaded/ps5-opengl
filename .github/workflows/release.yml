@@ -7,6 +7,10 @@ name: Build OpenGL 4.6 SDK
 on:
   workflow_dispatch:
     inputs:
+      snapshot:
+        description: "Also publish this run's compiler cache as the build-cache snapshot (run it on main)"
+        type: boolean
+        default: false
       profile:
         description: Fresh SDK build profile (host checks only); dynamic = one SDK, display mode chosen at runtime
         type: choice
@@ -57,6 +61,20 @@ jobs:
           key: ccache-sdk-${{ runner.os }}-${{ github.sha }}-${{ github.run_id }}
           restore-keys: |
             ccache-sdk-${{ runner.os }}-
+      # GitHub drops a cache nobody used for a week, and a pull request only sees main's. When
+      # nothing was restored, start from the snapshot kept as a file of the build-cache release;
+      # a manual run with "snapshot" ticked replaces that file.
+      - name: Fetch the compiler cache snapshot
+        run: |
+          if [ -z "$(ls -A "$CCACHE_DIR" 2>/dev/null)" ]; then
+            url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/build-cache/ccache-sdk.tar"
+            if curl -fsSL --retry 3 -o "$RUNNER_TEMP/ccache-sdk.tar" "$url"; then
+              mkdir -p "$CCACHE_DIR"
+              tar -xf "$RUNNER_TEMP/ccache-sdk.tar" -C "$CCACHE_DIR"
+              rm "$RUNNER_TEMP/ccache-sdk.tar"
+              echo "::notice title=Compiler cache::Started from the build-cache snapshot."
+            fi
+          fi
       - name: Configure compiler cache
         run: |
           ccache --zero-stats
@@ -118,6 +136,18 @@ jobs:
       - name: Report compiler cache statistics
         if: always()
         run: ccache --show-stats
+      # ccache compresses what it stores, so the snapshot is a plain tar.
+      - name: Pack the compiler cache snapshot
+        if: github.event_name == 'workflow_dispatch' && inputs.snapshot
+        run: tar -cf "$RUNNER_TEMP/ccache-sdk.tar" -C "$CCACHE_DIR" .
+      - name: Upload the compiler cache snapshot
+        if: github.event_name == 'workflow_dispatch' && inputs.snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ccache-snapshot
+          path: ${{ runner.temp }}/ccache-sdk.tar
+          if-no-files-found: error
+          retention-days: 1
       - name: Verify OpenGL 4.6 exports and three relocated consumers
         run: |
           cp -a build/sdk/ps5-opengl-gl46 "$RUNNER_TEMP/relocated-sdk"
@@ -194,6 +224,24 @@ jobs:
             ${{ runner.temp }}/consumer-checks/*.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # Only a run started by hand reaches this job, so a pull request never writes what later
+  # builds start from; the build job itself cannot write to a release.
+  snapshot:
+    name: Publish the compiler cache snapshot
+    if: github.event_name == 'workflow_dispatch' && inputs.snapshot
+    needs: sdk
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Replace the snapshot in the build-cache release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name ccache-snapshot --dir snapshot
+          gh release upload build-cache "snapshot/ccache-sdk.tar" --clobber --repo "$GITHUB_REPOSITORY"
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
