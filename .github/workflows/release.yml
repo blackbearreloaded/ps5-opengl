@@ -63,7 +63,7 @@ jobs:
             ccache-sdk-${{ runner.os }}-
       # GitHub drops a cache nobody used for a week, and a pull request only sees main's. When
       # nothing was restored, start from the snapshot kept as a file of the build-cache release;
-      # a manual run with "snapshot" ticked replaces that file.
+      # a manual run on main with "snapshot" ticked replaces that file (build-cache.yml).
       - name: Fetch the compiler cache snapshot
         run: |
           if [ -z "$(ls -A "$CCACHE_DIR" 2>/dev/null)" ]; then
@@ -224,24 +224,6 @@ jobs:
             ${{ runner.temp }}/consumer-checks/*.log
           if-no-files-found: ignore
           retention-days: 7
-
-  # Only a run started by hand reaches this job, so a pull request never writes what later
-  # builds start from; the build job itself cannot write to a release.
-  snapshot:
-    name: Publish the compiler cache snapshot
-    if: github.event_name == 'workflow_dispatch' && inputs.snapshot
-    needs: sdk
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - name: Replace the snapshot in the build-cache release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name ccache-snapshot --dir snapshot
-          gh release upload build-cache "snapshot/ccache-sdk.tar" --clobber --repo "$GITHUB_REPOSITORY"
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
