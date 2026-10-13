@@ -5,11 +5,21 @@
 
 """Host-only failure injection into the real synchronous submit/cleanup path."""
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
+start = source.index("#ifndef PS5_RETIREMENT_WAIT_MS")
+limit = source[start:source.index("#endif\n", start) + 7]
+# Thirty seconds of 1 ms sleeps unless the build says otherwise.
+assert "#define PS5_RETIREMENT_WAIT_MS 30000u\n" in limit
+# No wait keeps a bound of its own; the compute dispatch wait is not compiled below.
+backend = (root / "src/platform/ps5_agc_runtime_backend.c").read_text()
+for text in (source, backend):
+    assert not re.search(r"(?<![0-9A-Za-z_])2000(?![0-9A-Za-z_])", text)
+assert backend.count("polls < PS5_RETIREMENT_WAIT_MS") == 2
 start = source.find("static void runtime_require_retirement(")
 guard = source[start:source.index("\n}\n", start) + 3] if start >= 0 else ""
 start = source.index("        int submit_rc = agc.submit(&submit);")
@@ -17,7 +27,7 @@ submit = source[start:source.index("#ifdef PS5_DRAW_BATCH_PROBE\n        batch_w
 start = source.index("    if (memory)\n        work_unmap_rc")
 cleanup = source[start:source.index("#if defined(AGC_RUNTIME_PACKAGES)", start)]
 return_code = source[source.rindex("    return "):source.rindex("\n}")]
-code = r'''
+code = limit + r'''
 #define _GNU_SOURCE
 #include <assert.h>
 #include <stdint.h>
@@ -67,7 +77,7 @@ static int draw(void) {
 ''' + submit + r'''
 #endif /* AGC_RUNTIME_PACKAGES: the non-runtime flip-probe branch is not used. */
     (void)status;
-    result = submit_rc != 0 || suspend_rc != 0 || waits == 2000;
+    result = submit_rc != 0 || suspend_rc != 0 || waits == PS5_RETIREMENT_WAIT_MS;
 #define munmap unmap
 ''' + cleanup + r'''
 #undef munmap
@@ -82,7 +92,8 @@ int main(void) {
         suspend_error = scenario == 4 ? -1 : 0;
         unmap_error = scenario == 6 ? -1 : 0;
         release_error = scenario == 7 ? -1 : 0;
-        delay = scenario == 1 ? 1 : scenario == 2 ? 1999 : scenario == 5 ? 2000 : 0;
+        delay = scenario == 1 ? 1 : scenario == 2 ? PS5_RETIREMENT_WAIT_MS - 1 :
+                scenario == 5 ? PS5_RETIREMENT_WAIT_MS : 0;
         const int fatal = scenario >= 3 && scenario <= 5;
         pid_t child = fork(); assert(child >= 0);
         if (!child) {
@@ -97,7 +108,8 @@ int main(void) {
         assert(WEXITSTATUS(status) == (fatal ? EXIT_FAILURE : 0));
         assert(seen->submits == 1 && seen->suspends == !submit_error);
         assert(seen->unmaps == !fatal && seen->releases == (!fatal && !unmap_error));
-        assert(!seen->destructors && seen->waits <= 2000);
+        assert(!seen->destructors && seen->waits <= PS5_RETIREMENT_WAIT_MS);
+        if (scenario == 5) assert(seen->waits == PS5_RETIREMENT_WAIT_MS);
     }
     assert(munmap(seen, sizeof(*seen)) == 0);
     puts("submit-retirement: PASS success/boundary; submit/suspend/timeout stop before cleanup or atexit; unmap failure retains direct memory");
@@ -108,6 +120,10 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c",
                     "-o", executable, "-"], input=code, text=True, check=True)
     subprocess.run([executable], cwd=temporary, check=True)
+    # The bound is a build-time value: a build with another one stops at its own count.
+    subprocess.run(["cc", "-DPS5_RETIREMENT_WAIT_MS=7u", "-std=c11", "-Wall", "-Wextra", "-Werror", "-x", "c",
+                    "-o", executable, "-"], input=code, text=True, check=True)
+    subprocess.run([executable], cwd=temporary, check=True, stdout=subprocess.DEVNULL)
 
 # Exercise the same production submit and retirement code with frame boundaries.
 start = source.index("#ifdef PS5_FRAME_SUSPEND\nstatic int (*runtime_frame_suspend)")

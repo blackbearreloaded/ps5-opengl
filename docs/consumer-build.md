@@ -58,8 +58,12 @@ cross-module ownership contracts are not established by this check.
 ## Unrecoverable GPU submission errors
 
 The native backend uses `_Exit(EXIT_FAILURE)` after a native submission
-or suspend error, or when completion cannot be confirmed within the existing
-bounded poll loop. It does not return to callers, release potentially in-flight
+or suspend error, or when completion cannot be confirmed within the bounded
+poll loop: 30 seconds of 1 ms sleeps (SDKs up to 1.0.1 gave up after 2). A
+console confirms within milliseconds; the longer bound is for hosts that
+compile shaders inside the first submissions. An SDK built with another
+`-DPS5_RETIREMENT_WAIT_MS=<milliseconds>` in its runtime defines uses that
+bound. It does not return to callers, release potentially in-flight
 buffers, or run application exit handlers. This is application fail-stop, not
 device-loss recovery or a console reset. Save important application state during
 normal operation; do not depend on exit handlers after a GPU failure. Fault-path

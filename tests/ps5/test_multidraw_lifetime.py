@@ -187,11 +187,13 @@ for receipt_capacity, control in ((8, False), (8, True), (capacity, False), (cap
 print("PASS: ordinary-draw receipt audit requires matching native chunks and every hazard oracle")
 
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
+start = source.index("#ifndef PS5_RETIREMENT_WAIT_MS")
+limit = source[start:source.index("#endif\n", start) + 7]
 start = source.index("static void runtime_require_retirement(")
 guard = source[start:source.index("\n}\n", start) + 3]
 start = source.index("static struct runtime_batch_entry {")
 body = source[start:source.index("\n#endif\n\n#ifdef PS5_DRAW_PROFILE", start)]
-code = r'''
+code = limit + r'''
 #include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -320,8 +322,8 @@ int main(void) {
         assert(!releases && (runtime_batch_faulted != 0) == (failure == 5));
         assert(unmaps == (failure == 5 ? 1u : 0u));
         assert(submits == (failure == 0 ? 1u : failure == 1 ? 4u : PS5_MULTIDRAW_BATCH_CAPACITY));
-        assert(suspends == 1 && sleeps <= 2000);
-        if (failure == 4) assert(sleeps == 2000); /* One shared timeout for the whole batch. */
+        assert(suspends == 1 && sleeps <= PS5_RETIREMENT_WAIT_MS);
+        if (failure == 4) assert(sleeps == PS5_RETIREMENT_WAIT_MS); /* One shared timeout for the whole batch. */
         if (failure == 5)
             assert(ps5_agc_gate2_batch_begin() != 0 && ps5_agc_gate2_batch_end() != 0);
     }
