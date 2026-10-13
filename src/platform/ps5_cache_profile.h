@@ -5,6 +5,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "ps5_profile_log.h"
 
 /* ponytail: source-line indexing avoids allocation/lookup in this diagnostic.
  * Increase the bound if a call site reaches it; never omit the actual flush. */
@@ -24,7 +25,8 @@ static void ps5_cache_record(unsigned line, size_t bytes, uint64_t start)
     __atomic_fetch_add(&ps5_cache_sites[line].calls, 1, __ATOMIC_RELAXED);
     __atomic_fetch_add(&ps5_cache_sites[line].bytes, bytes, __ATOMIC_RELAXED);
     __atomic_fetch_add(&ps5_cache_sites[line].cycles, cycles, __ATOMIC_RELAXED);
-    if ((__atomic_add_fetch(&ps5_cache_total, 1, __ATOMIC_RELAXED) & 0x3ffff) != 0)
+    if ((__atomic_add_fetch(&ps5_cache_total, 1, __ATOMIC_RELAXED) & 0x3ffff) != 0 ||
+        !ps5_profile_log())
         return;
     for (unsigned i = 0; i < sizeof(ps5_cache_sites) / sizeof(ps5_cache_sites[0]); ++i) {
         uint64_t calls = __atomic_load_n(&ps5_cache_sites[i].calls, __ATOMIC_RELAXED);
