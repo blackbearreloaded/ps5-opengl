@@ -40,14 +40,14 @@ static struct {
     int (*is_flip_pending)(int);
 } runtime_video_api = {submit_flip, wait_vblank, is_flip_pending};
 '''
-code = "#include <inttypes.h>\n#include <stdio.h>\n#include <string.h>\n#include <assert.h>\n" + body + mock + r'''
+code = "#include <inttypes.h>\n#include <stdbool.h>\n#include <stdio.h>\n#include <string.h>\n#include <assert.h>\n" + body + mock + r'''
 #define PS5_MULTIDRAW_BATCH 1
 #define PS5_DRAW_PROFILE 1
 #define PS5_PROFILE_MARK(i) profile_ticks[i] = os_time_get_nano()
 ''' + present + r'''
 int main(void) {
     int64_t ticks[10] = {1, 1000001, 3000001, 3000001, 4000001, 4000001, 4000001, 4000001, 5000001, 6000001};
-    runtime_profile_report(); /* empty reports stay quiet */
+    runtime_profile_report(true); /* empty reports stay quiet */
     runtime_profile_record(ticks, 1, 0);
     runtime_profile_record(ticks, 2, 0);
     assert(runtime_profile_calls == 2 && !runtime_profile_failures);
@@ -59,10 +59,10 @@ int main(void) {
     runtime_profile_record(ticks, 9, 0);
     assert(runtime_profile_calls == 2 && runtime_profile_failures == 3);
     assert(runtime_profile_sleeps == 3);
-    runtime_profile_report();
+    runtime_profile_report(true);
     assert(!runtime_profile_calls && !runtime_profile_failures && !runtime_profile_sleeps);
     for (unsigned i = 0; i < 9; ++i) assert(!runtime_profile_ns[i]);
-    runtime_profile_report();
+    runtime_profile_report(true);
     /* Instrument the actual presentation path: no change in call order or errors. */
     for (unsigned i = 0; i < 32; ++i) {
         step = 0;
@@ -93,10 +93,10 @@ int main(void) {
     bad[3] = 2;
     runtime_present_profile_record(bad, 0);
     assert(runtime_present_profile_calls == 2 && runtime_present_profile_failures == 5);
-    runtime_profile_report();
+    runtime_profile_report(true);
     assert(!runtime_present_profile_calls && !runtime_present_profile_failures);
     for (unsigned i = 0; i < 3; ++i) assert(!runtime_present_profile_ns[i]);
-    runtime_profile_report();
+    runtime_profile_report(true);
     int64_t batch_ticks[5] = {1, 1000001, 3000001, 6000001, 10000001};
     runtime_batch_profile_record(batch_ticks, 1, 0);
     runtime_batch_profile_record(batch_ticks, 2, 0);
@@ -107,10 +107,10 @@ int main(void) {
     runtime_batch_profile_record(batch_ticks, 9, 0);
     assert(runtime_batch_profile_calls == 2 && runtime_batch_profile_failures == 3);
     assert(runtime_batch_profile_sleeps == 3);
-    runtime_profile_report();
+    runtime_profile_report(true);
     assert(!runtime_batch_profile_calls && !runtime_batch_profile_failures && !runtime_batch_profile_sleeps);
     for (unsigned i = 0; i < 4; ++i) assert(!runtime_batch_profile_ns[i]);
-    runtime_profile_report();
+    runtime_profile_report(true);
     int64_t prepare_ticks[6] = {1, 1000001, 3000001, 3000001, 4000001, 5000001};
     runtime_prepare_profile_record(prepare_ticks, 0);
     runtime_prepare_profile_record(prepare_ticks, 0);
@@ -121,11 +121,25 @@ int main(void) {
     runtime_prepare_profile_record(prepare_ticks, 0);
     assert(runtime_prepare_profile_calls == 2 && runtime_prepare_profile_failures == 3);
     assert(runtime_prepare_profile_ns[0] == 2000000 && runtime_prepare_profile_ns[1] == 4000000);
-    runtime_profile_report();
+    runtime_profile_report(true);
     assert(!runtime_prepare_profile_calls && !runtime_prepare_profile_failures);
     for (unsigned i = 0; i < 5; ++i) assert(!runtime_prepare_profile_ns[i]);
-    runtime_profile_report();
+    runtime_profile_report(true);
+    /* A period that ends unasked prints nothing and still starts the next one. */
     prepare_ticks[5] = 5000001;
+    runtime_prepare_profile_record(prepare_ticks, 0);
+    runtime_batch_profile_record(batch_ticks, 1, -1);
+    runtime_present_profile_record(bad, 0);
+    ticks[9] = 6000001;
+    runtime_profile_record(ticks, 4, 0);
+    assert(runtime_prepare_profile_calls == 1 && runtime_batch_profile_failures == 1);
+    assert(runtime_present_profile_failures == 1 && runtime_profile_calls == 1);
+    runtime_profile_report(false);
+    assert(!runtime_prepare_profile_calls && !runtime_batch_profile_failures);
+    assert(!runtime_present_profile_failures && !runtime_profile_calls && !runtime_profile_sleeps);
+    for (unsigned i = 0; i < 9; ++i) assert(!runtime_profile_ns[i]);
+    for (unsigned i = 0; i < 5; ++i) assert(!runtime_prepare_profile_ns[i]);
+    runtime_profile_report(true);
     runtime_prepare_startup_report(prepare_ticks, 1, 0);
     runtime_prepare_startup_report(prepare_ticks, 3, -1);
     prepare_ticks[5] = 0;
@@ -148,7 +162,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "calls=2 failures=3 warmup_frames=30" in output
     assert "scanout_flush_ms=2.000000" in output and "total_ms=6.000000" in output
     assert "[ps5-present-perf] calls=2 failures=5 warmup_frames=30 idle_ms=1.000000 flip_ms=2.000000 vblank_ms=3.000000 total_ms=6.000000" in output
-print("PASS: draw/present timing, warmup, call order, failures, invalid clocks, report/reset")
+print("PASS: draw/present timing, warmup, call order, failures, invalid clocks, report/reset, unasked period")
 
 # Package validation needs the configuration receipt even in profile-off builds.
 screen = (root / "src/gallium/ps5/ps5_screen.c").read_text()

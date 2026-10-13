@@ -68,6 +68,26 @@ The same fail-stop rule applies to failed resource unmap/backing release. Backin
 is never released after a failed unmap, including partial-allocation cleanup;
 the driver does not claim recovery from these ownership errors.
 
+## Driver statistics in the log
+
+The SDK is built with its draw statistics compiled in. They are counted while
+the application runs and printed to standard output once, when the OpenGL
+context and the display are torn down. The `[ps5-batch-summary]` line on
+standard error, which names the build's batching configuration, comes with them.
+
+The periodic reports are opt-in. SDKs up to 1.0.1 printed about thirty lines
+every 10,000 draws on the thread that draws, and one timing line for every
+clear done on the CPU. An application that writes its log to console storage
+line by line lost a frame of about 180 ms to each report. For a measurement,
+turn them back on before the first draw:
+
+```c
+setenv("PS5_DRAW_PROFILE_LOG", "1", 1);
+```
+
+Only the value `1` turns them on, and the variable is read once. Lines that
+report a failure or a fallback are not statistics and are always printed.
+
 ## Verify the interface
 
 ```sh

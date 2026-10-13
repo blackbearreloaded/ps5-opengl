@@ -432,6 +432,7 @@ code = r'''
 #include <stdlib.h>
 #include <setjmp.h>
 #include "ps5_screen.h"
+#include "../../platform/ps5_profile_log.h"
 #define MIN2(a,b) ((a)<(b)?(a):(b))
 #define MAX2(a,b) ((a)>(b)?(a):(b))
 #define PS5_DIRECT_ALIGNMENT 64 /* Small backing in this ownership-only fixture. */

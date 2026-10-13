@@ -31,6 +31,7 @@
 #endif
 
 #include <ps5/kernel.h>
+#include "ps5_profile_log.h"
 #ifdef PS5_NATIVE_TITLE_RUNTIME
 #include "util/cache_ops.h"
 #endif
@@ -1134,7 +1135,7 @@ static struct runtime_shader_pair *runtime_shader_pair_get_unlocked(
                     ((uintptr_t)runtime_primitive_type * UINT64_C(0xc2b2ae3d27d4eb4f));
     unsigned slot = (unsigned)((key ^ (key >> 17) ^ (key >> 31)) & 4095u);
     struct runtime_shader_pair *hot = runtime_shader_pair_hot[slot];
-    if (++runtime_pair_lookups % 100000 == 0)
+    if (++runtime_pair_lookups % 100000 == 0 && ps5_profile_log())
         printf("[ps5-pair-cache] lookups=%" PRIu64 " hot=%" PRIu64
                " scanned=%" PRIu64 " full=%" PRIu64 " entries=%u bytes=%zu\n",
                runtime_pair_lookups, runtime_pair_hot_hits,
@@ -1510,7 +1511,7 @@ static void *runtime_async_main(void *argument)
         }
         atomic_store_explicit(&job->ready, consumed + 1, memory_order_release);
 #ifdef PS5_DRAW_PROFILE
-        if ((consumed + 1) % 100000 == 0)
+        if ((consumed + 1) % 100000 == 0 && ps5_profile_log())
             printf("[ps5-async-elapsed] completed=%" PRIu64 " elapsed_ns=%" PRId64 "\n",
                    consumed + 1, os_time_get_nano() - first_job_ns);
 #endif
@@ -1982,9 +1983,10 @@ static void runtime_profile_record(const int64_t ticks[10], unsigned sleeps, int
     ++runtime_profile_calls;
 }
 
-static void runtime_profile_report(void)
+/* Ends a period: its averages are printed when asked for and reset either way. */
+static void runtime_profile_report(bool print)
 {
-    if (runtime_profile_calls || runtime_profile_failures) {
+    if (print && (runtime_profile_calls || runtime_profile_failures)) {
         const double scale = runtime_profile_calls ? 1e-6 / runtime_profile_calls : 0;
         uint64_t total = 0;
         for (unsigned i = 0; i < 9; ++i)
@@ -2003,7 +2005,7 @@ static void runtime_profile_report(void)
     memset(runtime_profile_ns, 0, sizeof(runtime_profile_ns));
     runtime_profile_calls = runtime_profile_failures = 0;
     runtime_profile_sleeps = 0;
-    if (runtime_present_profile_calls || runtime_present_profile_failures) {
+    if (print && (runtime_present_profile_calls || runtime_present_profile_failures)) {
         const double scale = runtime_present_profile_calls ?
             1e-6 / runtime_present_profile_calls : 0;
         printf("[ps5-present-perf] calls=%u failures=%u warmup_frames=30 "
@@ -2017,7 +2019,7 @@ static void runtime_profile_report(void)
     }
     memset(runtime_present_profile_ns, 0, sizeof(runtime_present_profile_ns));
     runtime_present_profile_calls = runtime_present_profile_failures = 0;
-    if (runtime_batch_profile_calls || runtime_batch_profile_failures) {
+    if (print && (runtime_batch_profile_calls || runtime_batch_profile_failures)) {
         const double scale = runtime_batch_profile_calls ?
             1e-6 / runtime_batch_profile_calls : 0;
         uint64_t total = 0;
@@ -2033,7 +2035,7 @@ static void runtime_profile_report(void)
     memset(runtime_batch_profile_ns, 0, sizeof(runtime_batch_profile_ns));
     runtime_batch_profile_calls = runtime_batch_profile_failures = 0;
     runtime_batch_profile_sleeps = 0;
-    if (runtime_prepare_profile_calls || runtime_prepare_profile_failures) {
+    if (print && (runtime_prepare_profile_calls || runtime_prepare_profile_failures)) {
         const double scale = runtime_prepare_profile_calls ?
             1e-6 / runtime_prepare_profile_calls : 0;
         uint64_t total = 0;
@@ -2269,7 +2271,7 @@ int ps5_agc_gate2_shutdown_present(void)
     runtime_require_retirement(runtime_end_submit_period() == 0);
 #endif
 #ifdef PS5_DRAW_PROFILE
-    runtime_profile_report();
+    runtime_profile_report(true);
 #endif
     if (runtime_video_registered) {
         int drain_rc = runtime_video_wait_idle();
@@ -5491,7 +5493,7 @@ cleanup:
         runtime_profile_record(profile_ticks, profile_sleeps,
                                result || work_unmap_rc || work_release_rc);
     if (runtime_prepare_profile_calls + runtime_profile_calls >= 10000u)
-        runtime_profile_report();
+        runtime_profile_report(ps5_profile_log());
 #endif
 #ifdef PS5_DRAW_BATCH_PROBE
     printf("[ps5-batch-probe] repeats=%u wait_ns=%" PRId64 " result=%d\n",

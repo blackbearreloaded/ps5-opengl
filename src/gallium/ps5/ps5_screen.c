@@ -42,6 +42,7 @@ ps5_runtime_printf(const char *format, ...)
 #include "pipe/p_state.h"
 #include "psbc_compile.h"
 #include "ps5_agc_package.h"
+#include "ps5_profile_log.h"
 #include "util/ralloc.h"
 #include "util/cache_ops.h"
 #include "util/format/u_format.h"
@@ -256,9 +257,11 @@ static void ps5_prepare_scope_end(struct ps5_prepare_scope *scope)
          ps5_draw_first_cycle = scope->start;
       if (calls % 10000 == 0) {
          ps5_opengl_register_gl_consumer();
-         printf("[ps5-driver-elapsed] calls=%" PRIu64 " cycles=%" PRIu64 "\n",
-                calls, ps5_prepare_clock() - ps5_draw_first_cycle);
-         ps5_prepare_report();
+         if (ps5_profile_log()) {
+            printf("[ps5-driver-elapsed] calls=%" PRIu64 " cycles=%" PRIu64 "\n",
+                   calls, ps5_prepare_clock() - ps5_draw_first_cycle);
+            ps5_prepare_report();
+         }
       }
    }
 }
@@ -9827,7 +9830,7 @@ ps5_draw_vbo_locked(struct pipe_context *base,
    }
    context->draw_calls++;
 #ifdef PS5_DRAW_PROFILE
-   if (context->draw_calls % 10000u == 0)
+   if (context->draw_calls % 10000u == 0 && ps5_profile_log())
       ps5_context_profile_report(context);
 #endif
    if (!ps5_render_condition_passes(context)) {
@@ -11235,7 +11238,7 @@ ps5_batch_eligibility(struct ps5_context *context, unsigned rejects)
          if (rejects & BITFIELD_BIT(i))
             context->batch_reject[i]++;
 #ifdef PS5_DRAW_PROFILE
-   if (++context->batch_checks % 100000 == 0)
+   if (++context->batch_checks % 100000 == 0 && ps5_profile_log())
       printf("[ps5-batch-checks] calls=%" PRIu64 " eligible=%" PRIu64
              " input=%" PRIu64 " shader=%" PRIu64 " query=%" PRIu64
              " framebuffer=%" PRIu64 " depth=%" PRIu64
@@ -13522,12 +13525,13 @@ reject:
           scissor_state != NULL);
 #endif
 #ifdef PS5_DRAW_PROFILE
-   printf("[ps5-clear-cpu] depth_ns=%" PRIi64 " target=%u mip=%u levels=%u layers=%u depth0=%u fb=%ux%u condition=%u streamout=%u\n",
-          os_time_get_nano() - clear_start, resource->base.target,
-          context->framebuffer.zsbuf.level, resource->base.last_level,
-          resource->base.array_size, resource->base.depth0,
-          context->framebuffer.width, context->framebuffer.height,
-          context->render_condition_query != NULL, context->stream_output_target_count);
+   if (ps5_profile_log())
+      printf("[ps5-clear-cpu] depth_ns=%" PRIi64 " target=%u mip=%u levels=%u layers=%u depth0=%u fb=%ux%u condition=%u streamout=%u\n",
+             os_time_get_nano() - clear_start, resource->base.target,
+             context->framebuffer.zsbuf.level, resource->base.last_level,
+             resource->base.array_size, resource->base.depth0,
+             context->framebuffer.width, context->framebuffer.height,
+             context->render_condition_query != NULL, context->stream_output_target_count);
 #endif
    return true;
 }
@@ -13763,10 +13767,11 @@ ps5_clear(struct pipe_context *base, unsigned buffers,
 #endif
 #ifdef PS5_DRAW_PROFILE
       const struct pipe_surface *first = &context->framebuffer.cbufs[0];
-      printf("[ps5-clear-cpu] color_ns=%" PRIi64 " resource=%ux%u mip=%u layers=%u-%u condition=%u streamout=%u\n",
-             os_time_get_nano() - clear_start, ps5_surface_width(first), ps5_surface_height(first),
-             first->level, first->first_layer, first->last_layer,
-             context->render_condition_query != NULL, context->stream_output_target_count);
+      if (ps5_profile_log())
+         printf("[ps5-clear-cpu] color_ns=%" PRIi64 " resource=%ux%u mip=%u layers=%u-%u condition=%u streamout=%u\n",
+                os_time_get_nano() - clear_start, ps5_surface_width(first), ps5_surface_height(first),
+                first->level, first->first_layer, first->last_layer,
+                context->render_condition_query != NULL, context->stream_output_target_count);
 #endif
       buffers &= ~PIPE_CLEAR_COLOR;
       if (!buffers)
