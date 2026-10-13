@@ -118,6 +118,27 @@ checked with a focused run on the same console, not a new complete run:
 The raw logs of this focused run are kept locally and are not part of the
 published evidence.
 
+**SDK 1.0.2** (October 12, 2026) is 1.0.1 plus these driver changes:
+
+- The compiler stores vertex binding alignments per byte, and rebinding a
+  constant buffer keeps the old reference until the new one is taken.
+- The scanout pool is flushed from the CPU cache once, not before every
+  unbatched draw that writes to it.
+- Legacy OpenGL varyings reach the fragment stage, a non-indexed draw that
+  keeps the user-index flag is accepted, and the Gallium HUD is drawn when an
+  application asks for it.
+- Mesa's thread-local variables are declared without C++ initializers
+  ([issue 9](https://github.com/blackbearreloaded/ps5-opengl/issues/9)).
+- A submission may take 30 seconds to retire before the fail-stop
+  ([issue 10](https://github.com/blackbearreloaded/ps5-opengl/issues/10)).
+- The draw statistics are printed at teardown, and while drawing only when
+  asked for.
+
+It was not run through the complete test suite again. Each change has its own
+tests in the repository. On a console, the released source ran a probe
+application of 36,000 draws and the program queries of issue 9: no frame was
+late, every query returned, and the application ended cleanly.
+
 ## Scope
 
 The result belongs to the tested binary, the CTS application built from the
