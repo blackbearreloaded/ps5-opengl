@@ -973,3 +973,20 @@ diff --git a/src/mesa/main/texstore.c b/src/mesa/main/texstore.c
                 srcWidth, srcHeight,
                 srcFormat, srcType,
                 img, 0, 0);
+diff --git a/src/util/u_thread.h b/src/util/u_thread.h
+--- a/src/util/u_thread.h
++++ b/src/util/u_thread.h
+@@ -45,9 +45,11 @@
+  * still want to use normal TLS (which involves a function call, but not the
+  * expensive pthread_getspecific() or its equivalent).
+  */
+-#if DETECT_OS_APPLE
++#if DETECT_OS_APPLE || defined(__PROSPERO__)
+ /* Apple Clang emits wrappers when using thread_local that break module linkage,
+- * but not with __thread
++ * but not with __thread. On the PS5 the wrapper of an extern variable calls an
++ * initializer that C code never defines; a statically linked application then
++ * ends at the first use from a C++ file.
+  */
+ #define __THREAD_INITIAL_EXEC __thread
+ #elif defined(__GLIBC__)
