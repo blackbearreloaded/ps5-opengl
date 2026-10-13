@@ -204,6 +204,12 @@ target_link_options(triangle PRIVATE "LINKER:--gc-sections" "LINKER:--build-id=s
                 raise ValueError(f'{name}: missing installed linker input evidence')
             summary['consumers'][name] = {'headers': sorted(dependencies), 'link_inputs': sorted(inputs)}
         summary['outputs'] = {str(p.relative_to(output)): digest(p) for p in output.rglob('*.elf')}
+        # A consumer links the SDK and nothing else. No module provides a C++ thread-local
+        # initializer, and the console ends the process at a call through an unresolved one.
+        for index, elf in enumerate(sorted(output.rglob('*.elf'))):
+            left = sorted(set(re.findall(r'\b_ZTH\w+', run(['nm', '-u', elf], name=f'undefined-{index}'))))
+            if left:
+                raise ValueError(f'{elf.relative_to(output)}: unresolved thread-local initializer {left}')
         summary['status'] = 'PASS'
     except Exception as error:
         summary['error'] = str(error)

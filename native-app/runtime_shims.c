@@ -28,11 +28,6 @@ __attribute__((noreturn)) void catchReturnFromMain(int status) {
     sceKernelUsleep(100000);
 }
 
-void ps5_opengl_glapi_tls_context_init(void) __asm__(
-    "_ZTH23_mesa_glapi_tls_Context");
-
-void ps5_opengl_glapi_tls_context_init(void) {}
-
 __attribute__((noreturn)) void __assert(const char *function, const char *file,
                                         int line, const char *expression) {
   fprintf(stderr, "assertion failed: %s (%s:%d, %s)\n", expression, file, line,
