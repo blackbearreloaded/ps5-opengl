@@ -6,6 +6,8 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
+start = source.index("#ifndef PS5_RETIREMENT_WAIT_MS")
+limit = source[start:source.index("#endif\n", start) + 7]
 start = source.index("static struct runtime_batch_entry {")
 body = source[start:source.index("\n#endif\n\n#ifdef PS5_DRAW_PROFILE", start)]
 tail_start = source.index('    failure_phase = "release";', source.index('    draw_words ='))
@@ -16,7 +18,7 @@ assert tail.index('release_mem(&command, 45, 12') < tail.index('if (!completion_
 assert tail.index('if (!completion_offset)') < tail.index('release_mem(&command, 43, 12') < tail.index('runtime_release_completion(&agc, &command, completion_marker,')
 assert 'if (command.down >= command.up && command.down <= command.top)' in source
 assert 'entry.command_capacity = (uint32_t)(command.down - words);' in source
-code = r'''
+code = limit + r'''
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -141,7 +143,7 @@ int main(void) {
         fail_submit=mode==0; fail_suspend=mode==1; never_complete=mode==2;
         if (!setjmp(fatal)) { ps5_agc_gate2_batch_end(); assert(!"failure returned"); }
         assert(!unmaps && !releases);
-        if (mode==2) assert(sleeps==2000);
+        if (mode==2) assert(sleeps==PS5_RETIREMENT_WAIT_MS);
     }
 }
 '''

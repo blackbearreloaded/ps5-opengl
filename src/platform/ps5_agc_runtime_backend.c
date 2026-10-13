@@ -1180,13 +1180,13 @@ ps5_agc_compute_run(struct pipe_screen *screen,
 #endif
    unsigned polls = 0;
    int64_t spin_deadline = 0;
-   for (; submit_rc == 0 && polls < 2000;) {
+   for (; submit_rc == 0 && polls < PS5_RETIREMENT_WAIT_MS;) {
       flush_gpu_data((const void *)marker, sizeof(*marker));
       if (*marker == expected)
          break;
       polls += runtime_completion_pause(&spin_deadline);
    }
-   runtime_require_retirement(submit_rc == 0 && suspend_rc == 0 && polls < 2000);
+   runtime_require_retirement(submit_rc == 0 && suspend_rc == 0 && polls < PS5_RETIREMENT_WAIT_MS);
    if (auxiliary_size) {
       flush_gpu_data(memory + auxiliary_offset - 0x4000u, auxiliary_size + 0x8000u);
       const uint32_t *before = (const uint32_t *)(memory + auxiliary_offset - 0x4000u);

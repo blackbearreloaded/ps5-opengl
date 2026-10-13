@@ -959,6 +959,13 @@ static void runtime_require_retirement(int completed)
 #endif
 
 #include "util/os_time.h"
+/* How long a submission may take to retire before the fail-stop, counted in
+ * sleeps of 1 ms. A console retires in microseconds to milliseconds. A
+ * translation layer that compiles the title's shaders inside its first
+ * submissions has needed 10 to 22 seconds for one of them. */
+#ifndef PS5_RETIREMENT_WAIT_MS
+#define PS5_RETIREMENT_WAIT_MS 30000u
+#endif
 /* Completion publication is now prompt. Avoid yielding for a short GPU tail;
  * long waits still sleep, and never restart their 200us spin budget. */
 static unsigned runtime_completion_pause(int64_t *spin_deadline)
@@ -1838,7 +1845,7 @@ int ps5_agc_gate2_batch_retire(int wait)
         if (complete || !wait)
             break;
         waits += runtime_completion_pause(&spin_deadline);
-    } while (waits < 2000);
+    } while (waits < PS5_RETIREMENT_WAIT_MS);
 #ifdef PS5_DRAW_PROFILE
     if (pending->profile)
         poll_end = os_time_get_nano();
@@ -2120,7 +2127,7 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
 {
     if (runtime_gpu_present_buffer != (int)buffer_index)
         return -1;
-    for (unsigned waits = 0; waits <= 2000; ++waits) {
+    for (unsigned waits = 0; waits <= PS5_RETIREMENT_WAIT_MS; ++waits) {
         uint64_t status[16] = {0};
         int result = runtime_video_api.get_flip_status(runtime_video_handle, status);
         if (result != 0)
@@ -2136,7 +2143,7 @@ static int runtime_gpu_present_finish(unsigned buffer_index)
             runtime_gpu_present_is_cpu = 0;
             return 0;
         }
-        if (waits == 2000)
+        if (waits == PS5_RETIREMENT_WAIT_MS)
             return -1;
         /* Vblank can wake before VideoOut publishes flip status. Sleeping until
          * another vblank then adds a whole refresh despite completed work. */
@@ -5013,10 +5020,10 @@ int main(void)
 #endif
         PS5_PROFILE_MARK(7);
 #ifdef AGC_RUNTIME_PACKAGES
-        waits = 2000;
+        waits = PS5_RETIREMENT_WAIT_MS;
         if (submit_rc == 0) {
             int64_t spin_deadline = 0;
-            for (waits = 0; waits < 2000;) {
+            for (waits = 0; waits < PS5_RETIREMENT_WAIT_MS;) {
 #ifdef PS5_DRAW_GPU_TIMESTAMPS
                 runtime_draw_gpu_observe(memory, work_bytes);
 #endif
@@ -5029,7 +5036,7 @@ int main(void)
         }
         status[3] = *completion_marker;
 #ifdef PS5_NATIVE_TITLE_RUNTIME
-        runtime_require_retirement(submit_rc == 0 && suspend_rc == 0 && waits < 2000);
+        runtime_require_retirement(submit_rc == 0 && suspend_rc == 0 && waits < PS5_RETIREMENT_WAIT_MS);
 #endif
 #ifdef PS5_DRAW_BATCH_PROBE
         batch_wait_ns = os_time_get_nano() - batch_start;
@@ -5051,7 +5058,7 @@ int main(void)
 #if defined(AGC_RUNTIME_PACKAGES) && !defined(AGC_RUNTIME_DIAGNOSTICS)
         /* Gallium performs resource readback and pixel validation itself.
          * Avoid multi-megabyte command/framebuffer dumps on every GL draw. */
-        result = submit_rc == 0 && suspend_rc == 0 && waits < 2000 ? 0 : 1;
+        result = submit_rc == 0 && suspend_rc == 0 && waits < PS5_RETIREMENT_WAIT_MS ? 0 : 1;
         if (result)
             printf(LOG_PREFIX " submit=%08" PRIx32
                    " suspend=%08" PRIx32 " waits=%u\n",
@@ -5302,7 +5309,7 @@ int main(void)
             /* Gallium owns draw semantics and validates pixels separately.
              * A legal draw may cover the old corner sentinel or produce no
              * fragments, so the reusable bridge reports execution only. */
-            result = submit_rc == 0 && suspend_rc == 0 && waits < 2000
+            result = submit_rc == 0 && suspend_rc == 0 && waits < PS5_RETIREMENT_WAIT_MS
                          ? 0 : 1;
 #else
 #ifdef AGC_EXPECT_EMPTY_TARGET

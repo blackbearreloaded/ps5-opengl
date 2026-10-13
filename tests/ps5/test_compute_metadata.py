@@ -190,7 +190,9 @@ static int load_apis(void *a, void *b, void *c, agc_api_t *api, video_api_t *v) 
     return 0;
 }
 '''
-code = r'''
+start = runtime.index("#ifndef PS5_RETIREMENT_WAIT_MS")
+limit = runtime[start:runtime.index("#endif\n", start) + 7]
+code = limit + r'''
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

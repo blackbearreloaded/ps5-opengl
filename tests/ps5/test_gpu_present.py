@@ -11,6 +11,8 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 source = (root / "src/platform/ps5_agc_native_runtime.c").read_text()
+start = source.index("#ifndef PS5_RETIREMENT_WAIT_MS")
+limit = source[start:source.index("#endif\n", start) + 7]
 assert source.count("runtime_video_framebuffer_size >= framebuffer_size") == 2
 start = source.index("int ps5_agc_gate2_batch_present(")
 body = source[start:source.index("\n#endif\n\n#if defined(PS5_DRAW_PROFILE)", start)]
@@ -30,7 +32,7 @@ static void ps5_draw_batch_flush_locked(void) {
 }
 static void ps5_draw_batch_retire_locked(int wait) { assert(locked && !wait); }
 '''
-code = r'''
+code = limit + r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -144,18 +146,19 @@ int main(void) {
     assert(runtime_gpu_present_deferred && runtime_gpu_present_buffer == 1);
     reset(); runtime_batch_count = runtime_batch_active = 0; runtime_pending_batches = 1;
     assert(ps5_agc_gate2_present(1, 0) == 0 && cpu_flips == 1 && !waits);
-    for (unsigned n = 0; n <= 2001; ++n) {
+    /* Both ends of the wait: the first polls, and the last ones before it gives up. */
+    for (unsigned n = 0; n <= PS5_RETIREMENT_WAIT_MS + 1; n = n == 3 ? PS5_RETIREMENT_WAIT_MS - 2 : n + 1) {
         reset(); assert(ps5_agc_gate2_batch_present(1) == 0);
         assert(tails == 1 && releases == 1 && flushes == 1);
         assert(runtime_batch_entries[0].expected == 101 && completion == 17);
         assert(ps5_agc_gate2_present(1, 1) != 0); /* Unretired command tail. */
         completion = 101; runtime_batch_count = runtime_batch_active = 0;
         finish_after = n;
-        assert((ps5_agc_gate2_present(1, 1) == 0) == (n <= 2000));
-        assert(!cpu_flips && waits == (n <= 2000 ? n : 2000));
+        assert((ps5_agc_gate2_present(1, 1) == 0) == (n <= PS5_RETIREMENT_WAIT_MS));
+        assert(!cpu_flips && waits == (n <= PS5_RETIREMENT_WAIT_MS ? n : PS5_RETIREMENT_WAIT_MS));
         assert(polls == waits && idle_calls == 1);
-        assert(runtime_present_count == (n <= 2000) && runtime_gpu_present_count == (n <= 2000));
-        assert(runtime_gpu_present_buffer == (n <= 2000 ? -1 : 1));
+        assert(runtime_present_count == (n <= PS5_RETIREMENT_WAIT_MS) && runtime_gpu_present_count == (n <= PS5_RETIREMENT_WAIT_MS));
+        assert(runtime_gpu_present_buffer == (n <= PS5_RETIREMENT_WAIT_MS ? -1 : 1));
     }
     /* Marker publication and queue idle can become visible separately. */
     reset(); assert(ps5_agc_gate2_batch_present(1) == 0);
@@ -259,7 +262,7 @@ start = source.index("int ps5_agc_gate2_prepare_present(")
 prepare = source[start:source.index("\nstatic int runtime_video_wait_idle", start)]
 a = screen_source.index("int\nps5_screen_prepare_present(")
 prepare_screen = screen_source[a:screen_source.index("\n}\n", a) + 3]
-code = r'''
+code = limit + r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -340,7 +343,7 @@ print("PASS: first clear-only swap registers scanout; reuse and failures are bou
 # Compile the actual scanout-flush gate, including the unchanged default path.
 start = source.rindex("    PS5_PROFILE_MARK(1);", 0, source.index("    /* The first queued draw"))
 flush_gate = source[start:source.index("    PS5_PROFILE_MARK(2);", start)]
-code = r'''
+code = limit + r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -445,7 +448,7 @@ start = screen.index("      if (flush_depth_stencil)")
 depth_flush = screen[start:screen.index("      if (packed)", start)]
 start = screen.index("         if (flush_depth_stencil)")
 stencil_flush = screen[start:screen.index(';', start) + 1] + "\n"
-code = r'''
+code = limit + r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <stdbool.h>
@@ -544,7 +547,7 @@ a = backend.index("static bool\nps5_agc_writes_scanout(")
 predicate = backend[a:backend.index("#define PS5_RUNTIME_WRITES_SCANOUT", a)]
 a = source.index("static int runtime_video_prepare_draw(void)")
 prepare_draw = source[a:source.index("\nint ps5_agc_gate2_present", a)]
-code = r'''
+code = limit + r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <stdbool.h>
