@@ -13048,13 +13048,15 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
                     const struct pipe_scissor_state *scissor_state,
                     const union pipe_color_union *color)
 {
-   /* Clear each validated array layer with the existing single-layer blitter.
-    * Masks and incompatible layouts keep their checked CPU path. */
+   /* Preflight every selected attachment before enqueueing any clear. Partial
+    * masks and incompatible layouts keep the checked CPU path for the whole
+    * operation; never mix a partial GPU clear with a CPU retry. */
    if (!PS5_ENABLE_MRT_CANDIDATE || !PS5_ENABLE_UBO_CANDIDATE || !context ||
        !context->framebuffer_valid || !color ||
-       (buffers & PIPE_CLEAR_COLOR) != PIPE_CLEAR_COLOR0 ||
-       (color_clear_mask & PIPE_MASK_RGBA) != PIPE_MASK_RGBA ||
-       context->framebuffer.nr_cbufs != 1 || context->render_condition_query ||
+       !buffers || (buffers & ~PIPE_CLEAR_COLOR) ||
+       !context->framebuffer.nr_cbufs ||
+       context->framebuffer.nr_cbufs > PIPE_MAX_COLOR_BUFS ||
+       context->render_condition_query ||
        context->stream_output_target_count)
       return false;
 
@@ -13068,43 +13070,54 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
        PS5_GPU_CLEAR_MIN_PIXELS)
       return false;
 
-   const struct pipe_surface *surface = &context->framebuffer.cbufs[0];
-   const struct ps5_resource *target = (const struct ps5_resource *)surface->texture;
-   /* RGBA8 linear/sRGB views share the same native tiled byte layout. The
-    * surface format still controls clear quantization and GPU color encoding. */
-   const bool native_rgba8_view = target && !target->render_staging_size &&
-      !ps5_linear_sampled_layout(&target->base) &&
-      (surface->format == PIPE_FORMAT_R8G8B8A8_UNORM ||
-       surface->format == PIPE_FORMAT_R8G8B8A8_SRGB) &&
-      (target->base.format == PIPE_FORMAT_R8G8B8A8_UNORM ||
-       target->base.format == PIPE_FORMAT_R8G8B8A8_SRGB);
-   if (!target || (target->base.target != PIPE_TEXTURE_2D &&
-                   target->base.target != PIPE_TEXTURE_2D_ARRAY) ||
-       ((target->base.nr_samples > 1 || target->base.nr_storage_samples > 1) &&
-        !(PS5_ENABLE_MSAA4_CANDIDATE && target->base.nr_samples == 4 &&
-          target->base.nr_storage_samples == 4 && !target->render_staging_size &&
-          ps5_msaa4_color_format(surface->format))) ||
-       surface->level || surface->first_layer > surface->last_layer ||
-       surface->last_layer >= ps5_surface_layer_count(surface) || surface->last_layer > 2047 ||
-       (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM &&
-        surface->format != PIPE_FORMAT_R8G8B8A8_SNORM &&
-        surface->format != PIPE_FORMAT_B8G8R8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
-        surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
-        surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB &&
-        surface->format != PIPE_FORMAT_R10G10B10A2_UNORM && surface->format != PIPE_FORMAT_R16_FLOAT &&
-        surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R16G16_FLOAT &&
-        surface->format != PIPE_FORMAT_R32G32B32A32_UINT) ||
-       context->framebuffer.width != ps5_surface_width(surface) ||
-       context->framebuffer.height != ps5_surface_height(surface))
-      return false;
-   for (unsigned layer = surface->first_layer; layer <= surface->last_layer; ++layer) {
-      struct pipe_surface selected = *surface;
-      selected.first_layer = selected.last_layer = layer;
-      if ((target->render_staging_size ||
-           (target->base.format != surface->format && !native_rgba8_view)) &&
-          !ps5_linear_color_pitch(&selected))
+   unsigned remaining = buffers;
+   for (unsigned target_index = 0; target_index < context->framebuffer.nr_cbufs;
+        ++target_index) {
+      if (!(buffers & (PIPE_CLEAR_COLOR0 << target_index)))
+         continue;
+      if (((color_clear_mask >> (4u * target_index)) & PIPE_MASK_RGBA) != PIPE_MASK_RGBA)
          return false;
+      remaining &= ~(PIPE_CLEAR_COLOR0 << target_index);
+      const struct pipe_surface *surface = &context->framebuffer.cbufs[target_index];
+      const struct ps5_resource *target = (const struct ps5_resource *)surface->texture;
+      /* RGBA8 linear/sRGB views share the same native tiled byte layout. The
+       * surface format still controls clear quantization and GPU color encoding. */
+      const bool native_rgba8_view = target && !target->render_staging_size &&
+         !ps5_linear_sampled_layout(&target->base) &&
+         (surface->format == PIPE_FORMAT_R8G8B8A8_UNORM ||
+          surface->format == PIPE_FORMAT_R8G8B8A8_SRGB) &&
+         (target->base.format == PIPE_FORMAT_R8G8B8A8_UNORM ||
+          target->base.format == PIPE_FORMAT_R8G8B8A8_SRGB);
+      if (!target || (target->base.target != PIPE_TEXTURE_2D &&
+                      target->base.target != PIPE_TEXTURE_2D_ARRAY) ||
+          ((target->base.nr_samples > 1 || target->base.nr_storage_samples > 1) &&
+           !(PS5_ENABLE_MSAA4_CANDIDATE && target->base.nr_samples == 4 &&
+             target->base.nr_storage_samples == 4 && !target->render_staging_size &&
+             ps5_msaa4_color_format(surface->format))) ||
+          surface->level || surface->first_layer > surface->last_layer ||
+          surface->last_layer >= ps5_surface_layer_count(surface) || surface->last_layer > 2047 ||
+          (surface->format != PIPE_FORMAT_R8G8B8A8_UNORM &&
+           surface->format != PIPE_FORMAT_R8G8B8A8_SNORM &&
+           surface->format != PIPE_FORMAT_B8G8R8A8_UNORM && surface->format != PIPE_FORMAT_R8_UNORM &&
+           surface->format != PIPE_FORMAT_R8G8_UNORM && surface->format != PIPE_FORMAT_R16G16B16A16_FLOAT &&
+           surface->format != PIPE_FORMAT_R11G11B10_FLOAT && surface->format != PIPE_FORMAT_R8G8B8A8_SRGB &&
+           surface->format != PIPE_FORMAT_R10G10B10A2_UNORM && surface->format != PIPE_FORMAT_R16_FLOAT &&
+           surface->format != PIPE_FORMAT_R32_FLOAT && surface->format != PIPE_FORMAT_R16G16_FLOAT &&
+           surface->format != PIPE_FORMAT_R32G32B32A32_UINT) ||
+          context->framebuffer.width != ps5_surface_width(surface) ||
+          context->framebuffer.height != ps5_surface_height(surface))
+         return false;
+      for (unsigned layer = surface->first_layer; layer <= surface->last_layer; ++layer) {
+         struct pipe_surface selected = *surface;
+         selected.first_layer = selected.last_layer = layer;
+         if ((target->render_staging_size ||
+              (target->base.format != surface->format && !native_rgba8_view)) &&
+             !ps5_linear_color_pitch(&selected))
+            return false;
+      }
    }
+   if (remaining)
+      return false;
 
    /* Slot zero may be an inline uniform copy, not a resource. Preserve its
     * bytes before u_blitter temporarily replaces it with the clear color. */
@@ -13138,59 +13151,68 @@ ps5_clear_gpu_color(struct ps5_context *context, unsigned buffers,
       return false;
    }
 
-   const unsigned first_layer = surface->first_layer, last_layer = surface->last_layer;
-   const bool selected_target = scissor_state || first_layer || last_layer;
-   for (unsigned layer = first_layer; layer <= last_layer; ++layer) {
-      uint16_t viewport_valid = context->viewport_valid;
-      bool framebuffer_valid = context->framebuffer_valid;
-      bool queries_enabled = context->queries_enabled;
-      unsigned draws_before = context->draw_calls;
-      util_blitter_save_vertex_buffers(blitter, context->vertex_buffers, context->vertex_buffer_count);
-      util_blitter_save_vertex_elements(blitter, context->vertex_elements);
-      util_blitter_save_vertex_shader(blitter, context->vs);
-      util_blitter_save_tessctrl_shader(blitter, context->tcs);
-      util_blitter_save_tesseval_shader(blitter, context->tes);
-      util_blitter_save_geometry_shader(blitter, context->gs);
-      util_blitter_save_so_targets(blitter, 0, NULL, context->stream_output_primitive);
-      util_blitter_save_rasterizer(blitter, context->rasterizer);
-      util_blitter_save_fragment_shader(blitter, context->fs);
-      util_blitter_save_depth_stencil_alpha(blitter, context->depth_stencil_alpha);
-      util_blitter_save_blend(blitter, context->blend);
-      util_blitter_save_stencil_ref(blitter, &context->stencil_ref);
-      util_blitter_save_viewport(blitter, &context->viewport[0]);
-      util_blitter_save_sample_mask(blitter, context->sample_mask, 1);
-      util_blitter_save_fragment_constant_buffer_slot(blitter, &cb);
-      if (selected_target)
-         util_blitter_save_framebuffer(blitter, &context->framebuffer);
+   for (unsigned target_index = 0; target_index < context->framebuffer.nr_cbufs;
+        ++target_index) {
+      if (!(buffers & (PIPE_CLEAR_COLOR0 << target_index)))
+         continue;
+      const struct pipe_surface *surface = &context->framebuffer.cbufs[target_index];
+      const unsigned first_layer = surface->first_layer, last_layer = surface->last_layer;
+      const bool selected_target = context->framebuffer.nr_cbufs != 1 ||
+                                   scissor_state || first_layer || last_layer;
+      for (unsigned layer = first_layer; layer <= last_layer; ++layer) {
+         uint16_t viewport_valid = context->viewport_valid;
+         bool framebuffer_valid = context->framebuffer_valid;
+         bool queries_enabled = context->queries_enabled;
+         unsigned draws_before = context->draw_calls;
+         util_blitter_save_vertex_buffers(blitter, context->vertex_buffers, context->vertex_buffer_count);
+         util_blitter_save_vertex_elements(blitter, context->vertex_elements);
+         util_blitter_save_vertex_shader(blitter, context->vs);
+         util_blitter_save_tessctrl_shader(blitter, context->tcs);
+         util_blitter_save_tesseval_shader(blitter, context->tes);
+         util_blitter_save_geometry_shader(blitter, context->gs);
+         util_blitter_save_so_targets(blitter, 0, NULL, context->stream_output_primitive);
+         util_blitter_save_rasterizer(blitter, context->rasterizer);
+         util_blitter_save_fragment_shader(blitter, context->fs);
+         util_blitter_save_depth_stencil_alpha(blitter, context->depth_stencil_alpha);
+         util_blitter_save_blend(blitter, context->blend);
+         util_blitter_save_stencil_ref(blitter, &context->stencil_ref);
+         util_blitter_save_viewport(blitter, &context->viewport[0]);
+         util_blitter_save_sample_mask(blitter, context->sample_mask, 1);
+         util_blitter_save_fragment_constant_buffer_slot(blitter, &cb);
+         if (selected_target)
+            util_blitter_save_framebuffer(blitter, &context->framebuffer);
 
-      /* Match the CPU fallback's target-format quantization. */
-      uint8_t packed[16];
-      union pipe_color_union quantized;
-      util_format_pack_rgba(surface->format, packed, color->ui, 1);
-      util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
-      /* u_blitter disables query accounting around its internal draws. Deferred slots keep
-       * that disabled accounting after query state is restored.
-       * Only this validated color operation may defer its internal fan. The
-       * caller has already completed any CPU depth/stencil part of a mixed clear. */
-      context->deferred_blitter_draw = buffers == PIPE_CLEAR_COLOR0;
-      if (selected_target) {
-         struct pipe_surface selected = *surface;
-         selected.first_layer = selected.last_layer = layer;
-         util_blitter_clear_render_target(blitter, &selected, &quantized,
-                                           left, bottom, right - left, top - bottom);
-      } else {
-         util_blitter_clear(blitter, context->framebuffer.width, context->framebuffer.height,
-                            1, PIPE_CLEAR_COLOR0, &quantized, 0, 0, false);
+         /* Match the CPU fallback's target-format quantization. */
+         uint8_t packed[16];
+         union pipe_color_union quantized;
+         util_format_pack_rgba(surface->format, packed, color->ui, 1);
+         util_format_unpack_rgba(surface->format, quantized.ui, packed, 1);
+         /* u_blitter disables query accounting around its internal draws. Deferred slots keep
+          * that disabled accounting after query state is restored.
+          * Only this validated color operation may defer its internal fan. The
+          * caller has already completed any CPU depth/stencil part of a mixed clear. */
+         context->deferred_blitter_draw = true;
+         if (selected_target) {
+            struct pipe_surface selected = *surface;
+            selected.first_layer = selected.last_layer = layer;
+            util_blitter_clear_render_target(blitter, &selected, &quantized,
+                                              left, bottom, right - left, top - bottom);
+         } else {
+            util_blitter_clear(blitter, context->framebuffer.width, context->framebuffer.height,
+                               1, PIPE_CLEAR_COLOR0, &quantized, 0, 0, false);
+         }
+         context->deferred_blitter_draw = false;
+         context->viewport_valid = viewport_valid;
+         context->framebuffer_valid = framebuffer_valid;
+         context->queries_enabled = queries_enabled;
+         if (context->draw_calls == draws_before)
+            context->last_draw_status = -30; /* Blitter upload failed before drawing. */
+         if (context->last_draw_status != 0 || draws_before < 3)
+            printf("[ps5-gallium] clear-gpu-color status=%d draws=%u\n",
+                   context->last_draw_status, context->draw_calls - draws_before);
+         if (context->last_draw_status != 0)
+            break;
       }
-      context->deferred_blitter_draw = false;
-      context->viewport_valid = viewport_valid;
-      context->framebuffer_valid = framebuffer_valid;
-      context->queries_enabled = queries_enabled;
-      if (context->draw_calls == draws_before)
-         context->last_draw_status = -30; /* Blitter upload failed before drawing. */
-      if (context->last_draw_status != 0 || draws_before < 3)
-         printf("[ps5-gallium] clear-gpu-color status=%d draws=%u\n",
-                context->last_draw_status, context->draw_calls - draws_before);
       if (context->last_draw_status != 0)
          break;
    }

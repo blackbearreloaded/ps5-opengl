@@ -44,7 +44,7 @@ print("PASS: production depth state disables writes on intervening color-only pa
 assert "#define PS5_GPU_CLEAR_MIN_PIXELS 16384u" in source
 start = source.index("static bool\nps5_clear_gpu_color(")
 clear_body = source[start:source.index("\nstatic void\nps5_clear(", start)]
-assert clear_body.index("context->deferred_blitter_draw = buffers == PIPE_CLEAR_COLOR0;") < \
+assert clear_body.index("context->deferred_blitter_draw = true;") < \
        clear_body.index("   util_blitter_clear(") < \
        clear_body.index("context->deferred_blitter_draw = false;")
 prefix = source[start:source.index("   if (!context->blitter)", start)]
@@ -64,6 +64,7 @@ code = r'''
 #define PIPE_CLEAR_COLOR 0x3fc
 #define PIPE_CLEAR_COLOR0 4
 #define PIPE_MASK_RGBA 15
+#define PIPE_MAX_COLOR_BUFS 8
 #define PIPE_TEXTURE_2D 2
 #define PIPE_TEXTURE_2D_ARRAY 7
 #define PIPE_FORMAT_R8G8B8A8_UNORM 1
@@ -88,7 +89,7 @@ struct constant { struct resource *buffer; unsigned offset, size; bool valid, co
 #define ps5_constant_state constant
 struct pipe_constant_buffer { struct resource *buffer; unsigned buffer_offset, buffer_size; const void *user_buffer; };
 struct ps5_context {
-    struct { unsigned width, height, nr_cbufs; struct pipe_surface cbufs[1]; } framebuffer;
+    struct { unsigned width, height, nr_cbufs; struct pipe_surface cbufs[8]; } framebuffer;
     bool framebuffer_valid, queries_enabled;
     unsigned render_condition_query, stream_output_target_count, active_occlusion_query;
     unsigned active_primitives_generated_query, active_primitives_emitted_query;
@@ -229,7 +230,7 @@ int main(void) {
 #define REJECT(field, value) do { struct ps5_context c = good; c.field = value; \
     assert(!ps5_clear_gpu_color(&c, 4, 15, 0, &color)); } while (0)
     REJECT(framebuffer_valid, false); REJECT(framebuffer.width, 63); REJECT(framebuffer.height, 31);
-    REJECT(framebuffer.nr_cbufs, 2); REJECT(framebuffer.cbufs[0].texture, 0);
+    REJECT(framebuffer.nr_cbufs, 9); REJECT(framebuffer.cbufs[0].texture, 0);
     REJECT(framebuffer.cbufs[0].level, 1); REJECT(framebuffer.cbufs[0].first_layer, 1);
     REJECT(framebuffer.cbufs[0].last_layer, 1); REJECT(framebuffer.cbufs[0].format, 2);
     REJECT(render_condition_query, 1); REJECT(stream_output_target_count, 1);
